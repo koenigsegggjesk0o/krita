@@ -123,3 +123,44 @@ bernilai** adalah:
 
 Source code tetap sumber terbaik untuk **memahami algoritma**.
 Binary RE unggul untuk **verifikasi & resource ekstraksi**.
+
+## 10. BRUSH ENGINE CORE decompilation (libkritaimage.so) — yang sebenarnya
+
+Setelah push pertama, saya decompile juga library engine sesungguhnya:
+`libkritaimage.so.20.0.0` (7.3MB, 8224 function, analisis 319 detik).
+
+### Hasil: `analysis/ghidra-engine-decompiled.c` (73KB, 2361 baris, 49 function)
+
+Class engine inti yang berhasil di-decompile:
+- `KisPaintOp` (base class brush engine — constructor dengan vtable setup)
+- `KisPaintOpFactory` (factory pattern untuk create paintop per stroke)
+- `KisPaintOpPreset` (KoResource wrapper + settings, loader .kpp)
+- `KisPaintOpRegistry` (singleton registry semua engine)
+- `KisPaintOpSettings` (KisPropertiesConfiguration subclass)
+- `KisPaintOpConfigWidget` (base widget engine)
+- `KisPaintInformation` (input pointer per tick: pos/pressure/tilt/time)
+- `KisPerStrokeRandomSource` / `KisStrokeRandomSource` (deterministic randomness)
+- `KisStrokeSpeedMeasurer` (stroke speed tracking)
+- `KisOptimizedBrushOutline` (brush outline renderer)
+- `KisPaintOpPresetUpdateProxy` (batching proxy untuk live update)
+- `KisNoSizePaintOpSettings` (settings untuk engine tanpa size)
+- `KisCallbackBasedPaintopProperty` (uniform property abstraction)
+
+### Kenapa `paintDab()` tidak muncul sebagai nama function:
+`KisPaintOp::paintDab()` adalah **virtual function** — di binary stripped,
+method virtual hanya direferensikan via vtable (offset), bukan sebagai
+symbol nama langsung. Ghidra tetap mendekompilasi implementasinya, tapi
+tanpa nama asli (jadi `FUN_xxxxxxxx`). Logic painting loop tetap ada di
+dalam binary, hanya nama yang hilang.
+
+### Total decompilation Ghidra (3 library):
+| File | Function | Ukuran |
+|------|----------|--------|
+| `ghidra-decompiled.c` (libkritalibbrush) | 45 | 54 KB |
+| `ghidra-paintop-decompiled.c` (libkritalibpaintop) | 26 | 57 KB |
+| `ghidra-engine-decompiled.c` (libkritaimage) | 49 | 73 KB |
+| **Total** | **120 function C++** | **184 KB pseudocode** |
+
+Ini adalah **C++ engine asli Krita hasil decompilation Ghidra** dari binary
+resmi. Bukan source code (yang ada di folder brush-engine/), tapi hasil
+reverse engineering binary yang terverifikasi.
