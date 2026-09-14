@@ -1,0 +1,23 @@
+SPDX-License-Identifier: CC0-1.0
+
+Creative Commons Zero (Public Domain Dedication)
+
+Applies to the following brush assets in this extraction:
+
+  brush-tips/mypaint/c)_Pencil_1_Sketch_(mypaint).myb       — Ramón Miranda
+  brush-tips/mypaint/c)_Pencil_2b_(mypaint).myb             — David Revoy (Deevad)
+  brush-tips/mypaint/e)_Marker_Medium_(mypaint).myb          — Ramón Miranda
+  brush-tips/mypaint/e)_Marker_Plain_(mypaint).myb           — Ramón Miranda
+  brush-tips/mypaint/i)_Wet_Paint_Plus_(mypaint).myb         — Guillaume Loussarévian (Kaerhon) / David Revoy
+
+These brush files are dedicated to the public domain by their respective
+authors. The preview thumbnails (_prev.png) accompanying these .myb files
+are likewise CC0.
+
+The brush preset .qrc manifest (defaultpresets.qrc) is also marked
+SPDX-License-Identifier: CC0-1.0 (SPDX-FileCopyrightText: none).
+
+Full CC0 1.0 text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+To the extent possible under law, the authors have waived all copyright
+and related or neighboring rights to these brush assets.

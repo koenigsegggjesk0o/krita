@@ -1,0 +1,62 @@
+Third-Party External Dependencies (NOT bundled in this extraction)
+==================================================================
+
+The brush engine code in this extraction depends on the following
+external libraries that are NOT part of Krita's source tree and are
+therefore NOT included here. They must be installed on the build system
+separately. Each retains its own upstream license.
+
+1. Qt (Qt Toolkit)
+   - License: LGPL-3.0 / GPL-3.0 / Commercial
+   - URL: https://www.qt.io/
+   - Used by: brush-engine/core, brush-engine/libpaintop, paintops,
+     resource system. Specifically: QtCore, QtGui, QtWidgets, QtSvg.
+   - Why required: Krita's entire brush engine is built on Qt's object
+     model, I/O, image handling, and widget infrastructure.
+
+2. liblager
+   - License: Boost Software License 1.0 (BSL-1.0)
+   - URL: https://github.com/arximboldi/lager
+   - Used by: brush-engine/core/brush (KisBrushModel.h/.cpp),
+     brush-engine/libpaintop (all *OptionData / *OptionModel files).
+   - Why required: Lager provides the reactive state-store (cursors)
+     that drives the brush option data model used throughout the brush
+     engine and every paintop plugin. This is a HARD dependency that
+     cannot be removed without rewriting the entire option-data layer.
+
+3. Boost (headers only)
+   - License: Boost Software License 1.0 (BSL-1.0)
+   - URL: https://www.boost.org/
+   - Used by: brush-engine/core/brush, brush-engine/libpaintop,
+     brush-engine/core/brushengine (kis_paint_information.cc uses
+     boost/optional.hpp; KisBrushModel uses boost/operators.hpp and
+     boost/fusion).
+   - Why required: Header-only utility types (operators, fusion, optional
+     on older toolchains) used pervasively in the brush data structures.
+
+4. Eigen3
+   - License: MPL-2.0
+   - URL: https://eigen.tuxfamily.org/
+   - Used by: kritaimage (which embeds the brushengine interfaces) and
+     the brush mask algebra helpers.
+   - Why required: Linear algebra for mask generation and dab transforms.
+
+5. libmypaint (optional)
+   - License: LGPL-2.1-or-later (library) / brushes CC0/GPL-2+
+   - URL: https://github.com/mypaint/libmypaint
+   - Used by: brush-engine/paintops/mypaint ONLY.
+   - Why optional: The MyPaint brush engine plugin wraps libmypaint.
+     If libmypaint is not found at configure time, the `mypaint` paintop
+     subdirectory is excluded from the build (see paintops/CMakeLists.txt).
+     All other 13 brush engines build without it.
+
+6. Qt Svg (Qt5::Svg / Qt6::Svg)
+   - License: part of Qt (see above)
+   - Used by: brush-engine/core/brush (kis_svg_brush.cpp) for loading
+     SVG-based brush tips.
+   - Why required: SVG brush tip support.
+
+NOTE: These external dependencies are deliberately NOT vendored into
+this extraction. They must be provided by the host environment. This
+keeps the extraction minimal and respects each project's own distribution
+preferences. See the main README.md "Build" section for install commands.

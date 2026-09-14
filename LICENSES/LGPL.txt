@@ -1,0 +1,15 @@
+LGPL-2.0-or-later and LGPL-2.1-or-later
+========================================
+
+A small number of files in this extraction are licensed under the GNU
+Lesser General Public License (LGPL), version 2.0-or-later or version
+2.1-or-later. These are identified by their individual SPDX-License-Identifier
+headers in the source files (primarily some widget utility and pigment
+color-scpace helper files pulled in as minimum Krita library dependencies).
+
+The full text of the LGPL is available from the Free Software Foundation:
+  https://www.gnu.org/licenses/old-licenses/lgpl-2.0.txt
+  https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
+
+Each LGPL-licensed file retains its own SPDX-FileCopyrightText header
+identifying the original copyright holders.

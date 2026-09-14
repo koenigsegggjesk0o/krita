@@ -1,0 +1,841 @@
+.init
+.plt
+__cxa_finalize@plt
+KisRandomSource::~KisRandomSource()@plt
+ki18nd(char const*, char const*)@plt
+KoAbstractGradient::~KoAbstractGradient()@plt
+KisCubicCurve::KisCubicCurve(QString const&)@plt
+KisPaintInformation::drawingDistance() const@plt
+KoResource::valid() const@plt
+QImage::convertTo(QImage::Format, QFlags<Qt::ImageConversionFlag>)@plt
+QSqlDatabase::~QSqlDatabase()@plt
+QImage::scanLine(int)@plt
+KisResourcesInterface::source(QString const&) const@plt
+QFontMetrics::~QFontMetrics()@plt
+KisAutoBrush::KisAutoBrush(KisMaskGenerator*, double, double, double)@plt
+KisBrush::autoSpacingCoeff() const@plt
+KisAbrBrush::KisAbrBrush(KisAbrBrush const&, KisAbrBrushCollection*)@plt
+QPainter::setPen(QColor const&)@plt
+__cxa_begin_catch@plt
+KisQImagePyramid::appendPyramidLevel(QImage const&)@plt
+QDomElement::attribute(QString const&, QString const&) const@plt
+_41000()@plt
+operator delete(void*, unsigned long)@plt
+kisBacktrace()@plt
+KisGaussRectangleMaskGenerator::KisGaussRectangleMaskGenerator(double, double, double, double, int, bool)@plt
+std::exception::~exception()@plt
+KisImagePipeBrush::parasiteSelection()@plt
+QListData::dispose(QListData::Data*)@plt
+KoResource::addMetaData(QString, QVariant)@plt
+QImage::copy(QRect const&) const@plt
+KisBrushServerProvider::~KisBrushServerProvider()@plt
+log@plt
+KisTextBrush::setText(QString const&)@plt
+QMetaType::registerNormalizedType(QByteArray const&, void (*)(void*), void* (*)(void*, void const*), int, QFlags<QMetaType::TypeFlag>, QMetaObject const*)@plt
+KisResourceLocator::instance()@plt
+QVariant::QVariant(QString const&)@plt
+QFontMetrics::boundingRect(QString const&) const@plt
+QDebug::putString(QChar const*, unsigned long)@plt
+KisQImagePyramid::KisQImagePyramid(QImage const&, bool)@plt
+QBuffer::QBuffer(QByteArray*, QObject*)@plt
+KisBrush::outline(bool) const@plt
+KisBrush::generateMaskAndApplyMaskOrCreateDab(KisSharedPtr<KisFixedPaintDevice>, KisBrush::ColoringInformation*, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@plt
+KisBrush::PaintDeviceColoringInformation::~PaintDeviceColoringInformation()@plt
+KisGbrBrush::KisGbrBrush(QString const&, QByteArray const&, int&)@plt
+QImage::scaled(QSize const&, Qt::AspectRatioMode, Qt::TransformationMode) const@plt
+KisOutlineGenerator::setSimpleOutline(bool)@plt
+QTextStream::operator<<(QString const&)@plt
+QString::QString(QChar)@plt
+qt_QMetaEnum_debugOperator(QDebug&, int, QMetaObject const*, char const*)@plt
+QPainterPath::QPainterPath()@plt
+KisPaintInformation::xTilt() const@plt
+QImageReader::canRead() const@plt
+QFileInfo::QFileInfo(QFile const&)@plt
+QPainter::begin(QPaintDevice*)@plt
+QObject::objectName() const@plt
+KisBrush::ColoringInformation::~ColoringInformation()@plt
+QImageReader::read()@plt
+QPainter::setPen(QPen const&)@plt
+QFont::operator=(QFont const&)@plt
+KisGbrBrush::KisGbrBrush(KisGbrBrush const&)@plt
+KisTag::setDefaultResources(QStringList const&)@plt
+KisMaskGenerator::setDiameter(double)@plt
+QString::toDouble(bool*) const@plt
+QFont::~QFont()@plt
+QFileInfo::completeBaseName() const@plt
+KisBrush::setWidth(int)@plt
+KisBrush::setSpacing(double)@plt
+KisCircleMaskGenerator::KisCircleMaskGenerator(double, double, double, double, int, bool)@plt
+KisQImagePyramid::calculateParams(KisDabShape const&, double, double, QSize const&, QTransform*, QSize*)@plt
+__stack_chk_fail@plt
+memset@plt
+QMapDataBase::createData()@plt
+KisAutoBrush::KisAutoBrush(KisAutoBrush const&)@plt
+QString::fromUtf16(unsigned short const*, int)@plt
+QString::mid(int, int) const@plt
+KisColorfulBrush::hasColorAndTransparency() const@plt
+QSvgRenderer::viewBox() const@plt
+QDateTime::QDateTime(QDateTime const&)@plt
+KisTag::setComment(QString)@plt
+QDomNode::~QDomNode()@plt
+QImage::convertToFormat_helper(QImage::Format, QFlags<Qt::ImageConversionFlag>) const@plt
+KisBrush::clearBrushPyramid()@plt
+operator delete[](void*)@plt
+KoResource::image() const@plt
+strlen@plt
+QBuffer::data() const@plt
+__cxa_guard_abort@plt
+QArrayData::allocate(unsigned long, unsigned long, unsigned long, QFlags<QArrayData::AllocationOption>)@plt
+QtPrivate::QStringList_contains(QStringList const*, QString const&, Qt::CaseSensitivity)@plt
+QSize::scaled(QSize const&, Qt::AspectRatioMode) const@plt
+qIsNaN(double)@plt
+QPen::QPen()@plt
+KisAutoBrush::density() const@plt
+KisTag::setUrl(QString const&)@plt
+QRectF::toAlignedRect() const@plt
+QTransform::fromScale(double, double)@plt
+QHashData::freeNode(void*)@plt
+KisSvgBrush::KisSvgBrush(KisSvgBrush const&)@plt
+KLocalizedString::toString() const@plt
+KisCurveCircleMaskGenerator::KisCurveCircleMaskGenerator(double, double, double, double, int, KisCubicCurve const&, bool)@plt
+QFile::~QFile()@plt
+QImage::QImage()@plt
+QImageReader::text(QString const&) const@plt
+KisBrush::autoSpacingActive() const@plt
+QDateTime::~QDateTime()@plt
+QPen::setWidth(int)@plt
+QSqlDatabase::QSqlDatabase()@plt
+KisBrush::characteristicSize(KisDabShape const&) const@plt
+QArrayData::deallocate(QArrayData*, unsigned long, unsigned long)@plt
+KisBrush::KisBrush(KisBrush const&)@plt
+QImage::allGray() const@plt
+KoResource::setMD5Sum(QString const&)@plt
+KisQImagePyramid::getClosest(QTransform, double*) const@plt
+__memcpy_chk@plt
+qHash(QString const&, unsigned int)@plt
+QMutex::unlock()@plt
+KisMaskGenerator::height() const@plt
+QString::setNum(long long, int)@plt
+QDomNode::appendChild(QDomNode const&)@plt
+QPolygonF::QPolygonF(QPolygon const&)@plt
+QImage::setColorTable(QVector<unsigned int>)@plt
+KisGbrBrush::setBrushTipImage(QImage const&)@plt
+KisBrush::PlainColoringInformation::~PlainColoringInformation()@plt
+KisTextBrush::KisTextBrush()@plt
+QMapDataBase::freeNodeAndRebalance(QMapNodeBase*)@plt
+KisScalingSizeBrush::KisScalingSizeBrush()@plt
+QBuffer::QBuffer(QObject*)@plt
+KisFixedPaintDevice::KisFixedPaintDevice(KoColorSpace const*, QSharedPointer<KisOptimizedByteArray::MemoryAllocator>)@plt
+KisBrushRegistry::~KisBrushRegistry()@plt
+__cxa_throw@plt
+QLocale::QLocale(QLocale::Language, QLocale::Country)@plt
+QPainter::fillRect(QRect const&, QColor const&)@plt
+QByteArray::resize(int)@plt
+KisImagePipeBrush::initFromData(QByteArray const&)@plt
+QPainter::setFont(QFont const&)@plt
+KisTextBrush::KisTextBrush(KisTextBrush const&)@plt
+QString::toUtf8_helper(QString const&)@plt
+QThread::currentThread()@plt
+QString::operator==(QLatin1String) const@plt
+QHashData::free_helper(void (*)(QHashData::Node*))@plt
+QMessageLogger::debug() const@plt
+KisAutoBrush::randomness() const@plt
+_Unwind_Resume@plt
+KisBrush::scale() const@plt
+KoResource::setName(QString const&)@plt
+KisAbrBrushCollection::loadFromDevice(QIODevice*)@plt
+KisGbrBrush::makeMaskImage(bool)@plt
+KisTag::KisTag()@plt
+QPainterPath::addPolygon(QPolygonF const&)@plt
+QSqlQuery::exec()@plt
+QFile::open(QFlags<QIODevice::OpenModeFlag>)@plt
+QTextStream::operator<<(long long)@plt
+KoResource::md5Sum(bool) const@plt
+QMessageLogger::warning() const@plt
+KisFixedPaintDevice::bounds() const@plt
+QMetaObject::normalizedType(char const*)@plt
+QMapDataBase::freeData(QMapDataBase*)@plt
+KisBrush::hotSpot(KisDabShape const&, KisPaintInformation const&) const@plt
+KisGbrBrush::KisGbrBrush(QImage const&, QString const&)@plt
+KisBrush::predefinedBrushToXML(QString const&, QDomElement&) const@plt
+KisPredefinedBrushFactory::KisPredefinedBrushFactory(QString const&)@plt
+QByteArray::expand(int)@plt
+KisColorfulBrush::toXML(QDomDocument&, QDomElement&) const@plt
+KisFixedPaintDevice::data()@plt
+QByteArray::QByteArray(char const*, int)@plt
+QMetaType::registerNormalizedTypedef(QByteArray const&, int)@plt
+KoColorSpaceRegistry::instance()@plt
+KisPipeBrushParasite::setBrushesCount()@plt
+KoResourceLoadResult::KoResourceLoadResult(KoResourceSignature)@plt
+KisTag::setResourceType(QString const&)@plt
+KisPaintInformation::pressure() const@plt
+KisBrush::height() const@plt
+QPainterPath::addRect(QRectF const&)@plt
+KisTag::setValid(bool)@plt
+QDomDocument::setContent(QString const&, QString*, int*, int*)@plt
+KisGaussCircleMaskGenerator::KisGaussCircleMaskGenerator(double, double, double, double, int, bool)@plt
+QString::fromLatin1_helper(char const*, int)@plt
+KoAbstractGradient::KoAbstractGradient(QString const&)@plt
+KoColor::setColor(unsigned char const*, KoColorSpace const*)@plt
+KisAbrStorage::KisAbrStorage(QString const&)@plt
+QSqlQuery::~QSqlQuery()@plt
+QDataStream::QDataStream(QIODevice*)@plt
+KisAbrBrushCollection::image() const@plt
+QPainter::drawText(QPointF const&, QString const&)@plt
+QPainterPath::addEllipse(QRectF const&)@plt
+KisAbrBrush::KisAbrBrush(QString const&, KisAbrBrushCollection*)@plt
+QImage::save(QIODevice*, char const*, int) const@plt
+KisColorfulBrush::setAdjustmentMidPoint(unsigned char)@plt
+QImage::size() const@plt
+KisImagePipeBrush::setDevices(QVector<QVector<KisPaintDevice*> >, int, int)@plt
+KisAbrBrush::KisAbrBrush(KisAbrBrush const&)@plt
+QDomNode::firstChildElement(QString const&) const@plt
+KisAbrBrushCollection::load()@plt
+KisBrush::angle() const@plt
+KoResourceLoadResult::resource() const@plt
+sincos@plt
+QPainter::QPainter(QPaintDevice*)@plt
+QImage::QImage(int, int, QImage::Format)@plt
+KisTag::setFilename(QString const&)@plt
+KisPaintDevice::convertToQImage(KoColorProfile const*, int, int, int, int, KoColorConversionTransformation::Intent, QFlags<KoColorConversionTransformation::ConversionFlag>) const@plt
+QImage::~QImage()@plt
+QString::left(int) const@plt
+__cxa_atexit@plt
+QHashData::nextNode(QHashData::Node*)@plt
+KisQImagePyramid::calculateParams(KisDabShape, double, double, QSize const&, double, QSize const&, QTransform*, QSize*)@plt
+KisBrush::setBrushType(enumBrushType)@plt
+QObject::~QObject()@plt
+KoID::KoID(QString const&, KLocalizedString const&)@plt
+QTextStream::QTextStream(QIODevice*)@plt
+QImageReader::errorString() const@plt
+QBrush::~QBrush()@plt
+QString::compare(QString const&, Qt::CaseSensitivity) const@plt
+KisMaskGenerator::diameter() const@plt
+KoColorSpaceRegistry::rgb8(QString const&)@plt
+KisBrush::~KisBrush()@plt
+KisFixedPaintDevice::initialize(unsigned char)@plt
+KisGbrBrush::KisGbrBrush(KisGbrBrush const&)@plt
+KisBoundary::~KisBoundary()@plt
+QFont::QFont(QFont const&)@plt
+QDomDocument::QDomDocument()@plt
+KisBrush::setAutoSpacing(bool, double)@plt
+KisTextBrush::setFont(QFont const&)@plt
+QLocale::~QLocale()@plt
+KoID::KoID(KoID const&)@plt
+QString::lastIndexOf(QString const&, int, Qt::CaseSensitivity) const@plt
+KisPipeBrushParasite::init()@plt
+QLocale::toDouble(QString const&, bool*) const@plt
+QFontMetrics::QFontMetrics(QFont const&)@plt
+KisGbrBrush::KisGbrBrush(QString const&)@plt
+QFile::QFile(QString const&)@plt
+KoAbstractGradient::colorSpace() const@plt
+QString::lastIndexOf(QChar, int, Qt::CaseSensitivity) const@plt
+QObjectData::dynamicMetaObject() const@plt
+QBuffer::open(QFlags<QIODevice::OpenModeFlag>)@plt
+QIODevice::readAll()@plt
+KisQImagePyramid::imageSize(QSize const&, KisDabShape const&, double, double)@plt
+QImage::convertToFormat(QImage::Format, QVector<unsigned int> const&, QFlags<Qt::ImageConversionFlag>) const@plt
+QPaintDevice::QPaintDevice()@plt
+KisScalingSizeBrush::KisScalingSizeBrush(KisScalingSizeBrush const&)@plt
+KisImagePipeBrush::setParasite(KisPipeBrushParasite const&)@plt
+KisGbrBrush::~KisGbrBrush()@plt
+QByteArray::clear()@plt
+KisStoragePlugin::KisStoragePlugin(QString const&)@plt
+QTextStream::QTextStream()@plt
+QDataStream::atEnd() const@plt
+KisBrush::setScale(double)@plt
+KoColor::KoColor(QColor const&, KoColorSpace const*)@plt
+KisStoragePlugin::~KisStoragePlugin()@plt
+KoColorSpaceRegistry::alpha8()@plt
+KisAutoBrush::createBrushPreview(int)@plt
+QFileInfo::QFileInfo(QString const&)@plt
+QFileInfo::~QFileInfo()@plt
+KisStoragePluginRegistry::addStoragePluginFactory(KisResourceStorage::StorageType, KisStoragePluginFactoryBase*)@plt
+QString::splitRef(QChar, QFlags<Qt::SplitBehaviorFlags>, Qt::CaseSensitivity) const@plt
+ki18ndc(char const*, char const*, char const*)@plt
+std::__throw_bad_function_call()@plt
+KisPipeBrushParasite::sanitize()@plt
+KisAbrBrushCollection::abr_brush_load(QDataStream&, AbrInfo*, QString, int, int)@plt
+QPainterPath::~QPainterPath()@plt
+KisTextBrush::setPipeMode(bool)@plt
+QImage::format() const@plt
+QImage::rect() const@plt
+QTextStream::setRealNumberPrecision(int)@plt
+QDebug::~QDebug()@plt
+KLocalizedString::~KLocalizedString()@plt
+QMapDataBase::createNode(int, int, QMapNodeBase*, bool)@plt
+QImageReader::QImageReader(QIODevice*, QByteArray const&)@plt
+QFont::fromString(QString const&)@plt
+kis_assert_recoverable(char const*, char const*, int)@plt
+KisPngBrush::KisPngBrush(KisPngBrush const&)@plt
+KisPaintInformation::randomSource() const@plt
+KisBrush::toXML(QDomDocument&, QDomElement&) const@plt
+KisBrushRegistry::toXML(QDomDocument&, QDomElement&, KisBrushModel::BrushData const&)@plt
+KisBrush::spacing() const@plt
+QListData::detach_grow(int*, int)@plt
+QDomDocument::toString(int) const@plt
+KisPaintInformation::drawingAngle(bool) const@plt
+KisBrush::setGradient(QSharedPointer<KoAbstractGradient>)@plt
+KoColor::convertTo(KoColorSpace const*)@plt
+KisAutoBrush::maskGenerator() const@plt
+KisPaintInformation::drawingSpeed() const@plt
+QString::operator=(QString const&)@plt
+QDateTime::QDateTime()@plt
+KisColorfulBrush::setBrightnessAdjustment(double)@plt
+KisPropertiesConfiguration::getString(QString const&, QString const&) const@plt
+KoResource::signature() const@plt
+QTextStream::operator<<(char const*)@plt
+QImage::height() const@plt
+QHashData::detach_helper(void (*)(QHashData::Node*, void*), void (*)(QHashData::Node*), int, int)@plt
+QListData::append()@plt
+KisResourceLocator::setMetaDataForResource(int, QMap<QString, QVariant>) const@plt
+KisBrushRegistry::instance()@plt
+memcpy@plt
+QDataStream::~QDataStream()@plt
+QListData::detach(int)@plt
+QDomElement::hasAttribute(QString const&) const@plt
+QPainter::QPainter()@plt
+KisPaintDevice::createHLineConstIteratorNG(int, int, int) const@plt
+QPainter::setRenderHints(QFlags<QPainter::RenderHint>, bool)@plt
+QString::toUInt(bool*, int) const@plt
+operator new(unsigned long)@plt
+QSvgRenderer::QSvgRenderer(QByteArray const&, QObject*)@plt
+KisAutoBrush::~KisAutoBrush()@plt
+QDomDocument::createElement(QString const&)@plt
+KisBrush::setBrushApplication(enumBrushApplication)@plt
+QTransform::operator*=(QTransform const&)@plt
+free@plt
+KisBrush::lodLimitations(KisPaintopLodLimitations*) const@plt
+QString::number(int, int)@plt
+KisTagModel::KisTagModel(QString const&, QObject*)@plt
+QTextStream::~QTextStream()@plt
+QString::indexOf(QChar, int, Qt::CaseSensitivity) const@plt
+QTransform::type() const@plt
+QLocale::toInt(QString const&, bool*) const@plt
+KisMaskGenerator::spikes() const@plt
+QString::toInt(bool*, int) const@plt
+KisBrush::paintDevice(KoColorSpace const*, KisDabShape const&, KisPaintInformation const&, double, double) const@plt
+QDomElement::operator=(QDomElement const&)@plt
+KisAutoBrush::maskHeight(KisDabShape const&, double, double, KisPaintInformation const&) const@plt
+KisFixedPaintDevice::setRect(QRect const&)@plt
+KisAbrBrushCollection::KisAbrBrushCollection(QString const&)@plt
+KisMaskGenerator::type() const@plt
+QDomDocument::~QDomDocument()@plt
+strncmp@plt
+QImage::convertToFormat_inplace(QImage::Format, QFlags<Qt::ImageConversionFlag>)@plt
+KisQImagePyramid::findNearestLevel(double, double*) const@plt
+KisResourcesInterface::ResourceSourceAdapter::bestMatch(QString, QString, QString)@plt
+KisBrush::setBrushTipImage(QImage const&)@plt
+QObject::qt_metacall(QMetaObject::Call, int, void**)@plt
+KoResource::KoResource(QString const&)@plt
+qBadAlloc()@plt
+QPainterPath::QPainterPath(QPainterPath const&)@plt
+QtPrivate::compareStrings(QStringView, QLatin1String, Qt::CaseSensitivity)@plt
+KoID::id() const@plt
+QTextStream::operator<<(short)@plt
+QTextStream::operator<<(int)@plt
+QPen::~QPen()@plt
+KisColorfulBrush::setAutoAdjustMidPoint(bool)@plt
+KisTag::setName(QString const&)@plt
+KisTextBrush::updateBrush()@plt
+__cxa_guard_acquire@plt
+KisQImagePyramid::~KisQImagePyramid()@plt
+QSvgRenderer::render(QPainter*)@plt
+KisBrush::PaintDeviceColoringInformation::PaintDeviceColoringInformation(KisSharedPtr<KisPaintDevice>, int)@plt
+KoResource::resourceId() const@plt
+KisAutoBrushFactory::createBrush(KisBrushModel::CommonData const&, KisBrushModel::AutoBrushData const&, QSharedPointer<KisResourcesInterface>)@plt
+KisCubicCurve::~KisCubicCurve()@plt
+KisResourceLocator::resourceForId(int)@plt
+KisBrush::~KisBrush()@plt
+KisColorfulBrush::setHasColorAndTransparency(bool)@plt
+KisGbrBrush::KisGbrBrush(KisSharedPtr<KisPaintDevice>, int, int, int, int)@plt
+KisBrush::width() const@plt
+KisResourceModel::KisResourceModel(QString const&, QObject*)@plt
+KisStoragePluginRegistry::instance()@plt
+QColor::QColor(Qt::GlobalColor)@plt
+QPen::setBrush(QBrush const&)@plt
+QTransform::operator=(QTransform const&)@plt
+__cxa_allocate_exception@plt
+KisScalingSizeBrush::KisScalingSizeBrush(QString const&)@plt
+KisGbrBrush::initFromPaintDev(KisSharedPtr<KisPaintDevice>, int, int, int, int)@plt
+QObject::qt_metacast(char const*)@plt
+operator new[](unsigned long)@plt
+QMetaType::registerComparatorFunction(QtPrivate::AbstractComparatorFunction const*, int)@plt
+KisGbrBrush::init()@plt
+QTextStream::operator<<(char)@plt
+KisPipeBrushParasite::saveToDevice(QIODevice*) const@plt
+QVariant::toInt(bool*) const@plt
+KisMaskGenerator::width() const@plt
+QThread::idealThreadCount()@plt
+QString::fromRawData(QChar const*, int)@plt
+QMessageLogger::critical() const@plt
+QImage::fill(unsigned int)@plt
+KisBrush::mask(KisSharedPtr<KisFixedPaintDevice>, KoColor const&, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@plt
+QSqlQuery::value(int) const@plt
+_41001()@plt
+KisBrush::maskWidth(KisDabShape const&, double, double, KisPaintInformation const&) const@plt
+QImageReader::textKeys() const@plt
+QTextStream::operator<<(double)@plt
+KoResourceLoadResult::~KoResourceLoadResult()@plt
+KoID::KoID(QString const&, QString const&)@plt
+QVariant::QVariant(int, void const*, unsigned int)@plt
+KoResourceLoadResult::KoResourceLoadResult(QSharedPointer<KoResource>)@plt
+KisPredefinedBrushFactory::loadFromBrushResource(KisBrushModel::CommonData&, KisBrushModel::PredefinedBrushData&, QSharedPointer<KisBrush>)@plt
+KoResourceSignature::KoResourceSignature()@plt
+KoResourceSignature::KoResourceSignature(QString const&, QString const&, QString const&, QString const&)@plt
+KoColor::setOpacity(double)@plt
+KisTextBrush::~KisTextBrush()@plt
+QDomElement::setAttribute(QString const&, QString const&)@plt
+KisBrush::setHeight(int)@plt
+QBuffer::~QBuffer()@plt
+kis_safe_assert_recoverable(char const*, char const*, int)@plt
+__cxa_guard_release@plt
+KisBrush::KisBrush(QString const&)@plt
+QTransform::QTransform()@plt
+KisPaintInformation::KisPaintInformation(QPointF const&, double, double, double, double, double, double, double, double)@plt
+QTransform::fromTranslate(double, double)@plt
+QFont::toString() const@plt
+QBrush::QBrush(Qt::GlobalColor, Qt::BrushStyle)@plt
+operator<(QString const&, QString const&)@plt
+QTransform::mapRect(QRectF const&) const@plt
+KoResource::KoResource(KoResource const&)@plt
+QImage::isNull() const@plt
+KisBrushModel::effectiveSizeForBrush(KisBrushModel::BrushType, KisBrushModel::AutoBrushData const&, KisBrushModel::PredefinedBrushData const&, KisBrushModel::TextBrushData const&)@plt
+QIODevice::putChar(char)@plt
+QTransform::scale(double, double)@plt
+QVariant::~QVariant()@plt
+QMutex::lock()@plt
+QSqlQuery::QSqlQuery(QString const&, QSqlDatabase)@plt
+KisPipeBrushParasite::KisPipeBrushParasite(QStringView)@plt
+QFileInfo::fileName() const@plt
+QString::QString(QChar const*, int)@plt
+QMapDataBase::freeTree(QMapNodeBase*, int)@plt
+QString::compare_helper(QChar const*, int, char const*, int, Qt::CaseSensitivity)@plt
+QListData::realloc(int)@plt
+QFont::QFont()@plt
+QDomElement::setAttribute(QString const&, long long)@plt
+KisImagePipeBrush::KisImagePipeBrush(KisImagePipeBrush const&)@plt
+KisOptimizedBrushOutline::KisOptimizedBrushOutline(QPainterPath const&, std::optional<QRectF> const&)@plt
+QString::remove(int, int)@plt
+QDomElement::QDomElement()@plt
+QTextStream::QTextStream(QString*, QFlags<QIODevice::OpenModeFlag>)@plt
+QTextStream::setCodec(char const*)@plt
+QByteArray::reallocData(unsigned int, QFlags<QArrayData::AllocationOption>)@plt
+KisRectangleMaskGenerator::KisRectangleMaskGenerator(double, double, double, double, int, bool)@plt
+QHashData::rehash(int)@plt
+KoResource::setValid(bool)@plt
+QFileDevice::close()@plt
+_41002()@plt
+QImage::scanLine(int) const@plt
+QImage::operator=(QImage const&)@plt
+KisBrush::generateOutlineCache()@plt
+QPainter::end()@plt
+QByteArray::append(char)@plt
+KisAbrBrushCollection::isLoaded() const@plt
+KoColor::opacityF() const@plt
+KisColorfulBrush::setContrastAdjustment(double)@plt
+__cxa_end_catch@plt
+QSqlQuery::prepare(QString const&)@plt
+QByteArray::fromRawData(char const*, int)@plt
+KisGbrBrush::~KisGbrBrush()@plt
+QSqlQuery::next()@plt
+strcmp@plt
+__cxa_rethrow@plt
+KisBrush::ColoringInformation::~ColoringInformation()@plt
+QVariant::QVariant(QVariant const&)@plt
+KisOutlineGenerator::KisOutlineGenerator(KoColorSpace const*, unsigned char)@plt
+KisColorfulBrush::KisColorfulBrush(QString const&)@plt
+fmod@plt
+QTextStream::operator<<(unsigned int)@plt
+KisBrushRegistry::createBrush(QDomElement const&, QSharedPointer<KisResourcesInterface>)@plt
+KisBoundary::KisBoundary(KisSharedPtr<KisFixedPaintDevice>)@plt
+__cxa_throw_bad_array_new_length@plt
+QPainter::~QPainter()@plt
+QDomNode::~QDomNode()@plt
+KisBrush::fromXMLLoadResult(QDomElement const&, QSharedPointer<KisResourcesInterface>)@plt
+KisFixedPaintDevice::lazyGrowBufferWithoutInitialization()@plt
+QFileInfo::lastModified() const@plt
+QTransform::operator*(QTransform const&) const@plt
+KisBoundary::generateBoundary()@plt
+KisBrush::setAngle(double)@plt
+KisBrush::brushTipImage() const@plt
+KoColor::KoColor()@plt
+QPainter::drawImage(QPointF const&, QImage const&)@plt
+QPainter::drawPolygon(QPoint const*, int, Qt::FillRule)@plt
+KisAbrStorage::~KisAbrStorage()@plt
+QPainter::setTransform(QTransform const&, bool)@plt
+QImage::QImage(QSize const&, QImage::Format)@plt
+malloc@plt
+KisBrushRegistry::createBrushModel(QDomElement const&, QSharedPointer<KisResourcesInterface>)@plt
+QTransform::rotateRadians(double, Qt::Axis)@plt
+KoResource::~KoResource()@plt
+QSvgRenderer::~QSvgRenderer()@plt
+KisQImagePyramid::createImage(KisDabShape const&, double, double) const@plt
+QObject::QObject(QObject*)@plt
+KoColor::KoColor(KoColorSpace const*)@plt
+QDataStream::operator>>(int&)@plt
+KisCurveRectangleMaskGenerator::KisCurveRectangleMaskGenerator(double, double, double, double, int, KisCubicCurve const&, bool)@plt
+QImage::pixel(int, int) const@plt
+QtPrivate::startsWith(QStringView, QLatin1String, Qt::CaseSensitivity)@plt
+QApplication::focusWidget()@plt
+__dynamic_cast@plt
+QImage::constScanLine(int) const@plt
+KoResource::metadata() const@plt
+QIODevice::write(char const*, long long)@plt
+QImageReader::~QImageReader()@plt
+KisOutlineGenerator::outline(unsigned char*, int, int, int, int)@plt
+QHashData::allocateNode(int)@plt
+QImage::width() const@plt
+KisAbrBrushCollection::abr_brush_load_v12(QDataStream&, AbrInfo*, QString, int, int)@plt
+QMutex::~QMutex()@plt
+KisAutoBrush::maskWidth(KisDabShape const&, double, double, KisPaintInformation const&) const@plt
+QTextStream::operator<<(unsigned long)@plt
+KisStoragePlugin::location() const@plt
+KisBoundary::path() const@plt
+KisBrush::maskHeight(KisDabShape const&, double, double, KisPaintInformation const&) const@plt
+KoMD5Generator::generateHash(QByteArray const&)@plt
+QIODevice::getChar(char*)@plt
+KisAbrBrushCollection::abr_brush_load_v6(QDataStream&, AbrInfo*, QString, int, int)@plt
+KisBrushServerProvider::KisBrushServerProvider()@plt
+KisBrush::KisBrush()@plt
+KisQImagePyramid::characteristicSize(QSize const&, KisDabShape const&)@plt
+QObject::thread() const@plt
+KisPaintInformation::KisPaintInformation(QPointF const&, double)@plt
+QPainterPath::closeSubpath()@plt
+KisBrush::PlainColoringInformation::PlainColoringInformation(unsigned char const*)@plt
+QMapNodeBase::nextNode() const@plt
+KisImagePipeBrush::~KisImagePipeBrush()@plt
+KisPaintInformation::yTilt() const@plt
+QGuiApplication::font()@plt
+KisPaintInformation::~KisPaintInformation()@plt
+QString::number(double, char, int)@plt
+KisRandomSource::generate(int, int) const@plt
+KoResource::setImage(QImage const&)@plt
+std::terminate()@plt
+QDataStream::operator>>(short&)@plt
+QDataStream::readRawData(char*, int)@plt
+QImage::QImage(QImage const&)@plt
+QString::fromUtf8_helper(char const*, int)@plt
+KoResource::filename() const@plt
+QMapDataBase::recalcMostLeftNode()@plt
+KisPredefinedBrushFactory::createBrushModelImpl(QDomElement const&, QSharedPointer<KisResourcesInterface>)@plt
+QSqlQuery::bindValue(QString const&, QVariant const&, QFlags<QSql::ParamTypeFlag>)@plt
+operator==(QString const&, QString const&)@plt
+QString::fromAscii_helper(char const*, int)@plt
+KisBrushRegistry::KisBrushRegistry()@plt
+KisBrush::resetOutlineCache()@plt
+QString::QString(int, Qt::Initialization)@plt
+QTextStream::setString(QString*, QFlags<QIODevice::OpenModeFlag>)@plt
+KisBrushServerProvider::metaObject() const@@Base-0x83a0
+KisBrushServerProvider::metaObject() const@@Base
+KisBrushRegistry::metaObject() const@@Base
+KisBrushServerProvider::qt_metacast(char const*)@@Base
+KisBrushRegistry::qt_metacast(char const*)@@Base
+KisBrushRegistry::qt_metacall(QMetaObject::Call, int, void**)@@Base
+KisPredefinedBrushFactory::id() const@@Base
+KisPredefinedBrushFactory::toXML(QDomDocument&, QDomElement&, KisBrushModel::BrushData const&)@@Base
+KisPredefinedBrushFactory::KisPredefinedBrushFactory(QString const&)@@Base
+KisPredefinedBrushFactory::createBrush(KisBrushModel::BrushData const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisPredefinedBrushFactory::loadFromBrushResource(KisBrushModel::CommonData&, KisBrushModel::PredefinedBrushData&, QSharedPointer<KisBrush>)@@Base
+KisPredefinedBrushFactory::createBrushModelImpl(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisPredefinedBrushFactory::createBrush(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisPredefinedBrushFactory::createBrushModel(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisAutoBrush::isEphemeral() const@@Base
+KisAutoBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisAutoBrush::saveToDevice(QIODevice*) const@@Base
+KisAutoBrush::paintDevice(KoColorSpace const*, KisDabShape const&, KisPaintInformation const&, double, double) const@@Base
+KisAutoBrush::notifyBrushIsGoingToBeClonedForStroke()@@Base
+KisAutoBrush::userEffectiveSize() const@@Base
+KisAutoBrush::setUserEffectiveSize(double)@@Base
+KisAutoBrush::coldInitBrush()@@Base
+KisAutoBrush::~KisAutoBrush()@@Base
+KisAutoBrush::~KisAutoBrush()@@Base
+KisAutoBrush::isPiercedApprox() const@@Base
+KisAutoBrush::KisAutoBrush(KisAutoBrush const&)@@Base
+KisAutoBrush::clone() const@@Base
+KisAutoBrush::maskGenerator() const@@Base
+KisAutoBrush::density() const@@Base
+KisAutoBrush::randomness() const@@Base
+KisAutoBrush::supportsCaching() const@@Base
+KisAutoBrush::outlineSourceImage() const@@Base
+KisAutoBrush::maskHeight(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisAutoBrush::maskWidth(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisAutoBrush::generateMaskAndApplyMaskOrCreateDab(KisSharedPtr<KisFixedPaintDevice>, KisBrush::ColoringInformation*, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@@Base
+KisAutoBrush::createBrushPreview(int)@@Base
+KisAutoBrush::KisAutoBrush(KisMaskGenerator*, double, double, double)@@Base
+KisAutoBrush::characteristicSize(KisDabShape const&) const@@Base
+KisAutoBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisAutoBrush::outline(bool) const@@Base
+KisAutoBrush::lodLimitations(KisPaintopLodLimitations*) const@@Base
+KisBoundary::KisBoundary(KisSharedPtr<KisFixedPaintDevice>)@@Base
+KisBoundary::~KisBoundary()@@Base
+KisBoundary::path() const@@Base
+KisBoundary::generateBoundary()@@Base
+KisBoundary::paint(QPainter&) const@@Base
+KisBrush::PlainColoringInformation::color() const@@Base
+KisBrush::notifyStrokeStarted()@@Base
+KisBrush::PaintDeviceColoringInformation::color() const@@Base
+KisBrush::PaintDeviceColoringInformation::nextColumn()@@Base
+KisBrush::PaintDeviceColoringInformation::nextRow()@@Base
+KisBrush::brushApplication() const@@Base
+KisBrush::preserveLightness() const@@Base
+KisBrush::applyingGradient() const@@Base
+KisBrush::canPaintFor(KisPaintInformation const&)@@Base
+KisBrush::brushType() const@@Base
+KisBrush::brushIndex() const@@Base
+KisBrush::setSpacing(double)@@Base
+KisBrush::prepareForSeqNo(KisPaintInformation const&, int)@@Base
+KisBrush::setScale(double)@@Base
+KisBrush::setAngle(double)@@Base
+KisBrush::supportsCaching() const@@Base
+KisBrush::brushTipImage() const@@Base
+KisBrush::isPiercedApprox() const@@Base
+KisBrush::setBrushType(enumBrushType)@@Base
+KisBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisBrush::notifyBrushIsGoingToBeClonedForStroke()@@Base
+KisBrush::outlineSourceImage() const@@Base
+KisBrush::paintDevice(KoColorSpace const*, KisDabShape const&, KisPaintInformation const&, double, double) const@@Base
+KisBrush::ColoringInformation::~ColoringInformation()@@Base
+KisBrush::PlainColoringInformation::~PlainColoringInformation()@@Base
+KisBrush::PlainColoringInformation::~PlainColoringInformation()@@Base
+KisBrush::PaintDeviceColoringInformation::~PaintDeviceColoringInformation()@@Base
+KisBrush::PaintDeviceColoringInformation::~PaintDeviceColoringInformation()@@Base
+KisBrush::ColoringInformation::~ColoringInformation()@@Base
+KisBrush::PlainColoringInformation::PlainColoringInformation(unsigned char const*)@@Base
+KisBrush::PaintDeviceColoringInformation::PaintDeviceColoringInformation(KisSharedPtr<KisPaintDevice>, int)@@Base
+KisBrush::KisBrush()@@Base
+KisBrush::KisBrush(QString const&)@@Base
+KisBrush::~KisBrush()@@Base
+KisBrush::~KisBrush()@@Base
+KisBrush::width() const@@Base
+KisBrush::setWidth(int)@@Base
+KisBrush::height() const@@Base
+KisBrush::characteristicSize(KisDabShape const&) const@@Base
+KisBrush::maskWidth(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisBrush::maskHeight(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisBrush::setHeight(int)@@Base
+KisBrush::setHotSpot(QPointF)@@Base
+KisBrush::hotSpot(KisDabShape const&, KisPaintInformation const&) const@@Base
+KisBrush::maskAngle(double) const@@Base
+KisBrush::spacing() const@@Base
+KisBrush::lodLimitations(KisPaintopLodLimitations*) const@@Base
+KisBrush::setAutoSpacing(bool, double)@@Base
+KisBrush::autoSpacingActive() const@@Base
+KisBrush::autoSpacingCoeff() const@@Base
+KisBrush::clearBrushPyramid()@@Base
+KisBrush::setBrushApplication(enumBrushApplication)@@Base
+KisBrush::mask(KisSharedPtr<KisFixedPaintDevice>, KoColor const&, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@@Base
+KisBrush::mask(KisSharedPtr<KisFixedPaintDevice>, KisSharedPtr<KisPaintDevice>, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@@Base
+KisBrush::generateMaskAndApplyMaskOrCreateDab(KisSharedPtr<KisFixedPaintDevice>, KisBrush::ColoringInformation*, KisDabShape const&, KisPaintInformation const&, double, double, double) const@@Base
+KisBrush::resetOutlineCache()@@Base
+KisBrush::setBrushTipImage(QImage const&)@@Base
+KisBrush::generateOutlineCache()@@Base
+KisBrush::coldInitBrush()@@Base
+KisBrush::outlineCacheIsValid() const@@Base
+KisBrush::scale() const@@Base
+KisBrush::fromXMLLoadResult(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisBrush::fromXML(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisBrush::angle() const@@Base
+KisBrush::predefinedBrushToXML(QString const&, QDomElement&) const@@Base
+KisBrush::outline(bool) const@@Base
+KisBrush::generateMaskAndApplyMaskOrCreateDab(KisSharedPtr<KisFixedPaintDevice>, KisBrush::ColoringInformation*, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@@Base
+KisBrush::setGradient(QSharedPointer<KoAbstractGradient>)@@Base
+KisBrush::KisBrush(KisBrush const&)@@Base
+KisScalingSizeBrush::setUserEffectiveSize(double)@@Base
+KisScalingSizeBrush::userEffectiveSize() const@@Base
+KisScalingSizeBrush::KisScalingSizeBrush()@@Base
+KisScalingSizeBrush::KisScalingSizeBrush(QString const&)@@Base
+KisScalingSizeBrush::KisScalingSizeBrush(KisScalingSizeBrush const&)@@Base
+KisBrushRegistry::KisBrushRegistry()@@Base
+KisBrushRegistry::createBrush(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisBrushRegistry::createBrushModel(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisBrushRegistry::toXML(QDomDocument&, QDomElement&, KisBrushModel::BrushData const&)@@Base
+KisBrushRegistry::createBrush(KisBrushModel::BrushData const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisBrushRegistry::~KisBrushRegistry()@@Base
+non-virtual thunk to KisBrushRegistry::~KisBrushRegistry()@@Base
+KisBrushRegistry::~KisBrushRegistry()@@Base
+non-virtual thunk to KisBrushRegistry::~KisBrushRegistry()@@Base
+KisBrushRegistry::instance()@@Base
+KisBrushServerProvider::KisBrushServerProvider()@@Base
+KisBrushServerProvider::~KisBrushServerProvider()@@Base
+KisBrushServerProvider::~KisBrushServerProvider()@@Base
+KisBrushServerProvider::instance()@@Base
+KisBrushServerProvider::brushServer()@@Base
+KisGbrBrush::setBrushTipImage(QImage const&)@@Base
+KisGbrBrush::defaultFileExtension() const@@Base
+KisGbrBrush::~KisGbrBrush()@@Base
+KisGbrBrush::~KisGbrBrush()@@Base
+KisGbrBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisGbrBrush::KisGbrBrush(QString const&)@@Base
+KisGbrBrush::KisGbrBrush(QImage const&, QString const&)@@Base
+KisGbrBrush::KisGbrBrush(KisGbrBrush const&)@@Base
+KisGbrBrush::clone() const@@Base
+KisGbrBrush::init()@@Base
+KisGbrBrush::KisGbrBrush(QString const&, QByteArray const&, int&)@@Base
+KisGbrBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisGbrBrush::initFromPaintDev(KisSharedPtr<KisPaintDevice>, int, int, int, int)@@Base
+KisGbrBrush::KisGbrBrush(KisSharedPtr<KisPaintDevice>, int, int, int, int)@@Base
+KisGbrBrush::saveToDevice(QIODevice*) const@@Base
+KisGbrBrush::makeMaskImage(bool)@@Base
+KisAbrBrush::isSerializable() const@@Base
+KisAbrBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisAbrBrush::saveToDevice(QIODevice*) const@@Base
+KisAbrBrush::defaultFileExtension() const@@Base
+KisAbrBrush::setBrushTipImage(QImage const&)@@Base
+KisAbrBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisAbrBrush::KisAbrBrush(QString const&, KisAbrBrushCollection*)@@Base
+KisAbrBrush::KisAbrBrush(KisAbrBrush const&)@@Base
+KisAbrBrush::clone() const@@Base
+KisAbrBrush::KisAbrBrush(KisAbrBrush const&, KisAbrBrushCollection*)@@Base
+KisAbrBrush::brushTipImage() const@@Base
+KisAbrBrushCollection::KisAbrBrushCollection(QString const&)@@Base
+KisAbrBrushCollection::save()@@Base
+KisAbrBrushCollection::saveToDevice(QIODevice*) const@@Base
+KisAbrBrushCollection::isLoaded() const@@Base
+KisAbrBrushCollection::toXML(QDomDocument&, QDomElement&) const@@Base
+KisAbrBrushCollection::defaultFileExtension() const@@Base
+KisAbrBrushCollection::image() const@@Base
+KisAbrBrushCollection::KisAbrBrushCollection(KisAbrBrushCollection const&)@@Base
+KisAbrBrushCollection::abr_brush_load_v6(QDataStream&, AbrInfo*, QString, int, int)@@Base
+KisAbrBrushCollection::abr_brush_load_v12(QDataStream&, AbrInfo*, QString, int, int)@@Base
+KisAbrBrushCollection::abr_brush_load(QDataStream&, AbrInfo*, QString, int, int)@@Base
+KisAbrBrushCollection::loadFromDevice(QIODevice*)@@Base
+KisAbrBrushCollection::load()@@Base
+KisImagePipeBrush::notifyStrokeStarted()@@Base
+KisImagePipeBrush::brushIndex() const@@Base
+KisImagePipeBrush::canPaintFor(KisPaintInformation const&)@@Base
+KisImagePipeBrush::defaultFileExtension() const@@Base
+KisImagePipeBrush::outline(bool) const@@Base
+KisImagePipeBrush::maskHeight(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisImagePipeBrush::maskWidth(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisImagePipeBrush::paintDevice(KoColorSpace const*, KisDabShape const&, KisPaintInformation const&, double, double) const@@Base
+KisImagePipeBrush::~KisImagePipeBrush()@@Base
+KisImagePipeBrush::~KisImagePipeBrush()@@Base
+KisImagePipeBrush::prepareForSeqNo(KisPaintInformation const&, int)@@Base
+KisImagePipeBrush::generateMaskAndApplyMaskOrCreateDab(KisSharedPtr<KisFixedPaintDevice>, KisBrush::ColoringInformation*, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@@Base
+KisImagePipeBrush::brushes() const@@Base
+KisImagePipeBrush::parasiteSelection()@@Base
+KisImagePipeBrush::testingGetCurrentBrush(KisPaintInformation const&) const@@Base
+KisImagePipeBrush::testingSelectNextBrush(KisPaintInformation const&) const@@Base
+KisImagePipeBrush::parasite() const@@Base
+KisImagePipeBrush::setParasite(KisPipeBrushParasite const&)@@Base
+KisImagePipeBrush::saveToDevice(QIODevice*) const@@Base
+KisImagePipeBrush::notifyBrushIsGoingToBeClonedForStroke()@@Base
+KisImagePipeBrush::coldInitBrush()@@Base
+KisImagePipeBrush::KisImagePipeBrush(QString const&)@@Base
+KisImagePipeBrush::setDevices(QVector<QVector<KisPaintDevice*> >, int, int)@@Base
+KisImagePipeBrush::KisImagePipeBrush(KisImagePipeBrush const&)@@Base
+KisImagePipeBrush::clone() const@@Base
+KisImagePipeBrush::KisImagePipeBrush(QString const&, int, int, QVector<QVector<KisPaintDevice*> >, QVector<KisParasite::SelectionMode>)@@Base
+KisImagePipeBrush::initFromData(QByteArray const&)@@Base
+KisImagePipeBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisImagePipeBrush::makeMaskImage(bool)@@Base
+KisImagePipeBrush::setAdjustmentMidPoint(unsigned char)@@Base
+KisImagePipeBrush::setBrightnessAdjustment(double)@@Base
+KisImagePipeBrush::setContrastAdjustment(double)@@Base
+KisImagePipeBrush::setAutoAdjustMidPoint(bool)@@Base
+KisImagePipeBrush::setAngle(double)@@Base
+KisImagePipeBrush::setScale(double)@@Base
+KisImagePipeBrush::setSpacing(double)@@Base
+KisImagePipeBrush::setBrushApplication(enumBrushApplication)@@Base
+KisImagePipeBrush::setGradient(QSharedPointer<KoAbstractGradient>)@@Base
+KisPipeBrushParasite::init()@@Base
+KisPipeBrushParasite::sanitize()@@Base
+KisPipeBrushParasite::setBrushesCount()@@Base
+KisPipeBrushParasite::KisPipeBrushParasite(QStringView)@@Base
+KisPipeBrushParasite::saveToDevice(QIODevice*) const@@Base
+KisPngBrush::defaultFileExtension() const@@Base
+KisPngBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisPngBrush::KisPngBrush(QString const&)@@Base
+KisPngBrush::KisPngBrush(KisPngBrush const&)@@Base
+KisPngBrush::clone() const@@Base
+KisPngBrush::saveToDevice(QIODevice*) const@@Base
+KisPngBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisSvgBrush::saveToDevice(QIODevice*) const@@Base
+KisSvgBrush::defaultFileExtension() const@@Base
+KisSvgBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisSvgBrush::KisSvgBrush(QString const&)@@Base
+KisSvgBrush::KisSvgBrush(KisSvgBrush const&)@@Base
+KisSvgBrush::clone() const@@Base
+KisSvgBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisQImagePyramid::~KisQImagePyramid()@@Base
+KisQImagePyramid::findNearestLevel(double, double*) const@@Base
+KisQImagePyramid::calculateParams(KisDabShape, double, double, QSize const&, double, QSize const&, QTransform*, QSize*)@@Base
+KisQImagePyramid::calculateParams(KisDabShape const&, double, double, QSize const&, QTransform*, QSize*)@@Base
+KisQImagePyramid::imageSize(QSize const&, KisDabShape const&, double, double)@@Base
+KisQImagePyramid::characteristicSize(QSize const&, KisDabShape const&)@@Base
+KisQImagePyramid::createImage(KisDabShape const&, double, double) const@@Base
+KisQImagePyramid::getClosest(QTransform, double*) const@@Base
+KisQImagePyramid::getClosestWithoutWorkaroundBorder(QTransform, double*) const@@Base
+KisQImagePyramid::appendPyramidLevel(QImage const&)@@Base
+KisQImagePyramid::KisQImagePyramid(QImage const&, bool)@@Base
+KisTextBrush::isEphemeral() const@@Base
+KisTextBrush::loadFromDevice(QIODevice*, QSharedPointer<KisResourcesInterface>)@@Base
+KisTextBrush::saveToDevice(QIODevice*) const@@Base
+KisTextBrush::brushIndex() const@@Base
+KisTextBrush::~KisTextBrush()@@Base
+KisTextBrush::~KisTextBrush()@@Base
+KisTextBrush::maskHeight(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisTextBrush::maskWidth(KisDabShape const&, double, double, KisPaintInformation const&) const@@Base
+KisTextBrush::paintDevice(KoColorSpace const*, KisDabShape const&, KisPaintInformation const&, double, double) const@@Base
+KisTextBrush::notifyStrokeStarted()@@Base
+KisTextBrush::prepareForSeqNo(KisPaintInformation const&, int)@@Base
+KisTextBrush::generateMaskAndApplyMaskOrCreateDab(KisSharedPtr<KisFixedPaintDevice>, KisBrush::ColoringInformation*, KisDabShape const&, KisPaintInformation const&, double, double, double, double) const@@Base
+KisTextBrush::setPipeMode(bool)@@Base
+KisTextBrush::KisTextBrush()@@Base
+KisTextBrush::pipeMode() const@@Base
+KisTextBrush::setText(QString const&)@@Base
+KisTextBrush::text() const@@Base
+KisTextBrush::setFont(QFont const&)@@Base
+KisTextBrush::font()@@Base
+KisTextBrush::setAngle(double)@@Base
+KisTextBrush::setScale(double)@@Base
+KisTextBrush::setSpacing(double)@@Base
+KisTextBrush::KisTextBrush(KisTextBrush const&)@@Base
+KisTextBrush::clone() const@@Base
+KisTextBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisTextBrush::updateBrush()@@Base
+KisAutoBrushFactory::toXML(QDomDocument&, QDomElement&, KisBrushModel::BrushData const&)@@Base
+KisAutoBrushFactory::createBrushModel(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisAutoBrushFactory::createBrush(KisBrushModel::CommonData const&, KisBrushModel::AutoBrushData const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisAutoBrushFactory::createBrush(KisBrushModel::BrushData const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisAutoBrushFactory::createBrush(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisTextBrushFactory::createBrush(KisBrushModel::BrushData const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisTextBrushFactory::createBrush(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisTextBrushFactory::createBrushModel(QDomElement const&, QSharedPointer<KisResourcesInterface>)@@Base
+KisTextBrushFactory::toXML(QDomDocument&, QDomElement&, KisBrushModel::BrushData const&)@@Base
+KisAbrStorage::loadVersionedResource(QSharedPointer<KoResource>)@@Base
+KisAbrStorage::supportsVersioning() const@@Base
+KisAbrStorage::thumbnail() const@@Base
+KisAbrStorage::~KisAbrStorage()@@Base
+KisAbrStorage::~KisAbrStorage()@@Base
+KisAbrStorage::resources(QString const&)@@Base
+KisAbrStorage::resourceItem(QString const&)@@Base
+KisAbrStorage::tags(QString const&)@@Base
+KisAbrStorage::KisAbrStorage(QString const&)@@Base
+KisAbrStorage::resource(QString const&)@@Base
+KisColorfulBrush::setAutoAdjustMidPoint(bool)@@Base
+KisColorfulBrush::isImageType() const@@Base
+KisColorfulBrush::setAdjustmentMidPoint(unsigned char)@@Base
+KisColorfulBrush::setBrightnessAdjustment(double)@@Base
+KisColorfulBrush::setContrastAdjustment(double)@@Base
+KisColorfulBrush::KisColorfulBrush(QString const&)@@Base
+KisColorfulBrush::autoAdjustMidPoint() const@@Base
+KisColorfulBrush::adjustmentMidPoint() const@@Base
+KisColorfulBrush::brightnessAdjustment() const@@Base
+KisColorfulBrush::contrastAdjustment() const@@Base
+KisColorfulBrush::setHasColorAndTransparency(bool)@@Base
+KisColorfulBrush::hasColorAndTransparency() const@@Base
+KisColorfulBrush::estimatedSourceMidPoint() const@@Base
+KisColorfulBrush::adjustedMidPoint() const@@Base
+KisColorfulBrush::brushTipImage() const@@Base
+KisColorfulBrush::toXML(QDomDocument&, QDomElement&) const@@Base
+KisBrushTypeMetaDataFixup::executeFix()@@Base
+KisBrushModel::BrushData::write(KisPropertiesConfiguration*) const@@Base
+KisBrushModel::BrushData::read(KisPropertiesConfiguration const*, QSharedPointer<KisResourcesInterface>)@@Base
+KisBrushModel::effectiveSizeForBrush(KisBrushModel::BrushType, KisBrushModel::AutoBrushData const&, KisBrushModel::PredefinedBrushData const&, KisBrushModel::TextBrushData const&)@@Base
+KisBrushModel::lightnessModeActivated(KisBrushModel::BrushType, KisBrushModel::PredefinedBrushData const&)@@Base
+KisBrushModel::setEffectiveSizeForBrush(KisBrushModel::BrushType, KisBrushModel::AutoBrushData&, KisBrushModel::PredefinedBrushData&, KisBrushModel::TextBrushData&, double)@@Base
+KisBrushModel::effectiveSizeForBrush(KisBrushModel::BrushData const&)@@Base
+KisBrushModel::brushLodLimitations(KisBrushModel::BrushData const&)@@Base
+.fini

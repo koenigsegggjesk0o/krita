@@ -1,0 +1,27 @@
+SPDX-License-Identifier: GPL-2.0-or-later
+
+The majority of the source code in this extraction (brush engine core,
+brush engine plugins, libpaintop, resource system, and Krita library
+dependencies) is licensed under the GNU General Public License version 2
+or, at your option, any later version.
+
+The complete text of the GPL-2.0 is available in COPYING-GPL.txt in this
+directory (copied from Krita's top-level COPYING file).
+
+SPDX-FileCopyrightText: The Krita contributors.
+See the SPDX-FileCopyrightText headers in each individual source file for
+the specific copyright holders and years.
+
+==========================================================================
+GNU GENERAL PUBLIC LICENSE
+Version 2, June 1991
+
+Copyright (C) 1989, 1991 Free Software Foundation, Inc.
+51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
+
+(Full text of GPL-2.0 is provided in COPYING-GPL.txt — the upstream
+Krita COPYING file — which is the authoritative source for the license
+terms that apply to GPL-2.0-or-later code in this extraction.)

@@ -1,0 +1,56 @@
+Krita Brush Engine Extraction — NOTICE & ATTRIBUTION
+=====================================================
+
+This package contains source code and resources extracted from the
+Krita digital painting application, specifically the brush engine,
+brush presets, brush tips, and the minimum supporting libraries.
+
+Upstream project:  Krita — https://krita.org/
+Upstream source:   https://github.com/KDE/krita (official KDE mirror)
+                  https://invent.kde.org/graphics/krita
+Extracted from:    master branch (shallow clone, depth=1)
+                  (equivalent to a recent 5.x / 6.x release state)
+
+Copyright (C) The Krita Authors. See the SPDX-FileCopyrightText headers
+in each individual source file for the specific contributors and years.
+
+License summary
+---------------
+- Brush engine source code (core, paintops, libpaintop, resources):
+    GNU GPL-2.0-or-later  (see LICENSES/COPYING-GPL.txt)
+- A small number of library helper files:
+    GNU LGPL-2.0-or-later / LGPL-2.1-or-later  (see LICENSES/LGPL.txt)
+- MyPaint brush assets:
+    CC0-1.0  (Ramon Miranda, David Revoy/Deevad, Kaerhon)
+    GPL-2.0-or-later  (Martin Renold & MyPaint team — classic kit)
+    (see LICENSES/CC0-1.0.txt and LICENSES/MyPaint-classic-GPL.txt)
+- The defaultpresets.qrc manifest: CC0-1.0
+
+This extraction preserves ALL original copyright headers
+(SPDX-FileCopyrightText) and license identifiers (SPDX-License-Identifier)
+in every source file, exactly as they appear upstream. No license
+headers were modified or removed.
+
+Redistribution obligations
+--------------------------
+Because this package contains GPL-2.0-or-later code, any redistribution
+must comply with the GPL-2.0 terms, including:
+  - Providing access to the complete corresponding source code.
+  - Preserving all copyright notices and license headers.
+  - Including a copy of the GPL-2.0 license text (LICENSES/COPYING-GPL.txt).
+
+For the CC0 brush assets, no attribution is legally required, but it is
+courteous to credit the original brush authors listed in
+LICENSES/CC0-1.0.txt.
+
+Acknowledgements
+----------------
+We gratefully acknowledge the Krita team and the KDE community for
+developing Krita as free software, and the brush artists (Ramón Miranda,
+David Revoy, Guillaume Loussarévian, Martin Renold and the MyPaint team)
+for contributing their brushes under permissive licenses.
+
+This is an independent extraction of the brush-related components from
+Krita's source. It is not affiliated with, endorsed by, or officially
+maintained by the Krita project. The upstream Krita project is the
+authoritative source for the complete application.

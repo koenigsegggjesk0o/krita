@@ -1,0 +1,8 @@
+# Binary files excluded from git (too large for GitHub, kept locally only)
+*.so
+*.so.*
+*.AppImage
+*.bundle
+# Keep .so in re-binary (track LFS-style via separate note)
+!re-binary/libraries/.gitkeep
+!re-binary/plugins/.gitkeep

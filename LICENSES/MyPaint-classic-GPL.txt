@@ -1,0 +1,15 @@
+SPDX-License-Identifier: GPL-2.0-or-later
+
+Applies to the following MyPaint brush files derived from the classic
+libmypaint brush kit:
+
+  brush-tips/mypaint/d)_Ink_pen_(mypaint).myb
+  brush-tips/mypaint/i)_Wet_Knife_Plus_(mypaint).myb
+
+SPDX-FileCopyrightText: 2005-2016 Martin Renold and the MyPaint
+Development Team.
+
+These brushes originate from the libmypaint project
+(https://github.com/mypaint/libmypaint) and are redistributed under the
+terms of the GNU General Public License version 2 or later, consistent
+with the upstream licensing.
