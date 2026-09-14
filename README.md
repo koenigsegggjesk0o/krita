@@ -392,3 +392,57 @@ See `re-binary/RE-REPORT.md` for the full analysis.
   (presets + brush tips that ship only in the release bundle) and for
   **symbol-level verification**; the source extraction remains best for
   algorithm understanding.
+
+---
+
+# FINAL UPDATE: Complete Brush Engine Decompilation (35,366 functions)
+
+**The full reverse engineering pass is complete.** See
+`re-binary/EXECUTIVE-SUMMARY.md` for the full report.
+
+## What's now in `re-binary/analysis/`
+
+```
+re-binary/analysis/
+├── EXECUTIVE-SUMMARY.md          ← start here
+├── DEEP-RE-REPORT.md             ← detailed RE report
+├── libraries/                    ← 5 core Krita libraries, fully decompiled
+│   ├── libkritalibbrush-FULL.c       (1,273 functions, 1.7 MB)
+│   ├── libkritalibpaintop-FULL.c     (2,761 functions, 3.0 MB)
+│   ├── libkritapigment-FULL.c        (2,209 functions, 3.4 MB)
+│   ├── libkritaresources-FULL.c      (2,330 functions, 3.8 MB)
+│   └── (libkritaimage in engine-full/)
+├── engine-full/                  ← libkritaimage, 297 class files
+│   ├── KisPaintOp.c                  (base brush engine class)
+│   ├── KisPaintOpPreset.c            (.kpp preset loader)
+│   ├── KisPaintOpRegistry.c          (engine registry)
+│   ├── KisPaintInformation.c         (per-tick pointer input)
+│   ├── KisPainter.c                  (paint device blit)
+│   ├── KisDistanceInformation.c      (stroke distance tracking)
+│   └── ... 291 more class files
+├── plugins/                      ← 14 paintop plugins, fully decompiled
+│   ├── kritacolorsmudgepaintop-FULL.c  (2,816 funcs, 5.6 MB)
+│   ├── kritacurvepaintop-FULL.c        (1,202 funcs, 1.8 MB)
+│   ├── kritadefaultpaintops-FULL.c     (2,252 funcs, 3.1 MB)
+│   ├── kritadeformpaintop-FULL.c       (1,548 funcs, 2.7 MB)
+│   ├── kritaexperimentpaintop-FULL.c   (1,080 funcs, 1.7 MB)
+│   ├── kritagridpaintop-FULL.c         (1,256 funcs, 2.1 MB)
+│   ├── kritahairypaintop-FULL.c        (1,579 funcs, 2.7 MB)
+│   ├── kritahatchingpaintop-FULL.c     (1,850 funcs, 3.0 MB)
+│   ├── kritamypaintop-FULL.c           (4,701 funcs, 9.5 MB)
+│   ├── kritaparticlepaintop-FULL.c     (1,138 funcs, 1.7 MB)
+│   ├── kritaroundmarkerpaintop-FULL.c  (1,057 funcs, 1.6 MB)
+│   ├── kritasketchpaintop-FULL.c       (1,542 funcs, 2.5 MB)
+│   ├── kritaspraypaintop-FULL.c        (2,435 funcs, 5.5 MB)
+│   └── kritatangentnormalpaintop-FULL.c(1,484 funcs, 2.0 MB)
+├── paint-functions/              ← paintDab/paintLine extracted, per engine
+│   └── 14 files (one per engine), 74 paint functions total
+└── ghidra-decompiled.c, ghidra-paintop-decompiled.c, ghidra-engine-decompiled.c
+    ← earlier filtered passes (kept for reference)
+```
+
+## Total: 333 C files, 1,604,177 lines, 60 MB of decompiled pseudocode
+
+The actual `paintDab()` painting-loop implementations are confirmed
+present in all 14 brush engine plugins. See `paint-functions/` for the
+extracted, organized per-engine versions.
