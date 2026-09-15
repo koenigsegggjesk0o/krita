@@ -22,8 +22,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git pkg-config extra-cmake-modules \
             qt6-base-dev qt6-tools-dev qt6-svg-dev libqt6opengl6-dev \
-            qt6-base-dev-private libqt6gui6t64-private-dev \
-            libqt6core6t64-private-dev \
+            qt6-base-private-dev \
             libkf5config-dev libkf5widgetsaddons-dev libkf5completion-dev \
             libkf5coreaddons-dev libkf5guiaddons-dev libkf5i18n-dev \
             libkf5itemviews-dev libkf5itemmodels-dev libkf5xmlgui-dev \
