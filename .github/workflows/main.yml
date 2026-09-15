@@ -48,11 +48,18 @@ jobs:
             qtquickcontrols2-5-dev qml-module-qtquick-controls2 \
             qml-module-qtquick2 qml-module-qtquick-layouts
           # HAPUS Qt5 base dev supaya Krita pakai Qt6
-          # Note: ini akan remove KF5 juga karena depend on Qt5, jadi install ulang KF5 setelahnya
           sudo apt-get remove -y qtbase5-dev qt5-qmake || true
           sudo apt-get autoremove -y || true
-          # Re-install KF5 dev packages yang terhapus (KF5 tidak butuh qtbase5-dev, hanya runtime)
-          sudo apt-get install -y --no-install-recommends --fix-broken || true
+          # REINSTALL KF5 packages (autoremove ikut hapus, tapi KF5 hanya butuh Qt5 runtime, bukan dev)
+          sudo apt-get install -y --no-install-recommends \
+            libkf5config-dev libkf5widgetsaddons-dev libkf5completion-dev \
+            libkf5coreaddons-dev libkf5guiaddons-dev libkf5i18n-dev \
+            libkf5itemviews-dev libkf5itemmodels-dev libkf5xmlgui-dev \
+            libkf5configwidgets-dev libkf5iconthemes-dev \
+            libkf5service-dev libkf5windowsystem-dev libkf5notifications-dev \
+            libkf5parts-dev libkf5plotting-dev libkf5kdelibs4support-dev \
+            libkf5crash-dev libkf5archive-dev libkf5sonnet-dev \
+            libkf5kio-dev qt5-qmltooling-plugins || true
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
