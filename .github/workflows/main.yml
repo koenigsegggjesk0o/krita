@@ -73,29 +73,34 @@ jobs:
           git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git /tmp/xsimd
           cd /tmp/xsimd && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF && sudo cmake --build build --target install -j$(nproc)
 
-      - name: Clone Krita source (stable release v5.3.3, bukan master)
+      - name: Build dari krita-source/ lokal (code asli di repo ini, BUKAN clone dari KDE)
         run: |
-          git clone --depth 1 --branch v5.3.3 https://github.com/KDE/krita.git /opt/krita 2>/dev/null || \
-          git clone --depth 1 --branch krita/5.3.3 https://github.com/KDE/krita.git /opt/krita 2>/dev/null || \
-          git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
+          # PAKAI krita-source/ yang ada di repo ini (code asli Krita v6.0.4)
+          # Ini membuktikan code di repo bisa di-build, bukan clone dari KDE lagi
+          cp -r krita-source /opt/krita
           cd /opt/krita
-          echo "Krita version:" 
-          grep -E "KRITA_VERSION_STRING|GENERIC_KRITA_LIB_VERSION" CMakeLists.txt | head -3
+          echo "=== Verifikasi source code asli ==="
+          echo "Total file C++: $(find . -name '*.h' -o -name '*.cpp' -o -name '*.cc' | wc -l)"
+          echo "Sample SPDX header (buktinya code KDE asli):"
+          head -5 libs/brush/kis_brush.h
+          echo ""
+          echo "Krita version info:"
+          grep -E "KRITA_VERSION_STRING|GENERIC_KRITA_LIB_VERSION" CMakeLists.txt | head -3 || echo "(version di libs/version/)"
 
       - name: Configure
         run: |
           cd /opt/krita
-          # Krita v5.3.3 pakai Qt5 (default). Qt5 private headers butuh qtbase5-private-dev
+          # Krita v6.0.4 pakai Qt6
           set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
             -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF \
-            -DWITH_QT6=OFF -DQT_MAJOR_VERSION=5 \
+            -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 \
             -DWITH_HEIF=OFF -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON \
             -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF \
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -G Ninja 2>&1 | tail -60
+            -G Ninja 2>&1 | tail -80
 
       - name: Build brush engine
         run: |
