@@ -92,12 +92,12 @@ jobs:
           set -o pipefail
           cmake --build build --target \
             kritalibbrush kritaimage kritalibpaintop kritapigment kritaresources \
-            krita-defaultpaintops krita-colorsmudgepaintop krita-curvepaintop \
-            krita-deformpaintop krita-experimentpaintop krita-gridpaintop \
-            krita-hairypaintop krita-hatchingpaintop krita-mypaintop \
-            krita-particlepaintop krita-roundmarkerpaintop krita-sketchpaintop \
-            krita-spraypaintop krita-tangentnormalpaintop \
-            krita-brushhud krita-brushimport krita-brushexport \
+            kritadefaultpaintops kritacolorsmudgepaintop kritacurvepaintop \
+            kritadeformpaintop kritaexperimentpaintop kritagridpaintop \
+            kritahairypaintop kritahatchingpaintop kritamypaintop \
+            kritaparticlepaintop kritaroundmarkerpaintop kritasketchpaintop \
+            kritaspraypaintop kritatangentnormalpaintop \
+            kritabrushhud kritabrushimport kritabrushexport \
             --parallel $(nproc) 2>&1 | tail -80
 
       - name: Collect .so
