@@ -73,25 +73,24 @@ jobs:
           git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git /tmp/xsimd
           cd /tmp/xsimd && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF && sudo cmake --build build --target install -j$(nproc)
 
-      - name: Clone Krita v5.3.3 (TERBUKTI work di Run #26) + verifikasi krita-source/ lokal sama
+      - name: Build dari krita-source/ lokal (4586 file C++ asli v6.0.4)
         run: |
-          # Clone Krita v5.3.3 dari KDE (versi stabil yang sudah terbukti build sukses di Run #26)
-          git clone --depth 1 --branch krita/5.2.2.x https://github.com/KDE/krita.git /opt/krita 2>/dev/null || \
-          git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
+          # PAKAI krita-source/ yang ada di repo ini (code asli Krita v6.0.4, 4586 file)
+          cp -r krita-source /opt/krita
           cd /opt/krita
-          echo "=== Krita source dari KDE ==="
+          echo "=== Verifikasi source code asli ==="
           echo "Total file C++: $(find . -name '*.h' -o -name '*.cpp' -o -name '*.cc' | wc -l)"
+          echo "Sample SPDX header:"
           head -5 libs/brush/kis_brush.h
           echo ""
-          echo "=== Verifikasi krita-source/ di repo ini sama dengan KDE ==="
-          echo "krita-source/ file count: $(find /home/runner/work/krita/krita/krita-source -name '*.h' -o -name '*.cpp' -o -name '*.cc' 2>/dev/null | wc -l)"
-          head -5 /home/runner/work/krita/krita/krita-source/libs/brush/kis_brush.h 2>/dev/null || echo "(krita-source/ tidak ditemukan di checkout)"
+          echo "Krita version:"
+          grep "KRITA_VERSION_STRING" CMakeLists.txt | head -2
 
-      - name: Configure
+      - name: Configure (log penuh, tidak dipotong)
         run: |
           cd /opt/krita
-          # Qt5 + KF5 (terbukti work di Run #26)
-          set -o pipefail
+          # Krita v6.0.4 — coba Qt5 dulu (default), fallback Qt6
+          set +e
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
             -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF \
             -DWITH_QT6=OFF -DQT_MAJOR_VERSION=5 \
@@ -100,7 +99,15 @@ jobs:
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -G Ninja 2>&1 | tail -100
+            -G Ninja > /tmp/configure.log 2>&1
+          EXIT=$?
+          echo "=== Configure exit code: $EXIT ==="
+          echo "=== Last 200 lines of configure ==="
+          tail -200 /tmp/configure.log
+          echo ""
+          echo "=== All CMake Errors ==="
+          grep -E "CMake Error|Could NOT find.*Required|FAILED" /tmp/configure.log | head -20
+          exit $EXIT
 
       - name: Build brush engine
         run: |
