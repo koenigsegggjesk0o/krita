@@ -1,0 +1,714 @@
+; SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
+; SPDX-License-Identifier: GPL-2.0-or-later
+;
+; scenes/main.tscn — Main scene untuk Feather-Krita app
+;
+; Layout (Feather 3D style):
+;   ┌─────────────────────────────────────────────┐
+;   │  TopBar (status, mirror indicators)         │
+;   │              3D Viewport (Canvas)            │
+;   │    [Guide Surface mesh]                      │
+;   │    [3D Strokes root]                         │
+;   │    [Joystick overlay - bottom-left]          │
+;   ├──────────────────────────────────────────────┤
+;   │  ContextMenu (changes per tool)              │
+;   ├──────────────────────────────────────────────┤
+;   │  BottomToolbar:                              │
+;   │  [Draw][Erase][Shapes][Liquify][Select]      │
+;   │  [Light][Export][Settings]                   │
+;   └──────────────────────────────────────────────┘
+
+[gd_scene load_steps=12 format=3 uid="uid://featherkrita_main"]
+
+[ext_resource type="Script" path="res://scenes/main.gd" id="1_main"]
+
+[sub_resource type="StandardMaterial3D" id="mat_guide"]
+resource_name = "GuideSurfaceMaterial"
+albedo_color = Color(0.6, 0.7, 0.9, 0.4)
+transparency = 1
+roughness = 0.8
+metallic = 0.0
+
+[sub_resource type="StandardMaterial3D" id="mat_stroke"]
+resource_name = "StrokeMaterial"
+albedo_color = Color(0.05, 0.05, 0.06, 1.0)
+roughness = 0.5
+metallic = 0.0
+
+[sub_resource type="BoxMesh" id="mesh_light_helper"]
+resource_name = "LightHelperMesh"
+size = Vector3(0.2, 0.2, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="mat_light_helper"]
+emission_enabled = true
+emission = Color(1, 1, 0.6, 1)
+emission_energy_multiplier = 2.0
+albedo_color = Color(1, 1, 0.6, 1)
+
+[sub_resource type="StyleBoxFlat" id="style_panel_bg"]
+bg_color = Color(0.08, 0.08, 0.10, 0.92)
+border_width_left = 0
+border_width_top = 2
+border_width_right = 0
+border_width_bottom = 0
+border_color = Color(0.2, 0.2, 0.25, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+
+[sub_resource type="StyleBoxFlat" id="style_button_normal"]
+bg_color = Color(0.15, 0.15, 0.18, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[sub_resource type="StyleBoxFlat" id="style_button_pressed"]
+bg_color = Color(0.30, 0.55, 0.90, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[sub_resource type="StyleBoxFlat" id="style_button_hover"]
+bg_color = Color(0.25, 0.25, 0.30, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[sub_resource type="Theme" id="theme_feather"]
+Button/colors/font_color = Color(0.9, 0.9, 0.9, 1)
+Button/colors/font_hover_color = Color(1, 1, 1, 1)
+Button/colors/font_pressed_color = Color(1, 1, 1, 1)
+Button/font_sizes/font_size = 14
+Button/styles/normal = SubResource("style_button_normal")
+Button/styles/pressed = SubResource("style_button_pressed")
+Button/styles/hover = SubResource("style_button_hover")
+
+[sub_resource type="Environment" id="env_main"]
+background_mode = 1
+background_color = Color(0.12, 0.12, 0.14, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.3, 0.3, 0.35, 1)
+ambient_light_energy = 0.4
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.6
+glow_strength = 0.8
+glow_bloom = 0.2
+volumetric_fog_enabled = false
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 2.0, 4.0)
+fov = 60.0
+near = 0.05
+far = 4000.0
+current = true
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.7, -0.5, 0.5, 0, 0.7, 0.7, -0.7, -0.5, 0.5, 3, 5, 2)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.2
+shadow_enabled = true
+directional_shadow_max_distance = 50.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env_main")
+
+[node name="GuideSurfaceMesh" type="MeshInstance3D" parent="."]
+visible = true
+material_override = SubResource("mat_guide")
+mesh = null
+; Mesh di-generate dari FeatherGuideSurface (GDExtension) saat runtime
+
+[node name="StrokesRoot" type="Node3D" parent="."]
+; Container untuk semua stroke meshes (1 MeshInstance3D per stroke)
+
+[node name="LightHelper" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 5, 2)
+mesh = SubResource("mesh_light_helper")
+material_override = SubResource("mat_light_helper")
+visible = false
+
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 1
+
+[node name="TopBar" type="Panel" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 40.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("style_panel_bg")
+
+[node name="StatusLabel" type="Label" parent="UI/TopBar"]
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 0.0
+offset_right = 400.0
+offset_bottom = 0.0
+grow_vertical = 2
+text = "Feather Krita — Ready"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="MirrorXIndicator" type="Label" parent="UI/TopBar"]
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 420.0
+offset_top = 0.0
+offset_right = 480.0
+offset_bottom = 0.0
+grow_vertical = 2
+text = "X|"
+horizontal_alignment = 1
+vertical_alignment = 1
+modulate = Color(0.5, 0.5, 0.5, 1)
+
+[node name="MirrorYIndicator" type="Label" parent="UI/TopBar"]
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 490.0
+offset_top = 0.0
+offset_right = 550.0
+offset_bottom = 0.0
+grow_vertical = 2
+text = "Y-"
+horizontal_alignment = 1
+vertical_alignment = 1
+modulate = Color(0.5, 0.5, 0.5, 1)
+
+[node name="MirrorZIndicator" type="Label" parent="UI/TopBar"]
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 560.0
+offset_top = 0.0
+offset_right = 620.0
+offset_bottom = 0.0
+grow_vertical = 2
+text = "Z/"
+horizontal_alignment = 1
+vertical_alignment = 1
+modulate = Color(0.5, 0.5, 0.5, 1)
+
+[node name="ProBadge" type="Label" parent="UI/TopBar"]
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -90.0
+offset_top = 0.0
+offset_right = -12.0
+offset_bottom = 0.0
+grow_horizontal = 0
+grow_vertical = 2
+text = "FREE"
+horizontal_alignment = 2
+vertical_alignment = 1
+modulate = Color(0.8, 0.6, 0.2, 1)
+
+[node name="ContextMenu" type="Panel" parent="UI"]
+anchors_preset = 12
+anchor_bottom = 1.0
+anchor_right = 1.0
+offset_left = 0.0
+offset_top = -200.0
+offset_right = 0.0
+offset_bottom = -80.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("style_panel_bg")
+
+[node name="ContextLabel" type="Label" parent="UI/ContextMenu"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = -12.0
+offset_bottom = 32.0
+text = "Tool: Draw"
+vertical_alignment = 1
+
+[node name="ContextContainer" type="HBoxContainer" parent="UI/ContextMenu"]
+anchors_preset = 12
+anchor_bottom = 1.0
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 36.0
+offset_right = -12.0
+offset_bottom = -8.0
+grow_vertical = 0
+theme = SubResource("theme_feather")
+
+[node name="BrushSizeLabel" type="Label" parent="UI/ContextMenu/ContextContainer"]
+custom_minimum_size = Vector2(80, 0)
+text = "Size:"
+
+[node name="BrushSizeSlider" type="HSlider" parent="UI/ContextMenu/ContextContainer"]
+custom_minimum_size = Vector2(180, 0)
+min_value = 1.0
+max_value = 200.0
+value = 50.0
+step = 1.0
+
+[node name="BrushOpacityLabel" type="Label" parent="UI/ContextMenu/ContextContainer"]
+custom_minimum_size = Vector2(80, 0)
+text = "Opacity:"
+
+[node name="BrushOpacitySlider" type="HSlider" parent="UI/ContextMenu/ContextContainer"]
+custom_minimum_size = Vector2(180, 0)
+min_value = 0.0
+max_value = 1.0
+value = 1.0
+step = 0.01
+
+[node name="ColorPickerButton" type="ColorPickerButton" parent="UI/ContextMenu/ContextContainer"]
+custom_minimum_size = Vector2(60, 36)
+color = Color(0, 0, 0, 1)
+
+[node name="BrushPresetButton" type="Button" parent="UI/ContextMenu/ContextContainer"]
+custom_minimum_size = Vector2(120, 36)
+text = "Brush: Basic"
+
+[node name="BottomToolbar" type="Panel" parent="UI"]
+anchors_preset = 12
+anchor_bottom = 1.0
+anchor_right = 1.0
+offset_left = 0.0
+offset_top = -80.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("style_panel_bg")
+
+[node name="ToolbarContainer" type="HBoxContainer" parent="UI/BottomToolbar"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = -12.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("theme_feather")
+alignment = 1
+
+[node name="DrawButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Draw"
+tooltip_text = "Draw brush strokes on guide surface (B)"
+
+[node name="EraseButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Erase"
+tooltip_text = "Erase strokes (E)"
+
+[node name="ShapesButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Shapes"
+tooltip_text = "Draw geometric shapes (S)"
+
+[node name="LiquifyButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Liquify"
+tooltip_text = "Push/pull strokes in 3D (L)"
+
+[node name="SelectButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Select"
+tooltip_text = "Select strokes for editing (V)"
+
+[node name="LightButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Light"
+tooltip_text = "Setup lighting (H)"
+
+[node name="ExportButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Export"
+tooltip_text = "Export image/3D/animation (X)"
+
+[node name="SettingsButton" type="Button" parent="UI/BottomToolbar/ToolbarContainer"]
+custom_minimum_size = Vector2(96, 56)
+text = "Settings"
+tooltip_text = "Open settings (,)"
+
+[node name="Joystick" type="Control" parent="UI"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -200.0
+offset_right = 176.0
+offset_bottom = -100.0
+grow_vertical = 0
+mouse_filter = 1
+
+[node name="JoystickBG" type="ColorRect" parent="UI/Joystick"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.15, 0.15, 0.18, 0.5)
+mouse_filter = 2
+
+[node name="JoystickKnob" type="ColorRect" parent="UI/Joystick"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -30.0
+offset_top = -30.0
+offset_right = 30.0
+offset_bottom = 30.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.4, 0.6, 0.9, 0.9)
+mouse_filter = 2
+
+[node name="JoystickModeLabel" type="Label" parent="UI/Joystick"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -60.0
+offset_top = -24.0
+offset_right = 60.0
+offset_bottom = -4.0
+grow_vertical = 0
+text = "Move"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="JoystickModeButtons" type="VBoxContainer" parent="UI/Joystick"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -60.0
+offset_top = 60.0
+offset_right = 60.0
+offset_bottom = 200.0
+grow_vertical = 0
+theme = SubResource("theme_feather")
+visible = false
+
+[node name="ModeMove" type="Button" parent="UI/Joystick/JoystickModeButtons"]
+custom_minimum_size = Vector2(120, 28)
+text = "Move"
+toggle_mode = true
+button_pressed = true
+
+[node name="ModeRotate" type="Button" parent="UI/Joystick/JoystickModeButtons"]
+custom_minimum_size = Vector2(120, 28)
+text = "Rotate"
+toggle_mode = true
+
+[node name="ModeScale" type="Button" parent="UI/Joystick/JoystickModeButtons"]
+custom_minimum_size = Vector2(120, 28)
+text = "Scale"
+toggle_mode = true
+
+[node name="ModeLiquify" type="Button" parent="UI/Joystick/JoystickModeButtons"]
+custom_minimum_size = Vector2(120, 28)
+text = "Liquify"
+toggle_mode = true
+
+[node name="ShapeSelector" type="Window" parent="UI"]
+title = "Guide Surface"
+size = Vector2i(360, 240)
+visible = false
+wrap_controls = true
+transient = true
+exclusive = true
+
+[node name="ShapeVBox" type="VBoxContainer" parent="UI/ShapeSelector"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("theme_feather")
+
+[node name="Label" type="Label" parent="UI/ShapeSelector/ShapeVBox"]
+text = "Select guide surface:"
+
+[node name="HBoxShapes" type="HBoxContainer" parent="UI/ShapeSelector/ShapeVBox"]
+alignment = 1
+
+[node name="SphereBtn" type="Button" parent="UI/ShapeSelector/ShapeVBox/HBoxShapes"]
+custom_minimum_size = Vector2(80, 60)
+text = "Sphere"
+
+[node name="CylinderBtn" type="Button" parent="UI/ShapeSelector/ShapeVBox/HBoxShapes"]
+custom_minimum_size = Vector2(80, 60)
+text = "Cylinder"
+
+[node name="ConeBtn" type="Button" parent="UI/ShapeSelector/ShapeVBox/HBoxShapes"]
+custom_minimum_size = Vector2(80, 60)
+text = "Cone"
+
+[node name="RingBtn" type="Button" parent="UI/ShapeSelector/ShapeVBox/HBoxShapes"]
+custom_minimum_size = Vector2(80, 60)
+text = "Ring"
+
+[node name="NoneBtn" type="Button" parent="UI/ShapeSelector/ShapeVBox/HBoxShapes"]
+custom_minimum_size = Vector2(80, 60)
+text = "None"
+
+[node name="ExportDialog" type="Window" parent="UI"]
+title = "Export"
+size = Vector2i(420, 360)
+visible = false
+wrap_controls = true
+transient = true
+exclusive = true
+
+[node name="ExportVBox" type="VBoxContainer" parent="UI/ExportDialog"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("theme_feather")
+
+[node name="Title" type="Label" parent="UI/ExportDialog/ExportVBox"]
+text = "Export artwork"
+
+[node name="FormatLabel" type="Label" parent="UI/ExportDialog/ExportVBox"]
+text = "Format:"
+
+[node name="FormatHBox" type="HBoxContainer" parent="UI/ExportDialog/ExportVBox"]
+
+[node name="PNG" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "PNG"
+
+[node name="JPEG" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "JPEG"
+
+[node name="OBJ" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "OBJ"
+
+[node name="GLTF" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "glTF"
+
+[node name="MP4" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "MP4"
+
+[node name="GIF" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "GIF"
+
+[node name="Feather" type="Button" parent="UI/ExportDialog/ExportVBox/FormatHBox"]
+custom_minimum_size = Vector2(80, 40)
+text = "Feather"
+
+[node name="LockNotice" type="Label" parent="UI/ExportDialog/ExportVBox"]
+text = "🔒 Export is locked. Upgrade to Pro to export."
+modulate = Color(0.9, 0.5, 0.2, 1)
+visible = false
+autowrap_mode = 2
+custom_minimum_size = Vector2(0, 48)
+
+[node name="UnlockButton" type="Button" parent="UI/ExportDialog/ExportVBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Unlock Export (Enter License Key)"
+visible = false
+
+[node name="ExportButton" type="Button" parent="UI/ExportDialog/ExportVBox"]
+custom_minimum_size = Vector2(0, 40)
+text = "Export Now"
+
+[node name="CancelButton" type="Button" parent="UI/ExportDialog/ExportVBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Cancel"
+
+[node name="LicenseDialog" type="Window" parent="UI"]
+title = "Unlock Export"
+size = Vector2i(420, 240)
+visible = false
+wrap_controls = true
+transient = true
+exclusive = true
+
+[node name="LicenseVBox" type="VBoxContainer" parent="UI/LicenseDialog"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("theme_feather")
+
+[node name="Title" type="Label" parent="UI/LicenseDialog/LicenseVBox"]
+text = "Enter license key (XXXX-XXXX-XXXX-XXXX):"
+
+[node name="LicenseKeyEdit" type="LineEdit" parent="UI/LicenseDialog/LicenseVBox"]
+custom_minimum_size = Vector2(0, 36)
+placeholder_text = "XXXX-XXXX-XXXX-XXXX"
+max_length = 19
+
+[node name="StoreButton" type="Button" parent="UI/LicenseDialog/LicenseVBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Buy via Store"
+
+[node name="TrialButton" type="Button" parent="UI/LicenseDialog/LicenseVBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Start 7-day Free Trial"
+
+[node name="StatusLabel2" type="Label" parent="UI/LicenseDialog/LicenseVBox"]
+text = ""
+
+[node name="ActivateButton" type="Button" parent="UI/LicenseDialog/LicenseVBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Activate"
+
+[node name="CloseButton" type="Button" parent="UI/LicenseDialog/LicenseVBox"]
+custom_minimum_size = Vector2(0, 36)
+text = "Close"
+
+[node name="ColorPalette" type="Panel" parent="UI"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -240.0
+offset_right = -16.0
+offset_bottom = -100.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("style_panel_bg")
+visible = false
+
+[node name="ColorGrid" type="GridContainer" parent="UI/ColorPalette"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+columns = 4
+theme = SubResource("theme_feather")
+
+[node name="Color0" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0, 0, 0, 1)
+mouse_filter = 1
+
+[node name="Color1" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(1, 1, 1, 1)
+mouse_filter = 1
+
+[node name="Color2" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0.9, 0.2, 0.2, 1)
+mouse_filter = 1
+
+[node name="Color3" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0.2, 0.6, 0.9, 1)
+mouse_filter = 1
+
+[node name="Color4" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0.2, 0.8, 0.3, 1)
+mouse_filter = 1
+
+[node name="Color5" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0.95, 0.85, 0.2, 1)
+mouse_filter = 1
+
+[node name="Color6" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0.6, 0.2, 0.8, 1)
+mouse_filter = 1
+
+[node name="Color7" type="ColorRect" parent="UI/ColorPalette/ColorGrid"]
+custom_minimum_size = Vector2(36, 36)
+color = Color(0.7, 0.4, 0.2, 1)
+mouse_filter = 1
+
+[node name="Toast" type="Label" parent="UI"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -24.0
+offset_right = 160.0
+offset_bottom = 24.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = ""
+visible = false
+modulate = Color(1, 1, 1, 0)
+
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/DrawButton" to="." method="_on_draw_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/EraseButton" to="." method="_on_erase_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/ShapesButton" to="." method="_on_shapes_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/LiquifyButton" to="." method="_on_liquify_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/SelectButton" to="." method="_on_select_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/LightButton" to="." method="_on_light_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/ExportButton" to="." method="_on_export_button_pressed"]
+[connection signal="pressed" from="UI/BottomToolbar/ToolbarContainer/SettingsButton" to="." method="_on_settings_button_pressed"]
+[connection signal="value_changed" from="UI/ContextMenu/ContextContainer/BrushSizeSlider" to="." method="_on_brush_size_changed"]
+[connection signal="value_changed" from="UI/ContextMenu/ContextContainer/BrushOpacitySlider" to="." method="_on_brush_opacity_changed"]
+[connection signal="color_changed" from="UI/ContextMenu/ContextContainer/ColorPickerButton" to="." method="_on_color_changed"]
+[connection signal="pressed" from="UI/ContextMenu/ContextContainer/BrushPresetButton" to="." method="_on_brush_preset_button_pressed"]
+[connection signal="pressed" from="UI/ShapeSelector/ShapeVBox/HBoxShapes/SphereBtn" to="." method="_on_shape_sphere_pressed"]
+[connection signal="pressed" from="UI/ShapeSelector/ShapeVBox/HBoxShapes/CylinderBtn" to="." method="_on_shape_cylinder_pressed"]
+[connection signal="pressed" from="UI/ShapeSelector/ShapeVBox/HBoxShapes/ConeBtn" to="." method="_on_shape_cone_pressed"]
+[connection signal="pressed" from="UI/ShapeSelector/ShapeVBox/HBoxShapes/RingBtn" to="." method="_on_shape_ring_pressed"]
+[connection signal="pressed" from="UI/ShapeSelector/ShapeVBox/HBoxShapes/NoneBtn" to="." method="_on_shape_none_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/ExportButton" to="." method="_on_export_now_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/CancelButton" to="." method="_on_export_cancel_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/UnlockButton" to="." method="_on_export_unlock_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/PNG" to="." method="_on_format_png_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/JPEG" to="." method="_on_format_jpeg_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/OBJ" to="." method="_on_format_obj_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/GLTF" to="." method="_on_format_gltf_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/MP4" to="." method="_on_format_mp4_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/GIF" to="." method="_on_format_gif_pressed"]
+[connection signal="pressed" from="UI/ExportDialog/ExportVBox/FormatHBox/Feather" to="." method="_on_format_feather_pressed"]
+[connection signal="pressed" from="UI/LicenseDialog/LicenseVBox/ActivateButton" to="." method="_on_license_activate_pressed"]
+[connection signal="pressed" from="UI/LicenseDialog/LicenseVBox/CloseButton" to="." method="_on_license_close_pressed"]
+[connection signal="pressed" from="UI/LicenseDialog/LicenseVBox/TrialButton" to="." method="_on_license_trial_pressed"]
+[connection signal="pressed" from="UI/LicenseDialog/LicenseVBox/StoreButton" to="." method="_on_license_store_pressed"]

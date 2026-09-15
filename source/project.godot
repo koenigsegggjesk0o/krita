@@ -1,0 +1,215 @@
+; SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
+; SPDX-License-Identifier: GPL-2.0-or-later
+;
+; project.godot — Godot 4 project configuration untuk Feather-Krita app
+;
+; App ini menggunakan Godot 4 sebagai 3D engine + UI framework,
+; dengan Krita brush engine (libkritalibbrush) sebagai GDExtension
+; untuk brush rendering.
+
+config_version=5
+
+[application]
+
+config/name="Feather Krita"
+config/description="3D Drawing app — Feather 3D style + Krita brush engine"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://icon.svg"
+boot_splash/show_image=false
+config/version="0.1.0"
+config/company_name="Feather-Krita Contributors"
+config/product_name="Feather Krita"
+config/quit_on_go_back=false
+
+[autoload]
+
+; (Singleton autoloads — none yet; FeatherExportLock is instantiated per-main-scene)
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/size/resizable=true
+window/size/borderless=false
+window/size/fullscreen=false
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=0
+mouse_cursor/tooltip_position_offset=Vector2(10, 10)
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+environment/defaults/default_clear_color=Color(0.12, 0.12, 0.14, 1)
+anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/screen_space_aa=1
+anti_aliasing/quality/use_taa=true
+textures/vram_compression/import_etc2_astc=true
+limits/time/time_rollover_secs=3600
+shading/overrides/force_vertex_shading=false
+; Enable 3D
+driver/threads/thread_model=2
+; Volumetric fog (for nice atmospheric effects)
+environment/volumetric_fog/use_filter=true
+anti_aliasing/quality/normal_roughness_limit_enabled=true
+
+[input]
+
+; === Drawing input ===
+pen_draw={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_index":1,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0)]
+}
+
+pen_draw_touch={
+"deadzone": 0.5,
+"events": [Object(InputEventScreenTouch,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"index":0,"location":Vector2(0, 0),"pressed":true,"canceled":false)]
+}
+
+; === Camera navigation ===
+camera_orbit={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":true,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_index":1,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0), Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_index":3,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0)]
+}
+
+camera_pan={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":false,"meta_pressed":false,"button_index":3,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0), Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":false,"meta_pressed":false,"button_index":2,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0)]
+}
+
+camera_zoom_in={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_index":4,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0)]
+}
+
+camera_zoom_out={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_index":5,"canceled":false,"pressed":true,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"double_click":false,"button_mask":0)]
+}
+
+; === Tool selection ===
+tool_draw={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":66,"physical_keycode":0,"key_label":0,"unicode":98,"echo":false)]}
+tool_erase={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":69,"physical_keycode":0,"key_label":0,"unicode":101,"echo":false)]}
+tool_shapes={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":83,"physical_keycode":0,"key_label":0,"unicode":115,"echo":false)]}
+tool_liquify={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":76,"physical_keycode":0,"key_label":0,"unicode":108,"echo":false)]}
+tool_select={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":86,"physical_keycode":0,"key_label":0,"unicode":118,"echo":false)]}
+tool_light={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":72,"physical_keycode":0,"key_label":0,"unicode":104,"echo":false)]}
+tool_export={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":88,"physical_keycode":0,"key_label":0,"unicode":120,"echo":false)]}
+tool_settings={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":44,"physical_keycode":0,"key_label":0,"unicode":44,"echo":false)]}
+
+; === Mirror toggle ===
+mirror_x={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":88,"physical_keycode":0,"key_label":0,"unicode":120,"echo":false)]}
+mirror_y={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":89,"physical_keycode":0,"key_label":0,"unicode":121,"echo":false)]}
+mirror_z={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":90,"physical_keycode":0,"key_label":0,"unicode":122,"echo":false)]}
+
+; === Undo/Redo ===
+undo={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":true,"meta_pressed":false,"pressed":false,"keycode":90,"physical_keycode":0,"key_label":0,"unicode":122,"echo":false)]}
+redo={"deadzone": 0.5, "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":true,"meta_pressed":false,"pressed":false,"keycode":90,"physical_keycode":0,"key_label":0,"unicode":122,"echo":false)]}
+
+; === Joystick (gamepad) ===
+joystick_left={
+"deadzone": 0.5,
+"events": [Object(InputEventJoypadMotion,"resource_local_to_scene":false,"resource_name":"","device":-1,"axis":0,"axis_value":-1.0)]
+}
+joystick_right={
+"deadzone": 0.5,
+"events": [Object(InputEventJoypadMotion,"resource_local_to_scene":false,"resource_name":"","device":-1,"axis":0,"axis_value":1.0)]
+}
+joystick_up={
+"deadzone": 0.5,
+"events": [Object(InputEventJoypadMotion,"resource_local_to_scene":false,"resource_name":"","device":-1,"axis":1,"axis_value":-1.0)]
+}
+joystick_down={
+"deadzone": 0.5,
+"events": [Object(InputEventJoypadMotion,"resource_local_to_scene":false,"resource_name":"","device":-1,"axis":1,"axis_value":1.0)]
+}
+joystick_action={
+"deadzone": 0.5,
+"events": [Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"button_index":0,"pressure":0.0,"pressed":false)]
+}
+
+; === Touch gestures ===
+pinch_zoom={
+"deadzone": 0.5,
+"events": []
+}
+two_finger_rotate={
+"deadzone": 0.5,
+"events": []
+}
+
+[input_devices]
+
+pen_tablet/driver=0
+pen_tablet/driver_linux=0
+
+[gui]
+
+common/default_cursor_atom=0
+mouse/cursor_shape_custom_image=String()
+; theme/custom_font="res://themes/FeatherFont.tres"
+; theme/custom_theme="res://themes/FeatherTheme.tres"
+
+[intent]
+
+; Android intent filters (for opening .feather files)
+android/extra_intent_filters=PackedStringArray()
+
+[layer_names]
+
+3d_physics/layer_1="Guide Surfaces"
+3d_physics/layer_2="3D Strokes"
+3d_physics/layer_3="Lights"
+3d_physics/layer_4="Camera"
+3d_render/layer_1="Guide Surfaces"
+3d_render/layer_2="3D Strokes"
+
+[physics]
+
+3d/physics_engine="JoltPhysics3D"
+3d/default_gravity=Vector3(0, -9.8, 0)
+
+[navigation]
+
+3d/default_cell_size=0.5
+
+[debug]
+
+settings/stdout/print_gpu_profile=true
+settings/stdout/verbose_stdout=false
+
+[editor]
+
+;n/a untuk runtime
+
+[internationalization]
+
+locale/translations=PackedStringArray()
+locale/translation_remaps={}
+
+; (GDExtension libraries are auto-discovered from .gdextension files
+;  in the project root. No manual registration needed in project.godot.)
+
+[rendering/lightmapping]
+
+bake_quality/low_quality_ray_count=8
+bake_quality/medium_quality_ray_count=16
+bake_quality/high_quality_ray_count=32
+bake_quality/ultra_quality_ray_count=64
+
+[rendering/reflections]
+
+ssr/roughness=false
+
+[rendering/environment/volumetric_fog]
+
+use_filter=true
+voxel_size=64
+
+[rendering/limits/clipping]
+
+; Large scene bounds untuk 3D drawing canvas
+near=0.05
+far=4000.0
