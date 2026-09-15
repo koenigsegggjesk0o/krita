@@ -23,6 +23,7 @@ jobs:
             build-essential cmake ninja-build git pkg-config extra-cmake-modules \
             qt6-base-dev qt6-tools-dev qt6-svg-dev libqt6opengl6-dev \
             qt6-base-private-dev \
+            qtbase5-dev qtbase5-private-dev qttools5-dev qttools5-dev-tools \
             libkf5config-dev libkf5widgetsaddons-dev libkf5completion-dev \
             libkf5coreaddons-dev libkf5guiaddons-dev libkf5i18n-dev \
             libkf5itemviews-dev libkf5itemmodels-dev libkf5xmlgui-dev \
@@ -47,19 +48,8 @@ jobs:
             qtdeclarative5-dev libqt5quickcontrols2-5 \
             qtquickcontrols2-5-dev qml-module-qtquick-controls2 \
             qml-module-qtquick2 qml-module-qtquick-layouts
-          # HAPUS Qt5 base dev supaya Krita pakai Qt6
-          sudo apt-get remove -y qtbase5-dev qt5-qmake || true
-          sudo apt-get autoremove -y || true
-          # REINSTALL KF5 packages (autoremove ikut hapus, tapi KF5 hanya butuh Qt5 runtime, bukan dev)
-          sudo apt-get install -y --no-install-recommends \
-            libkf5config-dev libkf5widgetsaddons-dev libkf5completion-dev \
-            libkf5coreaddons-dev libkf5guiaddons-dev libkf5i18n-dev \
-            libkf5itemviews-dev libkf5itemmodels-dev libkf5xmlgui-dev \
-            libkf5configwidgets-dev libkf5iconthemes-dev \
-            libkf5service-dev libkf5windowsystem-dev libkf5notifications-dev \
-            libkf5parts-dev libkf5plotting-dev libkf5kdelibs4support-dev \
-            libkf5crash-dev libkf5archive-dev libkf5sonnet-dev \
-            libkf5kio-dev qt5-qmltooling-plugins || true
+          # Krita v5.3.3 butuh Qt5 - JANGAN hapus Qt5
+          # Kita biarkan Krita pakai Qt5 (default untuk v5.3.3 stable)
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
@@ -95,30 +85,16 @@ jobs:
       - name: Configure
         run: |
           cd /opt/krita
-          # Qt6 private headers - cari pakai dpkg untuk dapat path yang benar
-          QT6_ARCH_DIR=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "x86_64-linux-gnu")
-          QT6_BASE="/usr/include/${QT6_ARCH_DIR}/qt6"
-          # Cari versi Qt6 yang terinstall
-          QT6_VER=$(ls ${QT6_BASE}/QtGui/ 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+$" | head -1)
-          echo "Qt6 base: $QT6_BASE"
-          echo "Qt6 version: $QT6_VER"
-          # Path private headers Qt6 (version-specific)
-          QT6_GUI_PRIVATE="${QT6_BASE}/QtGui/${QT6_VER}/QtGui/private"
-          QT6_CORE_PRIVATE="${QT6_BASE}/QtCore/${QT6_VER}/QtCore/private"
-          QT6_WIDGETS_PRIVATE="${QT6_BASE}/QtWidgets/${QT6_VER}/QtWidgets/private"
-          echo "Qt6 QtGui private: $QT6_GUI_PRIVATE"
-          echo "Qt6 QtCore private: $QT6_CORE_PRIVATE"
-          ls "$QT6_GUI_PRIVATE" | head -3 || echo "QtGui private NOT FOUND"
-          # Disable features yang butuh package kompleks (tidak relevan untuk brush engine)
+          # Krita v5.3.3 pakai Qt5 (default). Qt5 private headers butuh qtbase5-private-dev
           set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
-            -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 \
+            -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF \
+            -DWITH_QT6=OFF -DQT_MAJOR_VERSION=5 \
             -DWITH_HEIF=OFF -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON \
             -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF \
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -DCMAKE_CXX_FLAGS="-I${QT6_BASE} -I${QT6_BASE}/QtCore -I${QT6_BASE}/QtGui -I${QT6_BASE}/QtWidgets -I${QT6_CORE_PRIVATE} -I${QT6_GUI_PRIVATE} -I${QT6_WIDGETS_PRIVATE}" \
             -G Ninja 2>&1 | tail -60
 
       - name: Build brush engine
