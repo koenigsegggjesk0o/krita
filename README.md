@@ -460,3 +460,47 @@ to make coverage truly complete (located in `re-binary/analysis/plugins-peripher
 
 **Grand total now: ~38,137 decompiled functions across all brush-related components.**
 Every brush-related binary in Krita 5.3.3 is now decompiled. Nothing brush-related is missing.
+
+---
+
+# 🚀 CARA TERMUDAH: Build di GitHub Actions (GRATIS)
+
+**Tidak perlu install apa-apa di komputer Anda.** GitHub yang build, Anda tinggal download hasilnya.
+
+## Langkah:
+
+1. **Buka**: https://github.com/koenigsegggjesk0o/krita/actions
+2. **Klik** workflow "Build Krita Brush Engine" di sidebar kiri
+3. **Klik** tombol "Run workflow" (kanan atas) → "Run workflow" (hijau)
+4. **Tunggu** 30-60 menit (GitHub build otomatis, gratis)
+5. **Download** artifact `krita-brush-engine-built` dari build yang sukses
+6. **Extract** → dapat file `.so` yang BENAR-BENAR jalan
+
+Lihat **[.github/BUILD-ON-GITHUB.md](.github/BUILD-ON-GITHUB.md)** untuk instruksi detail.
+
+## Yang Anda dapat:
+
+| File | Fungsi | Jalan? |
+|------|--------|--------|
+| `libkritalibbrush.so` | Brush tip loaders (KisGbrBrush, KisAutoBrush, dll) | ✅ |
+| `libkritaimage.so` | Brush engine interfaces (KisPaintOp, KisPaintOpPreset) | ✅ |
+| `libkritalibpaintop.so` | Shared paintop options | ✅ |
+| `libkritapigment.so` | Color science (KoColor, KoColorSpace) | ✅ |
+| `libkritaresources.so` | Resource/preset management | ✅ |
+| 14× `krita*paintop.so` | Plugin brush engine (spray, hairy, deform, dll) | ✅ |
+| 3× `kritabrush*.so` | Brush HUD, import, export | ✅ |
+
+**Semua .so ini di-compile dari source code KDE resmi, TIDAK diubah.**
+Sama persis dengan yang KDE pakai untuk build Krita yang orang download dari krita.org.
+
+## Gratis?
+
+- **Public repo**: unlimited build minutes (GRATIS SELAMANYA)
+- **Private repo**: 2,000 menit/bulan (build ~60 menit = ~33 build/bulan)
+
+## Alternatif: build di komputer Anda sendiri
+
+Kalau mau build lokal, lihat **[build-docker/README.md](build-docker/README.md)**:
+- `build-docker/Dockerfile` — build dengan Docker
+- `build-docker/build-krita-brush.sh` — build langsung di Ubuntu
+
