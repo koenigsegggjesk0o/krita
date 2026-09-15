@@ -90,17 +90,19 @@ jobs:
       - name: Configure
         run: |
           cd /opt/krita
-          # Krita v6.0.4 pakai Qt6
+          # Krita v6.0.4 tetap pakai Qt5 + KF5 (sesuai output configure sebelumnya)
           set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
             -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF \
-            -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 \
+            -DWITH_QT6=OFF -DQT_MAJOR_VERSION=5 \
             -DWITH_HEIF=OFF -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON \
             -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF \
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -G Ninja 2>&1 | tail -80
+            -G Ninja 2>&1 | tee /tmp/configure.log | tail -100
+          echo "=== Last 200 lines of configure ==="
+          tail -200 /tmp/configure.log
 
       - name: Build brush engine
         run: |
