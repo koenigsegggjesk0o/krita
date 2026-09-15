@@ -1,8 +1,15 @@
-# Binary files excluded from git (too large for GitHub, kept locally only)
+# Build artifacts
+build/
+*.o
 *.so
-*.so.*
+*.a
 *.AppImage
-*.bundle
-# Keep .so in re-binary (track LFS-style via separate note)
-!re-binary/libraries/.gitkeep
-!re-binary/plugins/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
