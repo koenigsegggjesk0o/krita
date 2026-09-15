@@ -48,8 +48,11 @@ jobs:
             qtquickcontrols2-5-dev qml-module-qtquick-controls2 \
             qml-module-qtquick2 qml-module-qtquick-layouts
           # HAPUS Qt5 base dev supaya Krita pakai Qt6
+          # Note: ini akan remove KF5 juga karena depend on Qt5, jadi install ulang KF5 setelahnya
           sudo apt-get remove -y qtbase5-dev qt5-qmake || true
           sudo apt-get autoremove -y || true
+          # Re-install KF5 dev packages yang terhapus (KF5 tidak butuh qtbase5-dev, hanya runtime)
+          sudo apt-get install -y --no-install-recommends --fix-broken || true
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
@@ -73,8 +76,14 @@ jobs:
           git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git /tmp/xsimd
           cd /tmp/xsimd && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF && sudo cmake --build build --target install -j$(nproc)
 
-      - name: Clone Krita source
-        run: git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
+      - name: Clone Krita source (stable release v5.3.3, bukan master)
+        run: |
+          git clone --depth 1 --branch v5.3.3 https://github.com/KDE/krita.git /opt/krita 2>/dev/null || \
+          git clone --depth 1 --branch krita/5.3.3 https://github.com/KDE/krita.git /opt/krita 2>/dev/null || \
+          git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
+          cd /opt/krita
+          echo "Krita version:" 
+          grep -E "KRITA_VERSION_STRING|GENERIC_KRITA_LIB_VERSION" CMakeLists.txt | head -3
 
       - name: Configure
         run: |
