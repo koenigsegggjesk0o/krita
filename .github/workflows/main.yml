@@ -76,6 +76,11 @@ jobs:
       - name: Configure
         run: |
           cd /opt/krita
+          # Find Qt6 private header path
+          QT6_PRIVATE_DIR=$(find /usr/include -type d -name "private" -path "*QtGui*" 2>/dev/null | head -1)
+          QT6_INCLUDE_DIR=$(dirname $(dirname "$QT6_PRIVATE_DIR"))
+          echo "Qt6 private headers at: $QT6_PRIVATE_DIR"
+          echo "Qt6 include dir: $QT6_INCLUDE_DIR"
           # Disable features yang butuh package kompleks (tidak relevan untuk brush engine)
           set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
@@ -85,6 +90,7 @@ jobs:
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
+            -DCMAKE_CXX_FLAGS="-I$QT6_INCLUDE_DIR -I$QT6_INCLUDE_DIR/QtCore -I$QT6_INCLUDE_DIR/QtGui -I$QT6_INCLUDE_DIR/QtWidgets" \
             -G Ninja 2>&1 | tail -60
 
       - name: Build brush engine
