@@ -1,3 +1,0 @@
-fspp
-smartblur
-vaguedenoiser
