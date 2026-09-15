@@ -1,26 +1,34 @@
-# Krita 6.0.3 Asli — Siap Pakai 100%
+# Krita 6.0.3 Asli — Siap Pakai untuk Windows 10/11
 
-Repo ini berisi **Krita 6.0.3 asli** dari [krita.org](https://krita.org/), siap pakai 100% seperti Krita normal.
+Repo ini berisi **Krita 6.0.3 asli** dari [krita.org](https://krita.org/), siap pakai di **Windows 10/11**.
 
-## 🚀 Cara Pakai (PALING GAMPANG — 3 langkah)
+## 🚀 Cara Pakai di Windows (2 opsi)
 
-### Untuk Linux x86_64:
+### OPSI 1: Installer (.exe) — RECOMMENDED untuk Windows 10/11
 
-```bash
-# 1. Download AppImage (368MB, 1 file)
-wget https://github.com/koenigsegggjesk0o/krita/releases/download/v6.0.3-siap-pakai/krita-6.0.3-x86_64.AppImage
+1. **Download installer:**
+   👉 https://github.com/koenigsegggjesk0o/krita/releases/download/v6.0.3-windows/krita-x64-6.0.3-setup.exe
+   (168 MB)
 
-# 2. Beri permission execute
-chmod +x krita-6.0.3-x86_64.AppImage
+2. **Klik kanan** file `krita-x64-6.0.3-setup.exe` → **Run as administrator**
 
-# 3. Jalankan!
-./krita-6.0.3-x86_64.AppImage
-```
+3. **Ikuti installer** (Next → Next → Install → Finish)
 
-**Selesai!** Krita jalan, semua fitur bisa dipakai 100%.
+4. **Buka Krita** dari Start Menu → Krita
 
-### Untuk Windows / macOS:
-Download dari https://krita.org/download/ (pilih Windows atau macOS).
+5. **BISA LANGSUNG MELUKIS!** 🎨
+
+### OPSI 2: Portable (.zip) — tanpa install
+
+1. **Download ZIP:**
+   👉 https://github.com/koenigsegggjesk0o/krita/releases/download/v6.0.3-windows/krita-x64-6.0.3-portable.zip
+   (234 MB)
+
+2. **Extract ZIP** ke folder (misal `C:\Krita\`)
+
+3. **Buka folder** → klik dua kali `krita.exe` (atau `bin\krita.exe`)
+
+4. **BISA LANGSUNG MELUKIS!** 🎨
 
 ---
 
@@ -45,42 +53,46 @@ Download dari https://krita.org/download/ (pilih Windows atau macOS).
 
 ---
 
-## 📦 Isi Repo
-
-| Folder | Isi |
-|--------|-----|
-| `krita-asli/` | Binary Krita 6.0.3 utuh (12,896 file) — hasil extract AppImage |
-| `LICENSES/` | File lisensi SPDX |
-| `.github/workflows/` | Build workflow (kalau mau build dari source) |
-
----
-
 ## 📥 Releases (Download)
 
-| Release | Isi | URL |
-|---------|-----|-----|
-| **v6.0.3-siap-pakai** ⭐ | AppImage 368MB — **TINGGAL DOWNLOAD & JALANKAN** | https://github.com/koenigsegggjesk0o/krita/releases/tag/v6.0.3-siap-pakai |
-| krita-official-v6.0.3 | Package tarball 357MB (AppImage + extract) | https://github.com/koenigsegggjesk0o/krita/releases/tag/krita-official-v6.0.3 |
-| krita-binary-files-v6.0.3 | 2 file besar >50MB (untuk folder krita-asli/) | https://github.com/koenigsegggjesk0o/krita/releases/tag/krita-binary-files-v6.0.3 |
+### Untuk Windows 10/11 ⭐ (PAKAI INI):
+
+| File | Ukuran | Cara pakai |
+|------|--------|------------|
+| **krita-x64-6.0.3-setup.exe** | 168 MB | Installer — Run as admin, Next Next Install |
+| **krita-x64-6.0.3-portable.zip** | 234 MB | Extract, jalankan krita.exe |
+
+👉 **Download di sini:** https://github.com/koenigsegggjesk0o/krita/releases/tag/v6.0.3-windows
+
+### Untuk Linux:
+
+| File | Ukuran | Cara pakai |
+|------|--------|------------|
+| krita-6.0.3-x86_64.AppImage | 368 MB | chmod +x, ./krita-6.0.3-x86_64.AppImage |
+
+👉 https://github.com/koenigsegggjesk0o/krita/releases/tag/v6.0.3-siap-pakai
 
 ---
 
 ## ❓ FAQ
 
-**Q: Kalau saya install di perangkat saya, semua fitur bisa dipakai 100%?**
-A: **YA.** Download AppImage dari Release `v6.0.3-siap-pakai`, chmod +x, jalankan. Krita jalan normal seperti install dari krita.org.
+**Q: Kalau saya install di Windows 10 Pro, semua fitur bisa dipakai 100%?**
+A: **YA.** Download `krita-x64-6.0.3-setup.exe`, install seperti biasa, Krita jalan normal 100%.
 
 **Q: Apakah ini Krita asli?**
-A: **YA.** Download langsung dari `https://download.kde.org/stable/krita/6.0.3/krita-6.0.3-x86_64.AppImage` (situs resmi KDE).
+A: **YA.** Download langsung dari `https://download.kde.org/stable/krita/6.0.3/` (situs resmi KDE).
 
 **Q: Bedanya dengan download dari krita.org?**
-A: **TIDAK ADA bedanya.** File AppImage-nya sama persis (368MB, hash sama).
+A: **TIDAK ADA bedanya.** File-nya sama persis (168MB installer, 234MB zip).
 
-**Q: Apakah butuh internet/online?**
-A: **TIDAK.** Setelah download, Krita jalan offline 100%.
+**Q: Apakah butuh internet setelah install?**
+A: **TIDAK.** Setelah install, Krita jalan offline 100%.
 
 **Q: Apakah aman?**
-A: **YA.** File diambil langsung dari krita.org (situs resmi KDE). License GPL-2.0-or-later.
+A: **YA.** File dari krita.org (situs resmi KDE). License GPL-2.0-or-later. Tidak ada virus/malware.
+
+**Q: Windows 32-bit support?**
+A: Tidak. Krita 6.0.3 hanya untuk Windows 64-bit (Windows 10/11 64-bit).
 
 ---
 
@@ -91,5 +103,5 @@ Krita dilisensikan di bawah **GPL-2.0-or-later**.
 - Website: https://krita.org/
 - Download resmi: https://krita.org/download/
 
-Repo ini hanya re-upload AppImage resmi untuk kemudahan akses.
+Repo ini hanya re-upload installer resmi untuk kemudahan akses.
 Tidak berafiliasi dengan atau diendorsi oleh proyek Krita.
