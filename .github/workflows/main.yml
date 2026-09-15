@@ -113,7 +113,7 @@ jobs:
             kritahairypaintop kritahatchingpaintop kritamypaintop \
             kritaparticlepaintop kritaroundmarkerpaintop kritasketchpaintop \
             kritaspraypaintop kritatangentnormalpaintop \
-            kritabrushhud kritabrushimport kritabrushexport \
+            \
             --parallel $(nproc) 2>&1 | tail -80
 
       - name: Collect .so
