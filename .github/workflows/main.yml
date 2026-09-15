@@ -38,7 +38,11 @@ jobs:
             libraw-dev libwebp-dev libpoppler-qt6-dev libpoppler-cpp-dev \
             python3 python3-pyqt5 pyqt5-dev-tools python3-sip-dev \
             libglm-dev libmypaint-dev libjson-c-dev intltool \
-            libxi-dev libxt-dev libxext-dev libx11-dev
+            libxi-dev libxt-dev libxext-dev libx11-dev \
+            libfreetype-dev libfontconfig1-dev libharfbuzz-dev \
+            libopengl-dev libegl-dev \
+            libopenjp2-7-dev libjpeg-dev libturbojpeg0-dev \
+            libxsimd-dev xsimd libbenchmark-dev
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
