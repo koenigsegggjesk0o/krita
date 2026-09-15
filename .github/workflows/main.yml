@@ -42,7 +42,10 @@ jobs:
             libfreetype-dev libfontconfig1-dev libharfbuzz-dev \
             libopengl-dev libegl-dev \
             libopenjp2-7-dev libturbojpeg0-dev \
-            libunibreak-dev libraqm-dev
+            libunibreak-dev libraqm-dev \
+            qtdeclarative5-dev libqt5quickcontrols2-5 \
+            qtquickcontrols2-5-dev qml-module-qtquick-controls2 \
+            qml-module-qtquick2 qml-module-qtquick-layouts
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
