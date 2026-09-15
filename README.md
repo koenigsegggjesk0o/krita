@@ -105,3 +105,47 @@ Krita dilisensikan di bawah **GPL-2.0-or-later**.
 
 Repo ini hanya re-upload installer resmi untuk kemudahan akses.
 Tidak berafiliasi dengan atau diendorsi oleh proyek Krita.
+
+---
+
+# 🎨 Feather-Krita App (NEW!)
+
+Saya juga sudah buat **app 3D drawing seperti Feather 3D** dengan brush engine Krita 100% asli!
+
+**Lihat di branch:** [feather-krita-app](https://github.com/koenigsegggjesk0o/krita/tree/feather-krita-app)
+
+## Apa itu Feather-Krita App?
+
+App melukis 3D (seperti Feather 3D di iPad) tapi untuk **Windows + Android**, dengan:
+- ✅ **Brush engine 100% Krita asli** (tidak diubah satupun baris)
+- ✅ **3D canvas** seperti Feather 3D (draw on sphere/cylinder/cone/ring)
+- ✅ **15 brush engine** dari Krita (spray, hairy, deform, dll)
+- ✅ **3D Liquify** (push/pull strokes di 3D space)
+- ✅ **Live Mirror** (symmetrical drawing X/Y/Z)
+- ✅ **Joystick control** (move/rotate/scale seperti game)
+- ✅ **Freemium model** (gratis pakai, bayar untuk export)
+
+## Struktur App:
+
+| Folder | Isi | Baris kode |
+|--------|-----|-----------|
+| `docs/FEATHER-3D-RESEARCH.md` | Riset mendalam Feather 3D | ~500 |
+| `source/src/krita_bridge/` | Bridge code Krita → 3D | ~1,200 |
+| `source/src/guide_surface/` | 3D guide surfaces | ~1,000 |
+| `source/src/stroke_manager/` | 3D stroke management | ~1,000 |
+| `source/src/export/` | Freemium export lock | ~750 |
+| `source/src/gdextension_entry.cpp` | Godot integration | ~1,000 |
+| `source/scenes/` | UI + GDScript | ~1,750 |
+| `source/CMakeLists.txt` | Build config | ~400 |
+| **TOTAL** | | **~7,700 baris** |
+
+## Cara Build:
+
+1. Install Godot 4.3+
+2. Install Qt6 + CMake + compiler
+3. Build Krita brush engine dari `krita-source/libs/brush/`
+4. Build GDExtension: `cmake .. && make`
+5. Buka `source/project.godot` di Godot
+6. Run!
+
+Detail: [README di branch feather-krita-app](https://github.com/koenigsegggjesk0o/krita/blob/feather-krita-app/README.md)
