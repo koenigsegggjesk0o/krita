@@ -50,9 +50,13 @@ jobs:
           # immer
           git clone --depth 1 https://github.com/arximboldi/immer.git /tmp/immer
           cd /tmp/immer && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_BENCHMARKS=OFF && sudo cmake --build build --target install -j$(nproc)
-          # lager (disable debugger web UI - butuh sass)
+          # lager (pakai nama flag yang benar: lager_BUILD_*, install sass untuk debugger resources)
           git clone --depth 1 https://github.com/arximboldi/lager.git /tmp/lager
-          cd /tmp/lager && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF -DLAGER_BUILD_DEBUGGER=OFF && sudo cmake --build build --target install -j$(nproc)
+          cd /tmp/lager && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr \
+            -Dlager_BUILD_TESTS=OFF -Dlager_BUILD_FAILURE_TESTS=OFF \
+            -Dlager_BUILD_EXAMPLES=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF \
+            -Dlager_BUILD_DOCS=OFF -Dlager_EMBED_RESOURCES_PATH=OFF \
+            && sudo cmake --build build --target install -j$(nproc)
 
       - name: Clone Krita source
         run: git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
