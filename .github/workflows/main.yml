@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 360  # 6 jam (GitHub Actions limit) — build Krita full butuh 2-4 jam
     steps:
       - uses: actions/checkout@v4
 
@@ -109,19 +109,80 @@ jobs:
           grep -E "CMake Error|Could NOT find.*Required|FAILED" /tmp/configure.log | head -20
           exit $EXIT
 
-      - name: Build brush engine
+      - name: Build Krita FULL (semua target — app utuh bisa gambar)
         run: |
           cd /opt/krita
           set -o pipefail
-          cmake --build build --target \
-            kritalibbrush kritaimage kritalibpaintop kritapigment kritaresources \
-            kritadefaultpaintops kritacolorsmudgepaintop kritacurvepaintop \
-            kritadeformpaintop kritaexperimentpaintop kritagridpaintop \
-            kritahairypaintop kritahatchingpaintop kritamypaintop \
-            kritaparticlepaintop kritaroundmarkerpaintop kritasketchpaintop \
-            kritaspraypaintop kritatangentnormalpaintop \
-            \
-            --parallel $(nproc) 2>&1 | tail -80
+          # Build SEMUA target Krita (app utuh, bukan cuma brush library)
+          # Ini termasuk: krita app, semua plugin, semua resource, UI, canvas, dll
+          # Estimasi: 1.5-3 jam di GitHub Actions runner
+          cmake --build build --parallel $(nproc) 2>&1 | tail -100
+
+      - name: Install Krita ke prefix
+        run: |
+          cd /opt/krita
+          cmake --install build
+          echo "=== Installed to /opt/krita-install ==="
+          ls /opt/krita-install/
+          echo ""
+          echo "=== bin/ ==="
+          ls /opt/krita-install/bin/ | head -10
+          echo ""
+          echo "=== lib/ ==="
+          ls /opt/krita-install/lib/ | wc -l
+          echo "library files"
+          echo ""
+          echo "=== plugins/ ==="
+          find /opt/krita-install -name "*.so" -path "*kritaplugins*" | wc -l
+          echo "krita plugins"
+          echo ""
+          echo "=== resources/ ==="
+          find /opt/krita-install/share/krita -type d | head -10
+
+      - name: Package jadi tarball (bisa dijalankan di Linux)
+        run: |
+          cd /opt
+          # Buat tarball berisi install prefix + dependency runtime utama
+          tar czf /tmp/krita-full.tar.gz krita-install/
+          ls -lh /tmp/krita-full.tar.gz
+          # Copy ke artifact
+          mkdir -p artifact
+          cp /tmp/krita-full.tar.gz artifact/
+          # Buat README cara install
+          cat > artifact/README-install.txt << 'EOF'
+          ===================================
+            KRITA v6.0.4 FULL BUILD
+          ===================================
+
+          Cara install di Linux (Ubuntu 24.04):
+
+          1. Extract tarball:
+             tar xzf krita-full.tar.gz -C /opt/
+
+          2. Install dependency runtime:
+             sudo apt install qtbase5-dev libkf5config5 libkf5i18n5 \
+                 libkf5coreaddons5 libkf5widgetsaddons5 libkf5xmlgui5 \
+                 libkf5configwidgets5 libkf5kiowidgets5 libkf5parts5 \
+                 libboost-system1.83.0 libeigen3-dev libexiv2-27 \
+                 libfftw3-3 libgsl27 liblcms2-2 libopenexr-3-2-31 \
+                 libquazip5-1t64 libgif7 libheif1 libjpeg-turbo8 \
+                 libpng16-16t64 libtiff6 libraw23t64 libwebp7 \
+                 libmypaint-dev libjson-c5 libxi6 libxt6 libxext6 \
+                 libx11-6 libfreetype6 libfontconfig1 libharfbuzz0b \
+                 libopengl0 libegl1 libopenjp2-7 libturbojpeg0 \
+                 libunibreak6 libraqm0
+
+          3. Run Krita:
+             export LD_LIBRARY_PATH=/opt/krita-install/lib:$LD_LIBRARY_PATH
+             /opt/krita-install/bin/krita
+
+          4. Anda bisa langsung melukis! Pilih brush, klik-drag di canvas.
+
+          Source code: github.com/koenigsegggjesk0o/krita (krita-source/)
+          License: GPL-2.0-or-later
+          EOF
+          echo "=== Artifact ready ==="
+          ls -lh artifact/
 
       - name: Collect .so
         if: always()
@@ -159,13 +220,14 @@ jobs:
             file "$so" | grep -q "ELF.*shared object" && echo "OK: $(basename $so)" || (echo "BAD: $so"; exit 1)
           done
 
-      - name: Upload artifact
+      - name: Upload Krita full build (tarball bisa dijalankan)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: krita-brush-engine-built
+          name: krita-full-build
           path: artifact/
           retention-days: 90
+          compression-level: 6
 
       - name: Summary
         if: always()
