@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX metadata_key_index ON metadata (table_name ASC, foreign_id ASC, key ASC);

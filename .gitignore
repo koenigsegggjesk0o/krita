@@ -1,15 +1,14 @@
-# Build artifacts
-build/
-*.o
-*.so
-*.a
-*.AppImage
+# File >50MB (GitHub limit) - diupload via Release
+krita-asli/usr/lib/kritaplugins/krita_gmic_qt.so
+krita-asli/usr/lib/libOpenColorIO.so.2.5
 
-# IDE files
+# Build artifacts
+*.o
+build/
+
+# IDE
 .vscode/
 .idea/
 *.swp
-
-# OS files
 .DS_Store
 Thumbs.db

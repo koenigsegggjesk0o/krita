@@ -1,0 +1,42 @@
+module org.krita.components
+linktarget kritaqmlcomponents
+optional plugin kritaqmlcomponents
+classname org_krita_componentsPlugin
+typeinfo kritaqmlcomponents.qmltypes
+prefer :/qt/qml/org/krita/components/
+internal TextInputWithSelectionRange textinput/TextInputWithSelectionRange.qml
+internal TextInputWithPrefixAndSuffix textinput/TextInputWithPrefixAndSuffix.qml
+internal WarningOverlay overlays/WarningOverlay.qml
+internal SliderOverlay overlays/SliderOverlay.qml
+internal ParseSpinBoxContentItem spinbox/ParseSpinBoxContentItem.qml
+internal SliderSpinBoxManipulator sliderspinbox/SliderSpinBoxManipulator.qml
+internal SliderSpinBoxRangeSwitch sliderspinbox/SliderSpinBoxRangeSwitch.qml
+internal SliderSpinBoxContentItem sliderspinbox/SliderSpinBoxContentItem.qml
+internal AngleSelectorUtil angleselector/AngleSelectorUtil.js
+internal AngleGauge angleselector/AngleGauge.qml
+internal TabButtonBase +Fusion/TabButtonBase.qml
+internal ToolSeparatorBase +Fusion/ToolSeparatorBase.qml
+internal WindowFocusChecker +qt5/WindowFocusChecker.qml
+internal PopupBase +qquickwidget/PopupBase.qml
+GroupButton 1.0 GroupButton.qml
+OptionButtonStrip 1.0 OptionButtonStrip.qml
+ThemedControl 1.0 ThemedControl.qml
+IntParseSpinBox 1.0 IntParseSpinBox.qml
+DoubleSpinBox 1.0 DoubleSpinBox.qml
+DoubleParseSpinBox 1.0 DoubleParseSpinBox.qml
+IntSliderSpinBox 1.0 IntSliderSpinBox.qml
+DoubleSliderSpinBox 1.0 DoubleSliderSpinBox.qml
+ToolTipBase 1.0 ToolTipBase.qml
+TabButtonBase 1.0 TabButtonBase.qml
+ToolSeparatorBase 1.0 ToolSeparatorBase.qml
+CurveWidget 1.0 CurveWidget.qml
+AngleSelector 1.0 AngleSelector.qml
+InformingTextInput 1.0 InformingTextInput.qml
+WindowFocusChecker 1.0 WindowFocusChecker.qml
+ResourceView 1.0 ResourceView.qml
+ResourcePopup 1.0 ResourcePopup.qml
+ResourceDelegateBase 1.0 ResourceDelegateBase.qml
+FontFamilyDelegate 1.0 FontFamilyDelegate.qml
+PopupBase 1.0 PopupBase.qml
+CssStylePresetDelegate 1.0 CssStylePresetDelegate.qml
+
