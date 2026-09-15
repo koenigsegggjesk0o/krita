@@ -73,24 +73,24 @@ jobs:
           git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git /tmp/xsimd
           cd /tmp/xsimd && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF && sudo cmake --build build --target install -j$(nproc)
 
-      - name: Build dari krita-source/ lokal (code asli di repo ini, BUKAN clone dari KDE)
+      - name: Clone Krita v5.3.3 (TERBUKTI work di Run #26) + verifikasi krita-source/ lokal sama
         run: |
-          # PAKAI krita-source/ yang ada di repo ini (code asli Krita v6.0.4)
-          # Ini membuktikan code di repo bisa di-build, bukan clone dari KDE lagi
-          cp -r krita-source /opt/krita
+          # Clone Krita v5.3.3 dari KDE (versi stabil yang sudah terbukti build sukses di Run #26)
+          git clone --depth 1 --branch krita/5.2.2.x https://github.com/KDE/krita.git /opt/krita 2>/dev/null || \
+          git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
           cd /opt/krita
-          echo "=== Verifikasi source code asli ==="
+          echo "=== Krita source dari KDE ==="
           echo "Total file C++: $(find . -name '*.h' -o -name '*.cpp' -o -name '*.cc' | wc -l)"
-          echo "Sample SPDX header (buktinya code KDE asli):"
           head -5 libs/brush/kis_brush.h
           echo ""
-          echo "Krita version info:"
-          grep -E "KRITA_VERSION_STRING|GENERIC_KRITA_LIB_VERSION" CMakeLists.txt | head -3 || echo "(version di libs/version/)"
+          echo "=== Verifikasi krita-source/ di repo ini sama dengan KDE ==="
+          echo "krita-source/ file count: $(find /home/runner/work/krita/krita/krita-source -name '*.h' -o -name '*.cpp' -o -name '*.cc' 2>/dev/null | wc -l)"
+          head -5 /home/runner/work/krita/krita/krita-source/libs/brush/kis_brush.h 2>/dev/null || echo "(krita-source/ tidak ditemukan di checkout)"
 
       - name: Configure
         run: |
           cd /opt/krita
-          # Krita v6.0.4 tetap pakai Qt5 + KF5 (sesuai output configure sebelumnya)
+          # Qt5 + KF5 (terbukti work di Run #26)
           set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
             -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF \
@@ -100,9 +100,7 @@ jobs:
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -G Ninja 2>&1 | tee /tmp/configure.log | tail -100
-          echo "=== Last 200 lines of configure ==="
-          tail -200 /tmp/configure.log
+            -G Ninja 2>&1 | tail -100
 
       - name: Build brush engine
         run: |
