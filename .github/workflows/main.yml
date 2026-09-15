@@ -76,15 +76,20 @@ jobs:
       - name: Configure
         run: |
           cd /opt/krita
-          # Find ALL Qt6 private header paths (QtCore, QtGui, QtWidgets)
-          QT6_BASE=$(find /usr/include -type d -name "qt6" 2>/dev/null | head -1)
-          QT6_GUI_PRIVATE=$(find /usr/include -type d -name "private" -path "*QtGui/*" 2>/dev/null | head -1)
-          QT6_CORE_PRIVATE=$(find /usr/include -type d -name "private" -path "*QtCore/*" 2>/dev/null | head -1)
-          QT6_WIDGETS_PRIVATE=$(find /usr/include -type d -name "private" -path "*QtWidgets/*" 2>/dev/null | head -1)
+          # Qt6 private headers - cari pakai dpkg untuk dapat path yang benar
+          QT6_ARCH_DIR=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "x86_64-linux-gnu")
+          QT6_BASE="/usr/include/${QT6_ARCH_DIR}/qt6"
+          # Cari versi Qt6 yang terinstall
+          QT6_VER=$(ls ${QT6_BASE}/QtGui/ 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+$" | head -1)
           echo "Qt6 base: $QT6_BASE"
+          echo "Qt6 version: $QT6_VER"
+          # Path private headers Qt6 (version-specific)
+          QT6_GUI_PRIVATE="${QT6_BASE}/QtGui/${QT6_VER}/QtGui/private"
+          QT6_CORE_PRIVATE="${QT6_BASE}/QtCore/${QT6_VER}/QtCore/private"
+          QT6_WIDGETS_PRIVATE="${QT6_BASE}/QtWidgets/${QT6_VER}/QtWidgets/private"
           echo "Qt6 QtGui private: $QT6_GUI_PRIVATE"
           echo "Qt6 QtCore private: $QT6_CORE_PRIVATE"
-          echo "Qt6 QtWidgets private: $QT6_WIDGETS_PRIVATE"
+          ls "$QT6_GUI_PRIVATE" | head -3 || echo "QtGui private NOT FOUND"
           # Disable features yang butuh package kompleks (tidak relevan untuk brush engine)
           set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
@@ -94,7 +99,7 @@ jobs:
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -DCMAKE_CXX_FLAGS="-I$QT6_BASE -I$QT6_BASE/QtCore -I$QT6_BASE/QtGui -I$QT6_BASE/QtWidgets -I$QT6_CORE_PRIVATE -I$QT6_GUI_PRIVATE -I$QT6_WIDGETS_PRIVATE" \
+            -DCMAKE_CXX_FLAGS="-I${QT6_BASE} -I${QT6_BASE}/QtCore -I${QT6_BASE}/QtGui -I${QT6_BASE}/QtWidgets -I${QT6_CORE_PRIVATE} -I${QT6_GUI_PRIVATE} -I${QT6_WIDGETS_PRIVATE}" \
             -G Ninja 2>&1 | tail -60
 
       - name: Build brush engine
