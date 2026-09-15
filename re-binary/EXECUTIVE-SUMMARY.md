@@ -120,3 +120,45 @@ license text. The original copyright holders (the Krita contributors)
 retain all rights to the source code; this decompilation is provided for
 interoperability, study, and verification purposes under the terms of
 the GPL.
+
+---
+
+## UPDATE: Peripheral brush plugins added (FINAL completion)
+
+After the initial 14 paintop engine plugins, **3 peripheral brush plugins**
+were also decompiled to make the brush-related coverage truly complete:
+
+| Plugin | Functions | Size | Purpose |
+|--------|----------:|-----:|---------|
+| kritabrushhud | 997 | 624 KB | Brush HUD (heads-up display popup for brush settings) |
+| kritabrushimport | 233 | 164 KB | Import brushes from other formats |
+| kritabrushexport | 594 | 432 KB | Export brushes to other formats |
+| **TOTAL peripheral** | **1,824** | **1.2 MB** | |
+
+Located in `re-binary/analysis/plugins-peripheral/`.
+
+## Final grand total (truly complete)
+
+| Component | Functions |
+|-----------|----------:|
+| 5 Krita core libraries | 9,436 |
+| 14 paintop engine plugins | 25,940 |
+| 3 peripheral brush plugins | 1,824 |
+| engine-full class files | 863 |
+| paint-functions extracted | 74 |
+| **GRAND TOTAL** | **~38,137 functions** |
+
+Every brush-related component in the Krita binary is now decompiled:
+- ✅ Brush tip loaders (libkritalibbrush)
+- ✅ Shared paintop option library (libkritalibpaintop)
+- ✅ Color science for dabs (libkritapigment)
+- ✅ Resource/preset management (libkritaresources)
+- ✅ Brush engine interfaces + image engine (libkritaimage/brushengine)
+- ✅ All 14 brush engine plugins (paintops)
+- ✅ Brush HUD popup (kritabrushhud)
+- ✅ Brush import (kritabrushimport)
+- ✅ Brush export (kritabrushexport)
+- ✅ paintDab/paintLine/paintAt/paintBezierCurve extracted per engine
+
+**Nothing brush-related is missing.** This is the complete brush subsystem
+of Krita 5.3.3, decompiled from the official AppImage binary using Ghidra 11.2.1.

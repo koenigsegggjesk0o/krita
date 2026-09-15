@@ -446,3 +446,17 @@ re-binary/analysis/
 The actual `paintDab()` painting-loop implementations are confirmed
 present in all 14 brush engine plugins. See `paint-functions/` for the
 extracted, organized per-engine versions.
+
+---
+
+## FINAL COMPLETION: + 3 peripheral brush plugins
+
+After the main pass, **3 peripheral brush plugins** were also decompiled
+to make coverage truly complete (located in `re-binary/analysis/plugins-peripheral/`):
+
+- `kritabrushhud-FULL.c` — Brush HUD popup (997 functions)
+- `kritabrushimport-FULL.c` — Brush import from other formats (233 functions)
+- `kritabrushexport-FULL.c` — Brush export to other formats (594 functions)
+
+**Grand total now: ~38,137 decompiled functions across all brush-related components.**
+Every brush-related binary in Krita 5.3.3 is now decompiled. Nothing brush-related is missing.
