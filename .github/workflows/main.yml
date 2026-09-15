@@ -47,6 +47,9 @@ jobs:
             qtdeclarative5-dev libqt5quickcontrols2-5 \
             qtquickcontrols2-5-dev qml-module-qtquick-controls2 \
             qml-module-qtquick2 qml-module-qtquick-layouts
+          # HAPUS Qt5 base dev supaya Krita pakai Qt6
+          sudo apt-get remove -y qtbase5-dev qt5-qmake || true
+          sudo apt-get autoremove -y || true
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
