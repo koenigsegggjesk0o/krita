@@ -41,7 +41,8 @@ jobs:
             libxi-dev libxt-dev libxext-dev libx11-dev \
             libfreetype-dev libfontconfig1-dev libharfbuzz-dev \
             libopengl-dev libegl-dev \
-            libopenjp2-7-dev libturbojpeg0-dev
+            libopenjp2-7-dev libturbojpeg0-dev \
+            libunibreak-dev libraqm-dev
 
       - name: Install Catch2 + Zug + immer + lager (dependency chain)
         run: |
