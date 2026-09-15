@@ -62,6 +62,9 @@ jobs:
             -Dlager_BUILD_EXAMPLES=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF \
             -Dlager_BUILD_DOCS=OFF -Dlager_EMBED_RESOURCES_PATH=OFF \
             && sudo cmake --build build --target install -j$(nproc)
+          # xsimd (REQUIRED by Krita, tidak ada di apt — build dari source)
+          git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git /tmp/xsimd
+          cd /tmp/xsimd && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF && sudo cmake --build build --target install -j$(nproc)
 
       - name: Clone Krita source
         run: git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
@@ -70,6 +73,7 @@ jobs:
         run: |
           cd /opt/krita
           # Disable features yang butuh package kompleks (tidak relevan untuk brush engine)
+          set -o pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
             -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 \
             -DWITH_HEIF=OFF -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON \
@@ -77,11 +81,12 @@ jobs:
             -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
             -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
             -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
-            -G Ninja 2>&1 | tail -40
+            -G Ninja 2>&1 | tail -60
 
       - name: Build brush engine
         run: |
           cd /opt/krita
+          set -o pipefail
           cmake --build build --target \
             kritalibbrush kritaimage kritalibpaintop kritapigment kritaresources \
             krita-defaultpaintops krita-colorsmudgepaintop krita-curvepaintop \
@@ -90,7 +95,7 @@ jobs:
             krita-particlepaintop krita-roundmarkerpaintop krita-sketchpaintop \
             krita-spraypaintop krita-tangentnormalpaintop \
             krita-brushhud krita-brushimport krita-brushexport \
-            --parallel $(nproc) 2>&1 | tail -50
+            --parallel $(nproc) 2>&1 | tail -80
 
       - name: Collect .so
         if: always()
