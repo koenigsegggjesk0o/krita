@@ -69,7 +69,15 @@ jobs:
       - name: Configure
         run: |
           cd /opt/krita
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 -DWITH_HEIF=ON -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON -DWITH_RAW=ON -DWITH_GIF=ON -DWITH_FFTW3=ON -DWITH_OPENEXR=ON -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF -DWITH_WEBP=ON -G Ninja
+          # Disable features yang butuh package kompleks (tidak relevan untuk brush engine)
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install \
+            -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 \
+            -DWITH_HEIF=OFF -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON \
+            -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF \
+            -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF \
+            -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF \
+            -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF \
+            -G Ninja 2>&1 | tail -40
 
       - name: Build brush engine
         run: |
