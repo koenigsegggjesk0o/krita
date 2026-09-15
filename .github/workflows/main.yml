@@ -4,12 +4,18 @@ on:
   push:
     branches: [ main ]
     paths: [ 'build-docker/**' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
       - name: Install deps
         run: |
           sudo apt-get update
@@ -19,10 +25,11 @@ jobs:
             libkf5config-dev libkf5widgetsaddons-dev libkf5completion-dev \
             libkf5coreaddons-dev libkf5guiaddons-dev libkf5i18n-dev \
             libkf5itemviews-dev libkf5itemmodels-dev libkf5xmlgui-dev \
-            libkf5configwidgets-dev libkf5iconthemes-dev libkf5kiocore-dev \
+            libkf5configwidgets-dev libkf5iconthemes-dev \
             libkf5service-dev libkf5windowsystem-dev libkf5notifications-dev \
             libkf5parts-dev libkf5plotting-dev libkf5kdelibs4support-dev \
             libkf5crash-dev libkf5archive-dev libkf5sonnet-dev \
+            libkf5kio-dev \
             libboost-dev libboost-system-dev libboost-filesystem-dev \
             libeigen3-dev libexiv2-dev libfftw3-dev libgsl-dev \
             liblcms2-dev libopenexr-dev libilmbase-dev \
@@ -30,26 +37,40 @@ jobs:
             libgif-dev libheif-dev libjpeg-dev libpng-dev libtiff-dev \
             libraw-dev libwebp-dev libpoppler-qt6-dev libpoppler-cpp-dev \
             python3 python3-pyqt5 pyqt5-dev-tools python3-sip-dev \
-            libglm-dev libmypaint-dev json-c intltool
+            libglm-dev libmypaint-dev libjson-c-dev intltool
+
       - name: Install lager + immer
         run: |
           git clone --depth 1 https://github.com/arximboldi/immer.git /tmp/immer
           git clone --depth 1 https://github.com/arximboldi/lager.git /tmp/lager
           cd /tmp/immer && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF && sudo cmake --build build --target install -j$(nproc)
           cd /tmp/lager && cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF && sudo cmake --build build --target install -j$(nproc)
+
       - name: Clone Krita source
         run: git clone --depth 1 https://github.com/KDE/krita.git /opt/krita
+
       - name: Configure
         run: |
           cd /opt/krita
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/krita-install -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 -DWITH_HEIF=ON -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON -DWITH_RAW=ON -DWITH_GIF=ON -DWITH_FFTW3=ON -DWITH_OPENEXR=ON -DWITH_KDE=ON -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF -DWITH_WEBP=ON -G Ninja
+
       - name: Build brush engine
         run: |
           cd /opt/krita
-          cmake --build build --target kritalibbrush kritaimage kritalibpaintop kritapigment kritaresources krita-defaultpaintops krita-colorsmudgepaintop krita-curvepaintop krita-deformpaintop krita-experimentpaintop krita-gridpaintop krita-hairypaintop krita-hatchingpaintop krita-mypaintop krita-particlepaintop krita-roundmarkerpaintop krita-sketchpaintop krita-spraypaintop krita-tangentnormalpaintop krita-brushhud krita-brushimport krita-brushexport --parallel $(nproc) 2>&1 | tail -30
+          cmake --build build --target \
+            kritalibbrush kritaimage kritalibpaintop kritapigment kritaresources \
+            krita-defaultpaintops krita-colorsmudgepaintop krita-curvepaintop \
+            krita-deformpaintop krita-experimentpaintop krita-gridpaintop \
+            krita-hairypaintop krita-hatchingpaintop krita-mypaintop \
+            krita-particlepaintop krita-roundmarkerpaintop krita-sketchpaintop \
+            krita-spraypaintop krita-tangentnormalpaintop \
+            krita-brushhud krita-brushimport krita-brushexport \
+            --parallel $(nproc) 2>&1 | tail -50
+
       - name: Collect .so
+        if: always()
         run: |
-          mkdir -p artifact/lib artifact/plugins
+          mkdir -p artifact/lib artifact/plugins artifact/symbols
           find /opt/krita/build -name "libkritalibbrush.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
           find /opt/krita/build -name "libkritaimage.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
           find /opt/krita/build -name "libkritalibpaintop.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
@@ -57,18 +78,45 @@ jobs:
           find /opt/krita/build -name "libkritaresources.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
           find /opt/krita/build -name "libkritaglobal.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
           find /opt/krita/build -name "libkritawidgetutils.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
+          find /opt/krita/build -name "libkritaversion.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
+          find /opt/krita/build -name "libkritamultiarch.so*" -exec cp -P {} artifact/lib/ \; 2>/dev/null
           find /opt/krita/build -path "*kritaplugins*" -name "*paintop*.so" -exec cp {} artifact/plugins/ \; 2>/dev/null
           find /opt/krita/build -name "kritabrush*.so" -exec cp {} artifact/plugins/ \; 2>/dev/null
-          ls -lh artifact/lib/ artifact/plugins/
+          {
+            echo "# Krita Brush Engine - Build Output"
+            echo "Built: $(date -u)"
+            echo "Source: github.com/KDE/krita (master)"
+            echo "License: GPL-2.0-or-later"
+            echo ""
+            echo "## Library files (lib/)"
+            ls -lh artifact/lib/ 2>/dev/null
+            echo ""
+            echo "## Plugin files (plugins/)"
+            ls -lh artifact/plugins/ 2>/dev/null
+          } > artifact/MANIFEST.txt
+          cat artifact/MANIFEST.txt
+
       - name: Verify .so valid
         run: |
           for so in artifact/lib/*.so.* artifact/plugins/*.so; do
             [ -f "$so" ] || continue
             file "$so" | grep -q "ELF.*shared object" && echo "OK: $(basename $so)" || (echo "BAD: $so"; exit 1)
           done
+
       - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: krita-brush-engine-built
           path: artifact/
           retention-days: 90
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Build Result" >> $GITHUB_STEP_SUMMARY
+          if [ -f artifact/MANIFEST.txt ]; then
+            cat artifact/MANIFEST.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Build failed - check logs above" >> $GITHUB_STEP_SUMMARY
+          fi
