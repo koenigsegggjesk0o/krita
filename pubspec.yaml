@@ -35,7 +35,7 @@ dependencies:
   vector_math: ^2.1.4
   
   # Image Processing
-  image: ^4.2.0
+  image: ^3.3.0
   
   # Archive / XML (for Krita .kpp brush preset loading)
   archive: ^3.4.0
