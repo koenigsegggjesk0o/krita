@@ -152,7 +152,7 @@ class _LogoChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
         boxShadow: AppTheme.glassShadow,
       ),
-      child: const Icon(Icons.feather, color: Colors.white, size: 20),
+      child: const Icon(Icons.brush, color: Colors.white, size: 20),
     );
   }
 }

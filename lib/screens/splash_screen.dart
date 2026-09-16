@@ -283,7 +283,7 @@ class _LogoBadge extends StatelessWidget {
         ],
         border: Border.all(color: Colors.white24, width: 1.5),
       ),
-      child: const Icon(Icons.feather, color: Colors.white, size: 56),
+      child: const Icon(Icons.brush, color: Colors.white, size: 56),
     );
   }
 }

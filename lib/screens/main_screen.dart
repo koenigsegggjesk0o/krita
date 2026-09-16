@@ -27,7 +27,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:vector_math/vector_math.dart';
+import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -37,8 +37,6 @@ import 'package:feather_krita/theme/app_theme.dart';
 import 'package:feather_krita/state/editor_state.dart';
 import 'package:feather_krita/engine/stroke_manager.dart';
 import 'package:feather_krita/engine/camera_controller.dart';
-import 'package:feather_krita/engine/guide_surface.dart';
-import 'package:feather_krita/models/stroke.dart';
 import 'package:feather_krita/models/export_format.dart';
 import 'package:feather_krita/models/brush_preset.dart';
 
@@ -154,7 +152,7 @@ class _MainScreenState extends State<MainScreen> {
       }
     }
     if (count == 0) return null;
-    return sum.scale(1.0 / count);
+    return sum..scale(1.0 / count);
   }
 
   // ----- Modal screens ---------------------------------------------------
@@ -218,8 +216,7 @@ class _MainScreenState extends State<MainScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => GlassContainer(
         padding: const EdgeInsets.all(16),
-        borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppTheme.radiusXLarge)),
+        borderRadius: AppTheme.radiusXLarge,
         color: AppTheme.darkGlass.withOpacity(0.7),
         child: SafeArea(
           child: Column(
@@ -352,7 +349,7 @@ class _MainScreenState extends State<MainScreen> {
         case ExportFormat.jpeg:
         case ExportFormat.gif:
           final image = await _captureCanvas();
-          final Uint8List bytes;
+          final List<int> bytes;
           if (format == ExportFormat.png) {
             bytes = img.encodePng(image);
           } else if (format == ExportFormat.jpeg) {

@@ -13,7 +13,7 @@
 //
 // Both classes serialize to JSON for save / load and undo / redo.
 
-import 'package:vector_math/vector_math.dart';
+import 'package:vector_math/vector_math_64.dart';
 
 import 'package:feather_krita/utils/vector_math_utils.dart';
 
@@ -22,9 +22,9 @@ class StrokePoint {
   StrokePoint({
     required this.position,
     this.pressure = 0.5,
-    this.tilt = const Vector2(0, 0),
+    Vector2? tilt,
     this.time = 0.0,
-  });
+  }) : tilt = tilt ?? Vector2.zero();
 
   /// Position in stroke-local space.
   Vector3 position;
@@ -261,7 +261,7 @@ class Stroke {
     for (final p in points) {
       sum.add(transform.transform3(p.position.clone()));
     }
-    return sum.scale(1.0 / points.length);
+    return sum..scale(1.0 / points.length);
   }
 
   /// Returns the world-space axis-aligned bounding box.

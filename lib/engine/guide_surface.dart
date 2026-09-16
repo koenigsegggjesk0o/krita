@@ -16,7 +16,7 @@
 
 import 'dart:math' as math;
 
-import 'package:vector_math/vector_math.dart';
+import 'package:vector_math/vector_math_64.dart';
 
 import 'package:feather_krita/utils/vector_math_utils.dart';
 
@@ -145,11 +145,12 @@ class GuideSurface {
     required this.mesh,
     Matrix4? transform,
     List<SurfaceControlPoint>? controlPoints,
-    this.color = const Vector3(0.4, 0.6, 1.0),
+    Vector3? color,
     this.visible = true,
     this.locked = false,
   })  : transform = transform ?? Matrix4.identity(),
-        controlPoints = controlPoints ?? [];
+        controlPoints = controlPoints ?? [],
+        color = color ?? Vector3(0.4, 0.6, 1.0);
 
   final GuideSurfaceType type;
   final SurfaceMesh mesh;
@@ -541,7 +542,7 @@ class GuideSurface {
 
     // Build frames along the spline (parallel transport).
     var prevNormal = Vector3(0, 1, 0);
-    if (prevNormal.dot(tangents[0].abs()) > 0.99) {
+    if (prevNormal.dot(tangents[0]).abs() > 0.99) {
       prevNormal = Vector3(1, 0, 0);
     }
     final frames = <List<Vector3>>[];
@@ -660,7 +661,7 @@ class GuideSurface {
 
     var bestT = maxDistance;
     var bestTri = -1;
-    var bestBary = const Vector3.zero();
+    var bestBary = Vector3.zero();
     for (var i = 0; i < mesh.indices.length; i += 3) {
       final i0 = mesh.indices[i];
       final i1 = mesh.indices[i + 1];

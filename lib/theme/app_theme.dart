@@ -41,7 +41,7 @@ class AppTheme {
   // Glass effect colors
   static const Color glassBlur = Color(0x30FFFFFF);
   static const Color glassBorder = Color(0x20FFFFFF);
-  static const Color glassShadow = Color(0x40000000);
+  static const Color glassShadowColor = Color(0x40000000);
 
   // Accent
   static const Color accent = primaryBlue;
@@ -74,7 +74,7 @@ class AppTheme {
   // Shadows
   static List<BoxShadow> get glassShadow => [
     BoxShadow(
-      color: glassShadow,
+      color: glassShadowColor,
       blurRadius: 20,
       offset: const Offset(0, 4),
     ),

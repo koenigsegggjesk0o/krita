@@ -15,7 +15,7 @@
 
 import 'dart:math' as math;
 
-import 'package:vector_math/vector_math.dart';
+import 'package:vector_math/vector_math_64.dart';
 
 /// Result of a ray-triangle intersection.
 class RayTriangleHit {
@@ -222,11 +222,11 @@ class VectorMathUtils {
         axis = Vector3(0, 1, 0).cross(f);
       }
       axis.normalize();
-      return Quaternion.fromAxisAngle(axis, math.pi);
+      return Quaternion.axisAngle(axis, math.pi);
     }
     final axis = f.cross(t);
     final angle = math.acos(dot.clamp(-1.0, 1.0));
-    return Quaternion.fromAxisAngle(axis.normalized(), angle);
+    return Quaternion.axisAngle(axis.normalized(), angle);
   }
 
   /// Builds a "look rotation" — rotation that points the local +Z axis
@@ -245,9 +245,7 @@ class VectorMathUtils {
       r.y, newUp.y, f.y, // column 1
       r.z, newUp.z, f.z, // column 2
     );
-    final q = Quaternion.identity();
-    q.setFromRotationMatrix(m);
-    return q;
+    return Quaternion.fromRotation(m);
   }
 
   /// Extracts the axis-angle representation of a quaternion.
@@ -305,7 +303,7 @@ class VectorMathUtils {
       m.entry(0, 1) / sy, m.entry(1, 1) / sy, m.entry(2, 1) / sy, // col 1
       m.entry(0, 2) / sz, m.entry(1, 2) / sz, m.entry(2, 2) / sz, // col 2
     );
-    final rotation = Quaternion.identity()..setFromRotationMatrix(rotationMatrix);
+    final rotation = Quaternion.fromRotation(rotationMatrix);
     return (translation, rotation, Vector3(sx, sy, sz));
   }
 

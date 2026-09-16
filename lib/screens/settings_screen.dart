@@ -520,7 +520,7 @@ class _StylusCard extends StatelessWidget {
             max: 1,
             divisions: 100,
             label: 'Tilt sensitivity',
-            icon: Icons.tilt_rounded,
+            icon: Icons.rounded_corner,
             accent: AppTheme.toolSelect,
             onChanged: (v) => onChanged('stylus.tiltSensitivity', v),
             valueFormatter: (v) => '${(v * 100).round()}%',

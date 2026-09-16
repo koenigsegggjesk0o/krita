@@ -14,13 +14,11 @@
 // State changes are emitted via [notifyListeners] (ChangeNotifier).
 
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:vector_math/vector_math.dart';
+import 'package:vector_math/vector_math_64.dart';
 
 import 'package:feather_krita/models/stroke.dart';
-import 'package:feather_krita/utils/vector_math_utils.dart';
 
 /// Liquify deformation modes supported by [StrokeManager.applyLiquify].
 enum LiquifyMode {
@@ -156,6 +154,11 @@ class StrokeManager extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Public hook that re-broadcasts the current state to listeners. Use this
+  /// after mutating a [Stroke] field directly (e.g. toggling visibility)
+  /// so the UI rebuilds.
+  void notify() => notifyListeners();
 
   /// True if there is at least one undo entry available.
   bool get canUndo => _undoStack.isNotEmpty;
@@ -339,8 +342,8 @@ class StrokeManager extends ChangeNotifier {
         moveSelection(Vector3(input.x * moveStep, input.y * moveStep, 0));
         break;
       case TransformMode.rotate:
-        final qX = Quaternion.fromAxisAngle(Vector3(1, 0, 0), input.y * rotateStep);
-        final qY = Quaternion.fromAxisAngle(Vector3(0, 1, 0), input.x * rotateStep);
+        final qX = Quaternion.axisAngle(Vector3(1, 0, 0), input.y * rotateStep);
+        final qY = Quaternion.axisAngle(Vector3(0, 1, 0), input.x * rotateStep);
         rotateSelection(qY * qX);
         break;
       case TransformMode.scale:
@@ -435,7 +438,7 @@ class StrokeManager extends ChangeNotifier {
           final dist = d.length;
           if (dist >= radius) continue;
           final falloff = (1 - dist / radius);
-          final q = Quaternion.fromAxisAngle(axis, angle * falloff);
+          final q = Quaternion.axisAngle(axis, angle * falloff);
           final rotated = q.rotate(d);
           p.setFrom(center + rotated);
         }
@@ -560,8 +563,7 @@ class StrokeManager extends ChangeNotifier {
       m.entry(0, 1) * sx, m.entry(1, 1) * sy, m.entry(2, 1) * sz, // col 1
       m.entry(0, 2) * sx, m.entry(1, 2) * sy, m.entry(2, 2) * sz, // col 2
     );
-    final out = Quaternion.identity();
-    out.setFromRotationMatrix(mirrored);
+    final out = Quaternion.fromRotation(mirrored);
     return out;
   }
 
@@ -576,7 +578,7 @@ class StrokeManager extends ChangeNotifier {
       }
     }
     if (count == 0) return Vector3.zero();
-    return sum.scale(1.0 / count);
+    return sum..scale(1.0 / count);
   }
 
   // ----- Undo / Redo -----------------------------------------------------
@@ -683,7 +685,7 @@ class StrokeManager extends ChangeNotifier {
       for (final point in stroke.points) {
         final world = stroke.transform.transform3(point.position.clone());
         if (bounds == null) {
-          bounds = Aabb3.minMaxPoints(world, world);
+          bounds = Aabb3.minMax(world, world.clone());
         } else {
           bounds.hullPoint(world);
         }

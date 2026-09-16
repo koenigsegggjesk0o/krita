@@ -24,16 +24,17 @@
 // the input handling and engine wiring above it stay the same.
 
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:vector_math/vector_math.dart';
+import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'package:feather_krita/theme/app_theme.dart';
 import 'package:feather_krita/state/editor_state.dart';
 import 'package:feather_krita/engine/guide_surface.dart';
+import 'package:feather_krita/engine/stroke_manager.dart';
 import 'package:feather_krita/models/stroke.dart';
 import 'package:feather_krita/ffi/krita_bindings.dart';
 
@@ -55,6 +56,7 @@ class _CanvasWidgetState extends State<CanvasWidget>
   // Live stroke state.
   final List<StrokePoint> _livePoints = <StrokePoint>[];
   Vector2? _lastUV;
+  // ignore: unused_field
   Vector3? _lastWorld;
   double _strokeStartTime = 0;
 

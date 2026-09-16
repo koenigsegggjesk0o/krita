@@ -147,8 +147,8 @@ enum WrapMode {
 /// A 2D texture that brush dabs are stamped into.
 class TexturePainter {
   TexturePainter({
-    this.width = 2048,
-    this.height = 2048,
+    int width = 2048,
+    int height = 2048,
     this.wrapMode = WrapMode.wrap,
     this.maxUndoSteps = 30,
   })  : _width = width,

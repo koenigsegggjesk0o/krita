@@ -74,8 +74,7 @@ class StrokeListPanel extends StatelessWidget {
                       onTap: () => manager.toggleSelection(stroke.id),
                       onToggleVisible: () {
                         stroke.isVisible = !stroke.isVisible;
-                        // ignore: invalid_use_of_protected_member
-                        manager.notifyListeners();
+                        manager.notify();
                       },
                       onDelete: () => manager.removeStroke(stroke.id),
                     );

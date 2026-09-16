@@ -51,17 +51,18 @@ final class BrushInputNative extends Struct {
 
   /// Velocity along X axis (px/s).
   @Float()
-  external float velocityX;
+  external double velocityX;
 
   /// Velocity along Y axis (px/s).
   @Float()
-  external float velocityY;
+  external double velocityY;
 
   /// Bitfield of button/modifier flags (see [BrushInputFlags]).
   @Int32()
   external int flags;
 
   @Int32()
+  // ignore: unused_field
   external int _padding;
 }
 
@@ -461,14 +462,14 @@ class KritaBrushEngine {
 
       final ok = _generateDab(_handle, inputPtr, dabPtr);
       if (!ok) {
-        return const BrushDab(width: 0, height: 0, stride: 0, pixels: Uint8List(0));
+        return BrushDab(width: 0, height: 0, stride: 0, pixels: Uint8List(0));
       }
       final w = dabPtr.ref.width;
       final h = dabPtr.ref.height;
       final stride = dabPtr.ref.stride == 0 ? w * 4 : dabPtr.ref.stride;
       final pixelsPtr = dabPtr.ref.pixels;
       if (w <= 0 || h <= 0 || pixelsPtr == nullptr) {
-        return const BrushDab(width: 0, height: 0, stride: 0, pixels: Uint8List(0));
+        return BrushDab(width: 0, height: 0, stride: 0, pixels: Uint8List(0));
       }
       final byteCount = stride * h;
       // Copy the native pixel buffer into a Dart-owned Uint8List so the

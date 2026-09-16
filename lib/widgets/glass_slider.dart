@@ -65,7 +65,7 @@ class _GlassSliderState extends State<GlassSlider> {
     return v.clamp(widget.min, widget.max);
   }
 
-  void _updateFromLocal(Offset localX, double trackWidth) {
+  void _updateFromLocal(double localX, double trackWidth) {
     final f = (localX / trackWidth).clamp(0.0, 1.0);
     widget.onChanged(_fractionToValue(f));
   }

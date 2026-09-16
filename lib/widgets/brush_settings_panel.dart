@@ -124,6 +124,10 @@ class BrushSettingsPanel extends StatelessWidget {
 
               // Mirror.
               _MirrorRow(state: state),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );

@@ -10,9 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # 3D Rendering
-  flutter_gl: ^0.0.21
-  three_dart: ^0.0.16
+  # 3D Rendering (disabled for now - causes build issues)
+  # flutter_gl: ^0.0.21
+  # three_dart: ^0.0.16
   
   # FFI for Krita C++ engine
   ffi: ^2.1.0
@@ -64,14 +64,3 @@ flutter:
     - assets/brushes/
     - assets/textures/
     - assets/icons/
-  
-  fonts:
-    - family: Inter
-      fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
-        - asset: assets/fonts/Inter-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Inter-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Inter-Bold.ttf
-          weight: 700
