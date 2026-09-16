@@ -61,7 +61,7 @@ class _MainScreenState extends State<MainScreen> {
                       Text(
                         '3D Canvas',
                         style: TextStyle(
-                          color: Colors.white30,
+                          color: Colors.white38,
                           fontSize: 24,
                           fontWeight: FontWeight.w300,
                         ),
@@ -70,7 +70,7 @@ class _MainScreenState extends State<MainScreen> {
                       Text(
                         'Touch to draw on 3D surface',
                         style: TextStyle(
-                          color: Colors.white20,
+                          color: Colors.white24,
                           fontSize: 14,
                         ),
                       ),
