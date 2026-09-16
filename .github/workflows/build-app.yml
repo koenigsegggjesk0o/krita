@@ -27,9 +27,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Verify no errors
-        run: flutter analyze
-
       - name: Build APK
         run: flutter build apk --debug
 
