@@ -14,7 +14,6 @@ import 'screens/main_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set system UI overlay style (transparent, fullscreen)
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -24,7 +23,6 @@ void main() {
     ),
   );
 
-  // Set preferred orientations (tablet friendly)
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
@@ -47,11 +45,15 @@ class FeatherKritaApp extends StatelessWidget {
       title: 'Feather-Krita',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const SplashScreen(),
-      routes: {
-        '/main': (context) => const MainScreen(),
-        '/splash': (context) => const SplashScreen(),
-      },
+      home: SplashScreen(
+        onLoadingComplete: () {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const MainScreen(),
+            ),
+          );
+        },
+      ),
     );
   }
 }
