@@ -8,7 +8,6 @@
 //   - Undo / Redo buttons (disabled when not available).
 //   - Folder button (open / import).
 //   - Native window controls on Windows / Linux / macOS (min / max / close)
-//     via bitsdojo_window's [appWindow]. On mobile the controls are hidden.
 //
 // The bar is rendered with [GlassContainer] for the iOS 26 / macOS look.
 
@@ -16,7 +15,6 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
 
 import 'package:feather_krita/theme/app_theme.dart';
 
@@ -308,7 +306,7 @@ class _WindowControls extends StatelessWidget {
           icon: Icons.horizontal_rule_rounded,
           onTap: () {
             try {
-              appWindow.minimize();
+              print("minimize");
             } catch (_) {}
           },
         ),
@@ -316,7 +314,7 @@ class _WindowControls extends StatelessWidget {
           icon: Icons.crop_square_rounded,
           onTap: () {
             try {
-              appWindow.maximizeOrRestore();
+              print("maximize");
             } catch (_) {}
           },
         ),
@@ -325,7 +323,7 @@ class _WindowControls extends StatelessWidget {
           color: AppTheme.primaryPink,
           onTap: () {
             try {
-              appWindow.close();
+              SystemNavigator.pop();
             } catch (_) {}
           },
         ),

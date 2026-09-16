@@ -4,7 +4,6 @@
 // main_screen.dart — Main editor screen.
 //
 // Assembles the full Feather-Krita editor:
-//   - Custom window frame via bitsdojo_window (Windows / Linux / macOS).
 //   - A fullscreen 3D viewport ([CanvasWidget]) wrapped in a
 //     [RepaintBoundary] so the export pipeline can rasterise it.
 //   - A glass top bar with file name, undo / redo, folder, settings.
