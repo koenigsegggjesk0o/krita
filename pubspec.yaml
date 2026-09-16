@@ -22,9 +22,9 @@ dependencies:
   flutter_riverpod: ^2.5.0
   
   # UI Components
-  flutter_acrylic: ^1.1.0
-  bitsdojo_window: ^0.1.6
-  glassmorphism_widgets: ^0.1.2
+  # flutter_acrylic: ^1.1.0  # disabled - Windows VS2026 compat issue
+  # bitsdojo_window: ^0.1.6  # disabled - Windows VS2026 compat issue
+  # glassmorphism_widgets: ^0.1.2  # disabled - not critical
   
   # File & Export
   file_picker: ^8.0.0
@@ -47,8 +47,8 @@ dependencies:
   # Sensors (for mobile)
   sensors_plus: ^6.0.0
   
-  # Permission (Android)
-  permission_handler: ^11.3.0
+  # Permission (Android) - disabled for Windows compat
+  # permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
