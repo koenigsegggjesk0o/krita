@@ -13,10 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Flutter
@@ -27,8 +27,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Verify no errors
+        run: flutter analyze
+
       - name: Build APK
-        run: flutter build apk --release --no-shrink 2>&1 || flutter build apk --debug 2>&1
+        run: flutter build apk --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -53,13 +56,11 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release 2>&1 || echo "Build failed, creating placeholder"
+        run: flutter build windows --release
 
       - name: Upload Windows
-        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: feather-krita-windows
+          name: feather-krita-windows-exe
           path: build/windows/x64/runner/Release/
           retention-days: 90
-          if-no-files-found: warn
