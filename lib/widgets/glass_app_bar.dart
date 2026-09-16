@@ -73,7 +73,7 @@ class GlassAppBar extends StatelessWidget {
         children: [
           // App logo + name (drag handle on desktop).
           if (_isDesktop)
-            MoveWindow(child: _LogoChip())
+            SizedBox.shrink(child: _LogoChip())
           else
             _LogoChip(),
           const SizedBox(width: 10),
