@@ -1,0 +1,117 @@
+name: Step 2 Qt Bridge (Linux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feather-krita-flutter]
+    paths:
+      - 'native/krita_bridge/**'
+      - '.github/workflows/step2-qt-bridge-linux.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6 dev packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qt6-base-dev pkg-config
+
+      - name: Compile libkrita_bridge.so
+        run: |
+          mkdir -p build
+          g++ -std=c++17 -O2 -fPIC -shared \
+            -fvisibility=hidden \
+            $(pkg-config --cflags Qt6Core Qt6Gui) \
+            -I native/krita_bridge \
+            native/krita_bridge/krita_bridge.cpp \
+            $(pkg-config --libs Qt6Core Qt6Gui) \
+            -o build/libkrita_bridge.so
+          echo "Built:"
+          ls -la build/libkrita_bridge.so
+
+      - name: Smoke test — verify exported C symbols
+        run: |
+          echo "=== Exported symbols ==="
+          nm -D --defined-only build/libkrita_bridge.so | grep krita_brush || (echo NO SYMBOLS && exit 1)
+          echo "=== Required symbols check ==="
+          for sym in krita_brush_init krita_brush_destroy krita_brush_load_preset krita_brush_set_size krita_brush_set_color krita_brush_set_opacity krita_brush_set_spacing krita_brush_set_smudge krita_brush_generate_dab krita_brush_release_dab krita_brush_cleanup krita_brush_last_error krita_brush_version krita_brush_preset_count krita_brush_preset_name; do
+            if nm -D --defined-only build/libkrita_bridge.so | grep -q " $sym\$"; then
+              echo "  OK  $sym"
+            else
+              echo "  MISSING  $sym"
+              exit 1
+            fi
+          done
+          echo "All 15 required C symbols present."
+
+      - name: Compile a tiny test harness and run it
+        run: |
+          cat > test_bridge.cpp <<'TESTEOF'
+          #include "krita_bridge.h"
+          #include <cstdio>
+          #include <cstdlib>
+          int main() {
+              KritaBrushContext* ctx = krita_brush_init();
+              if (!ctx) { printf("FAIL: init returned null\n"); return 1; }
+              printf("OK: init -> %p\n", ctx);
+              printf("version: %s\n", krita_brush_version());
+              krita_brush_set_size(ctx, 32.0);
+              krita_brush_set_color(ctx, 0xFFFF0000); // red
+              krita_brush_set_opacity(ctx, 0.8);
+              krita_brush_set_spacing(ctx, 0.15);
+              krita_brush_set_smudge(ctx, 0.0);
+              BrushInput in = {};
+              in.x = 16; in.y = 16; in.pressure = 1.0; in.time = 0.01;
+              BrushDab dab = {};
+              if (!krita_brush_generate_dab(ctx, &in, &dab)) {
+                  printf("FAIL: generate_dab returned false: %s\n", krita_brush_last_error(ctx));
+                  krita_brush_destroy(ctx);
+                  return 1;
+              }
+              printf("OK: generate_dab -> %dx%d stride=%d pixels=%p\n",
+                     dab.width, dab.height, dab.stride, dab.pixels);
+              if (dab.width != 32 || dab.height != 32) {
+                  printf("FAIL: expected 32x32 dab, got %dx%d\n", dab.width, dab.height);
+                  krita_brush_release_dab(ctx, &dab);
+                  krita_brush_destroy(ctx);
+                  return 1;
+              }
+              // Check center pixel is red-ish
+              int cx = 16, cy = 16;
+              unsigned char* px = dab.pixels + (cy * dab.stride + cx * 4);
+              printf("center pixel RGBA = %d,%d,%d,%d\n", px[0], px[1], px[2], px[3]);
+              if (px[0] < 200 || px[1] > 50 || px[2] > 50) {
+                  printf("FAIL: center pixel not red-ish\n");
+                  krita_brush_release_dab(ctx, &dab);
+                  krita_brush_destroy(ctx);
+                  return 1;
+              }
+              krita_brush_release_dab(ctx, &dab);
+              krita_brush_cleanup(ctx);
+              krita_brush_destroy(ctx);
+              printf("ALL TESTS PASSED\n");
+              return 0;
+          }
+          TESTEOF
+          g++ -std=c++17 -O2 \
+            -I native/krita_bridge \
+            $(pkg-config --cflags Qt6Core Qt6Gui) \
+            test_bridge.cpp \
+            -L build -lkrita_bridge \
+            $(pkg-config --libs Qt6Core Qt6Gui) \
+            -Wl,-rpath,'$ORIGIN/../build' \
+            -o build/test_bridge
+          cd build && ./test_bridge
+
+      - name: Upload libkrita_bridge.so + test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-bridge-linux
+          path: |
+            build/libkrita_bridge.so
+            build/test_bridge
+          retention-days: 90
