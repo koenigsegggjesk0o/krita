@@ -250,7 +250,206 @@ jobs:
       - name: Clone Krita source (headers)
         run: git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git C:\krita-src
 
-      - name: Generate stub export headers + KDE Frameworks stubs
+      - name: Configure Krita (generate config files — NOT full build)
+        run: |
+          $qtDir = $env:Qt6_DIR
+          $vcpkgDir = "C:\vcpkg\installed\x64-windows"
+          $depsDir = "C:\krita-deps"
+          cd C:\krita-src
+          # Configure only — this generates KoConfig.h, export headers, etc.
+          # Use --warn-uninitialized to ignore missing optional deps
+          cmake -B build-configure -G "Ninja" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=OFF `
+            -DENABLE_PYTHON=OFF `
+            -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 `
+            -DWITH_HEIF=OFF -DWITH_JPEG=OFF -DWITH_PNG=OFF -DWITH_TIFF=OFF `
+            -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF `
+            -DWITH_KDE=OFF -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF `
+            -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF `
+            -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF `
+            -DCMAKE_PREFIX_PATH="$qtDir;$depsDir;$vcpkgDir;C:\ecm-install" `
+            -DCMAKE_DISABLE_FIND_PACKAGE_KF5=ON `
+            -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON `
+            2>&1 | Select-Object -Last 30
+          # Even if configure fails, some config files may have been generated
+          # Check for generated files
+          Write-Host "=== Checking for generated config files ==="
+          Get-ChildItem "build-configure\KoConfig.h" -ErrorAction SilentlyContinue
+          Get-ChildItem "build-configure\config-*.h" -ErrorAction SilentlyContinue
+          Get-ChildItem "libs\*\*\*_export.h" -ErrorAction SilentlyContinue | Select-Object -First 5
+        continue-on-error: true
+
+      - name: Collect generated config + export headers
+        run: |
+          $stubDir = "C:\krita-stubs"
+          New-Item -ItemType Directory -Force -Path $stubDir
+          $buildDir = "C:\krita-src\build-configure"
+          
+          # Copy generated config files
+          Get-ChildItem "$buildDir\KoConfig.h" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName $stubDir -Force }
+          Get-ChildItem "$buildDir\KoTestConfig.h" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName $stubDir -Force }
+          Get-ChildItem "$buildDir\config-*.h" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName $stubDir -Force }
+          
+          # Copy generated export headers from build tree
+          Get-ChildItem "$buildDir\libs" -Recurse -Filter "*_export.h" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName $stubDir -Force
+            Write-Host "Copied: $($_.Name)"
+          }
+          
+          # If KoConfig.h wasn't generated, create it manually
+          $koConfig = Join-Path $stubDir "KoConfig.h"
+          if (-not (Test-Path $koConfig)) {
+            Write-Host "KoConfig.h not generated, creating manually"
+            @"#ifndef KOCONFIG_H
+#define KOCONFIG_H
+#define HAVE_XSIMD 1
+#define HAVE_LCMS24 1
+#define HAVE_GSL 0
+#define HAVE_OPENEXR 0
+#define HAVE_FFTW3 0
+#define HAVE_JPEG 0
+#define HAVE_PNG 0
+#define HAVE_TIFF 0
+#define HAVE_RAW 0
+#define HAVE_HEIF 0
+#define HAVE_WEBP 0
+#define HAVE_GIF 0
+#define HAVE_OPENJPEG 0
+#define HAVE_JXL 0
+#define HAVE_HDR 0
+#define HAVE_MEDIA 0
+#define HAVE_PYTHON 0
+#define HAVE_SEEXPR 0
+#define HAVE_LIBMYPAINT 0
+#define KRITA_VERSION_STRING "6.0.4"
+#endif"@ | Out-File -FilePath $koConfig -Encoding ASCII
+          }
+          
+          # Create missing config files
+          $configs = @("KoTestConfig.h","config-hdr.h","config-gsl.h","config-hash-table-implementation.h","config-safe-asserts.h","config-use-surface-color-management-api.h","config-mlt.h","config-ocio.h","config-seexpr.h","config-mypaint.h","config-powf.h","config-jpeg.h","config-tiff.h","config-limit-long-tests.h","config-qt-patches-present.h","config-qmdiarea-always-show-subwindow-title.h","config-high-dpi-scale-factor-rounding-policy.h","config-updaters.h","config-android-stdio-forwarding.h","config_convolution.h")
+          foreach ($cfg in $configs) {
+            $cfgPath = Join-Path $stubDir $cfg
+            if (-not (Test-Path $cfgPath)) {
+              $guard = $cfg.ToUpper() -replace '\.H$','_H' -replace '-','_'
+              "#ifndef $guard`n#define $guard`n#endif" | Out-File -FilePath $cfgPath -Encoding ASCII
+            }
+          }
+          
+          # If export headers weren't generated, create stubs
+          $exports = @("kritapigment_export","kritaimage_export","kritabrush_export","kritaui_export","kritaresources_export","kritaglobal_export","kritawidgetutils_export","kritaversion_export","kritamultiarch_export","kritacommand_export","kritaflake_export","kritabasicflakes_export","kritawidgets_export","kritastore_export","kritakoplugin_export","kritametadata_export","kritalibkis_export","kritalibkra_export","kritapsd_export","kritapsdutils_export","kritaimpex_export","kritalibpaintop_export","kritaresourcewidgets_export","kritaqmlwidgets_export","kritaqmicinterface_export","kritacolor_export","kritaexifcommon_export","kritatiffpsd_export")
+          foreach ($exp in $exports) {
+            $expPath = Join-Path $stubDir "$exp.h"
+            if (-not (Test-Path $expPath)) {
+              $macro = ($exp -replace '_export$','').ToUpper() + "_EXPORT"
+              "#ifndef $($exp -replace '\.','_')_H`n#define $($exp -replace '\.','_')_H`n#define $macro`n#endif" | Out-File -FilePath $expPath -Encoding ASCII
+            }
+          }
+          
+          # KDE Frameworks stubs (minimal)
+          # KI18n
+          @"#ifndef KLOCALIZEDSTRING_H
+#define KLOCALIZEDSTRING_H
+#include <QString>
+struct KLocalizedString { QString m; KLocalizedString() {} KLocalizedString(const char* s) : m(QString::fromUtf8(s)) {} QString toString() const { return m; } operator QString() const { return m; } };
+inline KLocalizedString i18n(const char* t, ...) { return KLocalizedString(t); }
+inline KLocalizedString i18nc(const char* c, const char* t, ...) { return KLocalizedString(t); }
+inline KLocalizedString i18np(const char* s, const char* p, ...) { return KLocalizedString(s); }
+inline KLocalizedString i18ncp(const char* c, const char* s, const char* p, ...) { return KLocalizedString(s); }
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "klocalizedstring.h") -Encoding ASCII
+          
+          # KConfig
+          @"#ifndef KCONFIGGROUP_H
+#define KCONFIGGROUP_H
+#include <QSettings>
+#include <QVariant>
+class KConfigGroup { QSettings* s; QString group; public: KConfigGroup() : s(nullptr) {} template<typename T> KConfigGroup(T*, const QString& g) : s(new QSettings()), group(g) { s->beginGroup(g); } ~KConfigGroup() { if(s) s->endGroup(); } QVariant readEntry(const QString& k, const QVariant& d=QVariant()) const { return s ? s->value(k, d) : d; } void writeEntry(const QString& k, const QVariant& v) { if(s) s->setValue(k, v); } bool hasKey(const QString& k) const { return s ? s->contains(k) : false; } QString name() const { return group; } };
+class KSharedConfig { public: static KConfigGroup group(const QString&) { return KConfigGroup(); } };
+typedef QSharedPointer<KSharedConfig> KSharedConfigPtr;
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kconfiggroup.h") -Encoding ASCII
+          @"#ifndef KCONFIG_H
+#define KCONFIG_H
+#include <QSettings>
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kconfig.h") -Encoding ASCII
+          @"#ifndef KSHAREDCONFIG_H
+#define KSHAREDCONFIG_H
+#include "kconfiggroup.h"
+class KSharedConfig { public: static KConfigGroup group(const QString& g) { return KConfigGroup(); } };
+typedef QSharedPointer<KSharedConfig> KSharedConfigPtr;
+inline KSharedConfigPtr KSharedConfig::openConfig(const QString& = QString()) { return KSharedConfigPtr(); }
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "ksharedconfig.h") -Encoding ASCII
+          
+          # KCoreAddons
+          @"#ifndef KPLUGINFACTORY_H
+#define KPLUGINFACTORY_H
+#include <QObject>
+class KPluginFactory : public QObject { Q_OBJECT public: KPluginFactory() {} };
+#define K_PLUGIN_FACTORY(name, ...) class name : public KPluginFactory { Q_OBJECT public: name() : KPluginFactory() {} };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kpluginfactory.h") -Encoding ASCII
+          @"#ifndef KPLUGINMETADATA_H
+#define KPLUGINMETADATA_H
+#include <QString>
+#include <QJsonObject>
+class KPluginMetaData { public: QString name() const { return QString(); } QJsonObject rawData() const { return QJsonObject(); } bool isValid() const { return true; } QString fileName() const { return QString(); } };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kpluginmetadata.h") -Encoding ASCII
+          
+          # KStandardDirs
+          @"#ifndef KSTANDARDDIRS_H
+#define KSTANDARDDIRS_H
+#include <QString>
+#include <QStringList>
+class KStandardDirs { public: static QString installPath(const QString&) { return QString(); } static QStringList resourceDirs(const QString&) { return QStringList(); } static QString locate(const QString&, const QString&) { return QString(); } };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kstandarddirs.h") -Encoding ASCII
+          
+          # KDebug  
+          @"#ifndef KDEBUG_H
+#define KDEBUG_H
+#include <QDebug>
+#define qCDebug(category) qDebug()
+#define qCWarning(category) qWarning()
+#define qCCritical(category) qCritical()
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kdebug.h") -Encoding ASCII
+          
+          # Other KDE stubs
+          @"#ifndef KACTIONCOLLECTION_H
+#define KACTIONCOLLECTION_H
+#include <QObject>
+#include <QAction>
+class KActionCollection : public QObject { Q_OBJECT public: KActionCollection(QObject* p=nullptr) : QObject(p) {} };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kactioncollection.h") -Encoding ASCII
+          @"#ifndef KXMLGUIWINDOW_H
+#define KXMLGUIWINDOW_H
+#include <QMainWindow>
+class KXmlGuiWindow : public QMainWindow { Q_OBJECT public: KXmlGuiWindow(QWidget* p=nullptr) : QMainWindow(p) {} };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kxmlguiwindow.h") -Encoding ASCII
+          @"#ifndef KNOTIFICATION_H
+#define KNOTIFICATION_H
+#include <QString>
+class KNotification { public: static void event(const QString&, const QString&, const QString& = QString()) {} };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "knotification.h") -Encoding ASCII
+          @"#ifndef KCOMPLETION_H
+#define KCOMPLETION_H
+#include <QStringList>
+class KCompletion { public: QStringList items() const { return QStringList(); } };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kcompletion.h") -Encoding ASCII
+          @"#ifndef KSERVICE_H
+#define KSERVICE_H
+#include <QString>
+class KService { public: QString name() const { return QString(); } };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kservice.h") -Encoding ASCII
+          @"#ifndef KICONLOADER_H
+#define KICONLOADER_H
+#include <QIcon>
+class KIconLoader { public: QIcon loadIcon(const QString&, int=0, int=0) const { return QIcon(); } };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kiconloader.h") -Encoding ASCII
+          @"#ifndef KMESSAGEBOX_H
+#define KMESSAGEBOX_H
+#include <QString>
+class KMessageBox { public: static void information(QWidget*, const QString&, const QString& = QString()) {} static void error(QWidget*, const QString&, const QString& = QString()) {} };
+#endif"@ | Out-File -FilePath (Join-Path $stubDir "kmessagebox.h") -Encoding ASCII
+          
+          Write-Host "=== Stub headers generated ==="
+          Get-ChildItem $stubDir | Measure-Object | Select-Object Count
         run: |
           $stubDir = "C:\krita-stubs"
           New-Item -ItemType Directory -Force -Path $stubDir
