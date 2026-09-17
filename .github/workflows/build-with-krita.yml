@@ -250,6 +250,38 @@ jobs:
       - name: Clone Krita source (headers)
         run: git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git C:\krita-src
 
+      - name: Generate stub export headers (kritapigment_export.h, etc.)
+        run: |
+          # Krita uses generate_export_header() in CMake, which creates *_export.h files.
+          # Since we're not building Krita (just using headers), create stub files.
+          $stubDir = "C:\krita-stubs"
+          New-Item -ItemType Directory -Force -Path $stubDir
+          
+          # List of all Krita export macros
+          $exports = @(
+            "kritapigment_export", "kritaimage_export", "kritabrush_export",
+            "kritaui_export", "kritaresources_export", "kritaglobal_export",
+            "kritawidgetutils_export", "kritaversion_export", "kritamultiarch_export",
+            "kritacommand_export", "kritaflake_export", "kritabasicflakes_export",
+            "kritawidgets_export", "kritastore_export", "kritakoplugin_export",
+            "kritametadata_export", "kritalibkis_export", "kritalibkra_export",
+            "kritapsd_export", "kritapsdutils_export", "kritaimpex_export",
+            "kritalibpaintop_export", "kritaresourcewidgets_export",
+            "kritaqmlwidgets_export", "kritaqmicinterface_export",
+            "kritacolor_export", "kritaexifcommon_export", "kritatiffpsd_export"
+          )
+          
+          foreach ($exp in $exports) {
+            $content = "#ifndef ${exp}_H`n#define ${exp}_H`n#define $(($exp -replace '_export$','').ToUpper())_EXPORT`n#endif`n"
+            $content | Out-File -FilePath (Join-Path $stubDir "$exp.h") -Encoding ASCII
+          }
+          
+          # Also create config.h stubs
+          "kritaconfig.h" | Out-File -FilePath (Join-Path $stubDir "kritaconfig.h") -Encoding ASCII
+          
+          Write-Host "Generated $($exports.Count) stub export headers in $stubDir"
+          Get-ChildItem $stubDir | Format-Table Name
+
       - name: Compile krita_bridge.cpp
         run: |
           $kritaSrc = "C:\krita-src"
@@ -266,7 +298,8 @@ jobs:
           $qtLib = Join-Path $qtDir "lib"
           
           $includePaths = @(
-            "native\krita_bridge", "$kritaSrc\libs\brush", "$kritaSrc\libs\image",
+            "native\krita_bridge", "C:\krita-stubs",
+            "$kritaSrc\libs\brush", "$kritaSrc\libs\image",
             "$kritaSrc\libs\image\brushengine", "$kritaSrc\libs\pigment",
             "$kritaSrc\libs\widgetutils", "$kritaSrc\libs\global",
             "$kritaSrc\libs\resources", "$kritaSrc\libs\command",
