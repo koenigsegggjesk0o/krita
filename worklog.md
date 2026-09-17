@@ -346,3 +346,11 @@ Stage Summary:
 - The suite-stability mystery from loop-13 is SOLVED and it was a REAL app bug, not a sandbox quirk: per-dab 16 MB undo snapshots could OOM-kill the app on any low-memory device during fast strokes. Undo now costs one snapshot per stroke (~40x less memory per stroke).
 - Opening a .feather project now re-renders the canvas from the strokes — the last visible gap in the save/open loop.
 - Roadmap: steps 1-7 done + regression-gated (42 tests); remaining deferred: MP4 exporter, on-device/e2e GUI verification, camera state in project files, file_picker UX polish, undo model unification (stroke history vs texture snapshots are still separate stacks — texture undo is engine-level only today).
+
+Addendum (5-loop-14, post-push):
+- Full-tree sync to the public builder repo pushed as 1139566. GOTCHA caught during sync: blind rsync --delete pulled the private repo's stale step2-* workflow files over the public repo's CI configs and deleted android-bridge.yml — the public repo's workflows are CI-specific and must never be mirrored; .github/ was restored to HEAD before commit (both public workflows verified intact: build-app.yml + android-bridge.yml, branches: [main]).
+- Build Feather-Krita App run 35284999134 SUCCESS at 1139566.
+- Artifacts verified before release: Windows zip = feather_krita.exe + krita_bridge.dll (66048 B); APK ships libkrita_bridge.so for arm64-v8a / armeabi-v7a / x86_64.
+- RELEASE v0.11-memory-fix published (id 391115481) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.11-memory-fix
+- Release-script note: GitHub artifact zip downloads 302-redirect and urllib mishandles the auth header on the hop ("Server failed to authenticate") — curl -L works; release_v11.py reuses the curl-downloaded artifacts.
+- Private HEAD: 44085e1 (+ worklog addendum). Public CI repo HEAD: 1139566, all green. Health gates: analyze 0 issues, 42/42 tests x3.
