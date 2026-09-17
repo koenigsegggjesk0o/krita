@@ -1,0 +1,101 @@
+name: Step 1 — Compile Krita Brush Engine DLL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compile-krita-engine:
+    name: Compile Krita Brush Engine
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+
+      - name: Install Qt6 via vcpkg
+        run: |
+          C:\vcpkg\vcpkg install qtbase:x64-windows
+        continue-on-error: true
+
+      - name: Install Boost, Eigen, Exiv2
+        run: |
+          C:\vcpkg\vcpkg install boost-algorithm:x64-windows
+          C:\vcpkg\vcpkg install boost-system:x64-windows
+          C:\vcpkg\vcpkg install eigen3:x64-windows
+          C:\vcpkg\vcpkg install exiv2:x64-windows
+        continue-on-error: true
+
+      - name: Install extra-cmake-modules
+        run: |
+          pip install cmake
+          git clone https://invent.kde.org/frameworks/extra-cmake-modules.git C:\ecm
+          cd C:\ecm
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\ecm-install
+          cmake --build build --target install
+
+      - name: Clone Krita source
+        run: |
+          git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git C:\krita-src
+
+      - name: Build lager + immer + zug + xsimd
+        run: |
+          git clone --depth 1 https://github.com/arximboldi/immer.git C:\immer
+          cd C:\immer
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\krita-deps -DBUILD_TESTING=OFF
+          cmake --build build --target install --config Release
+
+          git clone --depth 1 https://github.com/arximboldi/zug.git C:\zug
+          cd C:\zug
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\krita-deps -DBUILD_TESTING=OFF
+          cmake --build build --target install --config Release
+
+          git clone --depth 1 https://github.com/arximboldi/lager.git C:\lager
+          cd C:\lager
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\krita-deps -DBUILD_TESTING=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF -Dlager_EMBED_RESOURCES_PATH=OFF
+          cmake --build build --target install --config Release
+
+          git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git C:\xsimd
+          cd C:\xsimd
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\krita-deps -DBUILD_TESTING=OFF
+          cmake --build build --target install --config Release
+
+      - name: Configure Krita
+        run: |
+          cd C:\krita-src
+          cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=C:\krita-install -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 -DWITH_HEIF=OFF -DWITH_JPEG=ON -DWITH_PNG=ON -DWITH_TIFF=ON -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF -DWITH_KDE=OFF -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF -DCMAKE_PREFIX_PATH="C:\krita-deps;C:\ecm-install;C:\vcpkg\installed\x64-windows"
+        continue-on-error: true
+
+      - name: Build all brush engine targets
+        run: |
+          cd C:\krita-src
+          cmake --build build --target kritaglobal kritaversion kritamultiarch kritapigment kritawidgetutils kritaresources kritalibbrush kritaimage --config Release --parallel 4
+        continue-on-error: true
+
+      - name: Collect all DLLs
+        run: |
+          $dest = "krita-engine-dlls"
+          New-Item -ItemType Directory -Force -Path $dest
+          Get-ChildItem "C:\krita-src\build\bin\Release\*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $dest -Force }
+          Get-ChildItem "C:\krita-src\build\lib\Release\*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $dest -Force }
+          Get-ChildItem "C:\krita-src\build\bin\*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $dest -Force }
+          Get-ChildItem "C:\krita-src\build\lib\*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $dest -Force }
+          Get-ChildItem "C:\vcpkg\installed\x64-windows\bin\Qt6*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $dest -Force }
+          Write-Host "=== DLLs collected ==="
+          Get-ChildItem $dest -Filter "*.dll" | Format-Table Name, Length
+
+      - name: Upload Krita Engine DLLs
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-brush-engine-dlls
+          path: krita-engine-dlls/
+          retention-days: 90
