@@ -301,29 +301,8 @@ jobs:
           $koConfig = Join-Path $stubDir "KoConfig.h"
           if (-not (Test-Path $koConfig)) {
             Write-Host "KoConfig.h not generated, creating manually"
-            @"#ifndef KOCONFIG_H
-#define KOCONFIG_H
-#define HAVE_XSIMD 1
-#define HAVE_LCMS24 1
-#define HAVE_GSL 0
-#define HAVE_OPENEXR 0
-#define HAVE_FFTW3 0
-#define HAVE_JPEG 0
-#define HAVE_PNG 0
-#define HAVE_TIFF 0
-#define HAVE_RAW 0
-#define HAVE_HEIF 0
-#define HAVE_WEBP 0
-#define HAVE_GIF 0
-#define HAVE_OPENJPEG 0
-#define HAVE_JXL 0
-#define HAVE_HDR 0
-#define HAVE_MEDIA 0
-#define HAVE_PYTHON 0
-#define HAVE_SEEXPR 0
-#define HAVE_LIBMYPAINT 0
-#define KRITA_VERSION_STRING "6.0.4"
-#endif"@ | Out-File -FilePath $koConfig -Encoding ASCII
+            $koConfigContent = "#ifndef KOCONFIG_H`n#define KOCONFIG_H`n#define HAVE_XSIMD 1`n#define HAVE_LCMS24 1`n#define HAVE_GSL 0`n#define HAVE_OPENEXR 0`n#define HAVE_FFTW3 0`n#define HAVE_JPEG 0`n#define HAVE_PNG 0`n#define HAVE_TIFF 0`n#define HAVE_RAW 0`n#define HAVE_HEIF 0`n#define HAVE_WEBP 0`n#define HAVE_GIF 0`n#define HAVE_OPENJPEG 0`n#define HAVE_JXL 0`n#define HAVE_HDR 0`n#define HAVE_MEDIA 0`n#define HAVE_PYTHON 0`n#define HAVE_SEEXPR 0`n#define HAVE_LIBMYPAINT 0`n#define KRITA_VERSION_STRING `"6.0.4`"`n#endif"
+            $koConfigContent | Out-File -FilePath $koConfig -Encoding ASCII
           }
           
           # Create missing config files
@@ -348,105 +327,31 @@ jobs:
           
           # KDE Frameworks stubs (minimal)
           # KI18n
-          @"#ifndef KLOCALIZEDSTRING_H
-#define KLOCALIZEDSTRING_H
-#include <QString>
-struct KLocalizedString { QString m; KLocalizedString() {} KLocalizedString(const char* s) : m(QString::fromUtf8(s)) {} QString toString() const { return m; } operator QString() const { return m; } };
-inline KLocalizedString i18n(const char* t, ...) { return KLocalizedString(t); }
-inline KLocalizedString i18nc(const char* c, const char* t, ...) { return KLocalizedString(t); }
-inline KLocalizedString i18np(const char* s, const char* p, ...) { return KLocalizedString(s); }
-inline KLocalizedString i18ncp(const char* c, const char* s, const char* p, ...) { return KLocalizedString(s); }
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "klocalizedstring.h") -Encoding ASCII
+          "#ifndef KLOCALIZEDSTRING_H`n#define KLOCALIZEDSTRING_H`n#include <QString>`nstruct KLocalizedString { QString m; KLocalizedString() {} KLocalizedString(const char* s) : m(QString::fromUtf8(s)) {} QString toString() const { return m; } operator QString() const { return m; } };`ninline KLocalizedString i18n(const char* t, ...) { return KLocalizedString(t); }`ninline KLocalizedString i18nc(const char* c, const char* t, ...) { return KLocalizedString(t); }`ninline KLocalizedString i18np(const char* s, const char* p, ...) { return KLocalizedString(s); }`ninline KLocalizedString i18ncp(const char* c, const char* s, const char* p, ...) { return KLocalizedString(s); }`n#endif" | Out-File -FilePath (Join-Path $stubDir "klocalizedstring.h") -Encoding ASCII
           
           # KConfig
-          @"#ifndef KCONFIGGROUP_H
-#define KCONFIGGROUP_H
-#include <QSettings>
-#include <QVariant>
-class KConfigGroup { QSettings* s; QString group; public: KConfigGroup() : s(nullptr) {} template<typename T> KConfigGroup(T*, const QString& g) : s(new QSettings()), group(g) { s->beginGroup(g); } ~KConfigGroup() { if(s) s->endGroup(); } QVariant readEntry(const QString& k, const QVariant& d=QVariant()) const { return s ? s->value(k, d) : d; } void writeEntry(const QString& k, const QVariant& v) { if(s) s->setValue(k, v); } bool hasKey(const QString& k) const { return s ? s->contains(k) : false; } QString name() const { return group; } };
-class KSharedConfig { public: static KConfigGroup group(const QString&) { return KConfigGroup(); } };
-typedef QSharedPointer<KSharedConfig> KSharedConfigPtr;
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kconfiggroup.h") -Encoding ASCII
-          @"#ifndef KCONFIG_H
-#define KCONFIG_H
-#include <QSettings>
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kconfig.h") -Encoding ASCII
-          @"#ifndef KSHAREDCONFIG_H
-#define KSHAREDCONFIG_H
-#include "kconfiggroup.h"
-class KSharedConfig { public: static KConfigGroup group(const QString& g) { return KConfigGroup(); } };
-typedef QSharedPointer<KSharedConfig> KSharedConfigPtr;
-inline KSharedConfigPtr KSharedConfig::openConfig(const QString& = QString()) { return KSharedConfigPtr(); }
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "ksharedconfig.h") -Encoding ASCII
+          "#ifndef KCONFIGGROUP_H`n#define KCONFIGGROUP_H`n#include <QSettings>`n#include <QVariant>`nclass KConfigGroup { QSettings* s; QString group; public: KConfigGroup() : s(nullptr) {} template<typename T> KConfigGroup(T*, const QString& g) : s(new QSettings()), group(g) { s->beginGroup(g); } ~KConfigGroup() { if(s) s->endGroup(); } QVariant readEntry(const QString& k, const QVariant& d=QVariant()) const { return s ? s->value(k, d) : d; } void writeEntry(const QString& k, const QVariant& v) { if(s) s->setValue(k, v); } bool hasKey(const QString& k) const { return s ? s->contains(k) : false; } QString name() const { return group; } };`nclass KSharedConfig { public: static KConfigGroup group(const QString&) { return KConfigGroup(); } };`ntypedef QSharedPointer<KSharedConfig> KSharedConfigPtr;`n#endif" | Out-File -FilePath (Join-Path $stubDir "kconfiggroup.h") -Encoding ASCII
+          "#ifndef KCONFIG_H`n#define KCONFIG_H`n#include <QSettings>`n#endif" | Out-File -FilePath (Join-Path $stubDir "kconfig.h") -Encoding ASCII
+          "#ifndef KSHAREDCONFIG_H`n#define KSHAREDCONFIG_H`n#include "kconfiggroup.h"`nclass KSharedConfig { public: static KConfigGroup group(const QString& g) { return KConfigGroup(); } };`ntypedef QSharedPointer<KSharedConfig> KSharedConfigPtr;`ninline KSharedConfigPtr KSharedConfig::openConfig(const QString& = QString()) { return KSharedConfigPtr(); }`n#endif" | Out-File -FilePath (Join-Path $stubDir "ksharedconfig.h") -Encoding ASCII
           
           # KCoreAddons
-          @"#ifndef KPLUGINFACTORY_H
-#define KPLUGINFACTORY_H
-#include <QObject>
-class KPluginFactory : public QObject { Q_OBJECT public: KPluginFactory() {} };
-#define K_PLUGIN_FACTORY(name, ...) class name : public KPluginFactory { Q_OBJECT public: name() : KPluginFactory() {} };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kpluginfactory.h") -Encoding ASCII
-          @"#ifndef KPLUGINMETADATA_H
-#define KPLUGINMETADATA_H
-#include <QString>
-#include <QJsonObject>
-class KPluginMetaData { public: QString name() const { return QString(); } QJsonObject rawData() const { return QJsonObject(); } bool isValid() const { return true; } QString fileName() const { return QString(); } };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kpluginmetadata.h") -Encoding ASCII
+          "#ifndef KPLUGINFACTORY_H`n#define KPLUGINFACTORY_H`n#include <QObject>`nclass KPluginFactory : public QObject { Q_OBJECT public: KPluginFactory() {} };`n#define K_PLUGIN_FACTORY(name, ...) class name : public KPluginFactory { Q_OBJECT public: name() : KPluginFactory() {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kpluginfactory.h") -Encoding ASCII
+          "#ifndef KPLUGINMETADATA_H`n#define KPLUGINMETADATA_H`n#include <QString>`n#include <QJsonObject>`nclass KPluginMetaData { public: QString name() const { return QString(); } QJsonObject rawData() const { return QJsonObject(); } bool isValid() const { return true; } QString fileName() const { return QString(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kpluginmetadata.h") -Encoding ASCII
           
           # KStandardDirs
-          @"#ifndef KSTANDARDDIRS_H
-#define KSTANDARDDIRS_H
-#include <QString>
-#include <QStringList>
-class KStandardDirs { public: static QString installPath(const QString&) { return QString(); } static QStringList resourceDirs(const QString&) { return QStringList(); } static QString locate(const QString&, const QString&) { return QString(); } };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kstandarddirs.h") -Encoding ASCII
+          "#ifndef KSTANDARDDIRS_H`n#define KSTANDARDDIRS_H`n#include <QString>`n#include <QStringList>`nclass KStandardDirs { public: static QString installPath(const QString&) { return QString(); } static QStringList resourceDirs(const QString&) { return QStringList(); } static QString locate(const QString&, const QString&) { return QString(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kstandarddirs.h") -Encoding ASCII
           
           # KDebug  
-          @"#ifndef KDEBUG_H
-#define KDEBUG_H
-#include <QDebug>
-#define qCDebug(category) qDebug()
-#define qCWarning(category) qWarning()
-#define qCCritical(category) qCritical()
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kdebug.h") -Encoding ASCII
+          "#ifndef KDEBUG_H`n#define KDEBUG_H`n#include <QDebug>`n#define qCDebug(category) qDebug()`n#define qCWarning(category) qWarning()`n#define qCCritical(category) qCritical()`n#endif" | Out-File -FilePath (Join-Path $stubDir "kdebug.h") -Encoding ASCII
           
           # Other KDE stubs
-          @"#ifndef KACTIONCOLLECTION_H
-#define KACTIONCOLLECTION_H
-#include <QObject>
-#include <QAction>
-class KActionCollection : public QObject { Q_OBJECT public: KActionCollection(QObject* p=nullptr) : QObject(p) {} };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kactioncollection.h") -Encoding ASCII
-          @"#ifndef KXMLGUIWINDOW_H
-#define KXMLGUIWINDOW_H
-#include <QMainWindow>
-class KXmlGuiWindow : public QMainWindow { Q_OBJECT public: KXmlGuiWindow(QWidget* p=nullptr) : QMainWindow(p) {} };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kxmlguiwindow.h") -Encoding ASCII
-          @"#ifndef KNOTIFICATION_H
-#define KNOTIFICATION_H
-#include <QString>
-class KNotification { public: static void event(const QString&, const QString&, const QString& = QString()) {} };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "knotification.h") -Encoding ASCII
-          @"#ifndef KCOMPLETION_H
-#define KCOMPLETION_H
-#include <QStringList>
-class KCompletion { public: QStringList items() const { return QStringList(); } };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kcompletion.h") -Encoding ASCII
-          @"#ifndef KSERVICE_H
-#define KSERVICE_H
-#include <QString>
-class KService { public: QString name() const { return QString(); } };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kservice.h") -Encoding ASCII
-          @"#ifndef KICONLOADER_H
-#define KICONLOADER_H
-#include <QIcon>
-class KIconLoader { public: QIcon loadIcon(const QString&, int=0, int=0) const { return QIcon(); } };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kiconloader.h") -Encoding ASCII
-          @"#ifndef KMESSAGEBOX_H
-#define KMESSAGEBOX_H
-#include <QString>
-class KMessageBox { public: static void information(QWidget*, const QString&, const QString& = QString()) {} static void error(QWidget*, const QString&, const QString& = QString()) {} };
-#endif"@ | Out-File -FilePath (Join-Path $stubDir "kmessagebox.h") -Encoding ASCII
+          "#ifndef KACTIONCOLLECTION_H`n#define KACTIONCOLLECTION_H`n#include <QObject>`n#include <QAction>`nclass KActionCollection : public QObject { Q_OBJECT public: KActionCollection(QObject* p=nullptr) : QObject(p) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kactioncollection.h") -Encoding ASCII
+          "#ifndef KXMLGUIWINDOW_H`n#define KXMLGUIWINDOW_H`n#include <QMainWindow>`nclass KXmlGuiWindow : public QMainWindow { Q_OBJECT public: KXmlGuiWindow(QWidget* p=nullptr) : QMainWindow(p) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kxmlguiwindow.h") -Encoding ASCII
+          "#ifndef KNOTIFICATION_H`n#define KNOTIFICATION_H`n#include <QString>`nclass KNotification { public: static void event(const QString&, const QString&, const QString& = QString()) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "knotification.h") -Encoding ASCII
+          "#ifndef KCOMPLETION_H`n#define KCOMPLETION_H`n#include <QStringList>`nclass KCompletion { public: QStringList items() const { return QStringList(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kcompletion.h") -Encoding ASCII
+          "#ifndef KSERVICE_H`n#define KSERVICE_H`n#include <QString>`nclass KService { public: QString name() const { return QString(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kservice.h") -Encoding ASCII
+          "#ifndef KICONLOADER_H`n#define KICONLOADER_H`n#include <QIcon>`nclass KIconLoader { public: QIcon loadIcon(const QString&, int=0, int=0) const { return QIcon(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kiconloader.h") -Encoding ASCII
+          "#ifndef KMESSAGEBOX_H`n#define KMESSAGEBOX_H`n#include <QString>`nclass KMessageBox { public: static void information(QWidget*, const QString&, const QString& = QString()) {} static void error(QWidget*, const QString&, const QString& = QString()) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kmessagebox.h") -Encoding ASCII
           
           Write-Host "=== Stub headers generated ==="
           Get-ChildItem $stubDir | Measure-Object | Select-Object Count
