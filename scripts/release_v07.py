@@ -3,7 +3,7 @@
 import json
 import urllib.request
 
-TOKEN = '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'
+TOKEN = os.environ['FEATHER_GH_TOKEN']  # never hard-code tokens — pass via env
 REPO = 'koenigsegggjesk0o/krita'
 RELEASE_ID = 391006177
 
