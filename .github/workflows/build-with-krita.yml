@@ -388,34 +388,14 @@ jobs:
           class KMessageBox { public: static void information(QWidget*, const QString&, const QString& = QString()) {} static void error(QWidget*, const QString&, const QString& = QString()) {} static int questionYesNo(QWidget*, const QString&, const QString& = QString()) { return 1; } };
           #endif' | Out-File -FilePath (Join-Path $stubDir "kmessagebox.h") -Encoding ASCII
           
-          # Krita generated config headers
-          "#ifndef KOCONFIG_H
-#define KOCONFIG_H
-#define HAVE_XSIMD 1
-#define HAVE_LCMS24 1
-#define HAVE_GSL 1
-#endif" | Out-File -FilePath (Join-Path $stubDir "KoConfig.h") -Encoding ASCII
-          "#ifndef KOTESTCONFIG_H
-#define KOTESTCONFIG_H
-#endif" | Out-File -FilePath (Join-Path $stubDir "KoTestConfig.h") -Encoding ASCII
-          "#ifndef CONFIG_HDR_H
-#define CONFIG_HDR_H
-#endif" | Out-File -FilePath (Join-Path $stubDir "config-hdr.h") -Encoding ASCII
-          "#ifndef CONFIG_GSL_H
-#define CONFIG_GSL_H
-#endif" | Out-File -FilePath (Join-Path $stubDir "config-gsl.h") -Encoding ASCII
-          "#ifndef CONFIG_HASH_TABLE_IMPLEMENTATION_H
-#define CONFIG_HASH_TABLE_IMPLEMENTATION_H
-#define HAVE_CONCURRENT_HASH_TABLE 1
-#endif" | Out-File -FilePath (Join-Path $stubDir "config-hash-table-implementation.h") -Encoding ASCII
-          "#ifndef CONFIG_SAFE_ASSERTS_H
-#define CONFIG_SAFE_ASSERTS_H
-#define KRITASAFEASSERT_CRASH 0
-#endif" | Out-File -FilePath (Join-Path $stubDir "config-safe-asserts.h") -Encoding ASCII
-          "#ifndef CONFIG_USE_SURFACE_COLOR_MANAGEMENT_API_H
-#define CONFIG_USE_SURFACE_COLOR_MANAGEMENT_API_H
-#define HAVE_SURFACE_COLOR_MANAGEMENT_API 0
-#endif" | Out-File -FilePath (Join-Path $stubDir "config-use-surface-color-management-api.h") -Encoding ASCII
+          # Krita generated config headers (use `n for newlines in PowerShell)
+          "#ifndef KOCONFIG_H`n#define KOCONFIG_H`n#define HAVE_XSIMD 1`n#define HAVE_LCMS24 1`n#define HAVE_GSL 1`n#endif" | Out-File -FilePath (Join-Path $stubDir "KoConfig.h") -Encoding ASCII
+          "#ifndef KOTESTCONFIG_H`n#define KOTESTCONFIG_H`n#endif" | Out-File -FilePath (Join-Path $stubDir "KoTestConfig.h") -Encoding ASCII
+          "#ifndef CONFIG_HDR_H`n#define CONFIG_HDR_H`n#endif" | Out-File -FilePath (Join-Path $stubDir "config-hdr.h") -Encoding ASCII
+          "#ifndef CONFIG_GSL_H`n#define CONFIG_GSL_H`n#endif" | Out-File -FilePath (Join-Path $stubDir "config-gsl.h") -Encoding ASCII
+          "#ifndef CONFIG_HASH_TABLE_IMPLEMENTATION_H`n#define CONFIG_HASH_TABLE_IMPLEMENTATION_H`n#define HAVE_CONCURRENT_HASH_TABLE 1`n#endif" | Out-File -FilePath (Join-Path $stubDir "config-hash-table-implementation.h") -Encoding ASCII
+          "#ifndef CONFIG_SAFE_ASSERTS_H`n#define CONFIG_SAFE_ASSERTS_H`n#define KRITASAFEASSERT_CRASH 0`n#endif" | Out-File -FilePath (Join-Path $stubDir "config-safe-asserts.h") -Encoding ASCII
+          "#ifndef CONFIG_USE_SURFACE_COLOR_MANAGEMENT_API_H`n#define CONFIG_USE_SURFACE_COLOR_MANAGEMENT_API_H`n#define HAVE_SURFACE_COLOR_MANAGEMENT_API 0`n#endif" | Out-File -FilePath (Join-Path $stubDir "config-use-surface-color-management-api.h") -Encoding ASCII
           
           Write-Host "Generated $($exports.Count) Krita export + 15 KDE Frameworks stub headers"
 
