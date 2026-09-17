@@ -1,0 +1,191 @@
+name: Step 2 Minimal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test runner
+        run: echo "Runner works!"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Qt6
+        run: |
+          pip install aqtinstall
+          python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+          echo "Qt6_DIR=C:\Qt\6.6.3\msvc2019_64" >> $env:GITHUB_ENV
+
+      - name: Install vcpkg deps
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install boost-system:x64-windows boost-headers:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
+
+      - name: Install ECM
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git C:\ecm
+          cd C:\ecm
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\ecm-install
+          cmake --build build --target install --config Release
+
+      - name: Build lager immer zug xsimd
+        run: |
+          $deps = "C:\krita-deps"
+          New-Item -ItemType Directory -Force -Path $deps
+          git clone --depth 1 https://github.com/arximboldi/immer.git C:\immer
+          cd C:\immer; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+          git clone --depth 1 https://github.com/arximboldi/zug.git C:\zug
+          cd C:\zug; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+          git clone --depth 1 https://github.com/arximboldi/lager.git C:\lager
+          cd C:\lager; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF -Dlager_EMBED_RESOURCES_PATH=OFF; cmake --build build --target install --config Release
+          git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git C:\xsimd
+          cd C:\xsimd; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+
+      - name: Download Krita
+        run: |
+          Invoke-WebRequest -Uri "https://download.kde.org/stable/krita/6.0.3/krita-x64-6.0.3.zip" -OutFile krita.zip
+          Expand-Archive -Path krita.zip -DestinationPath C:\krita -Force
+          $root = (Get-ChildItem "C:\krita" -Directory | Select-Object -First 1).FullName
+          echo "KRITA_ROOT=$root" >> $env:GITHUB_ENV
+
+      - name: Generate lib files
+        run: |
+          $bin = Join-Path $env:KRITA_ROOT "bin"
+          $libDir = "C:\krita-libs"
+          New-Item -ItemType Directory -Force -Path $libDir
+          Get-ChildItem "$bin\libkrita*.dll" | ForEach-Object {
+            $def = Join-Path $libDir ($_.BaseName + ".def")
+            "EXPORTS" | Out-File -FilePath $def -Encoding ASCII
+            & dumpbin /exports $_.FullName 2>$null | Select-String -Pattern '^\s+\d+\s+[0-9A-F]+\s+(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Out-File -FilePath $def -Encoding ASCII -Append
+            & lib /def:$def /out:(Join-Path $libDir ($_.BaseName + ".lib")) /machine:x64 2>$null
+          }
+          Get-ChildItem "$bin\Qt6*.dll" | ForEach-Object {
+            $def = Join-Path $libDir ($_.BaseName + ".def")
+            "EXPORTS" | Out-File -FilePath $def -Encoding ASCII
+            & dumpbin /exports $_.FullName 2>$null | Select-String -Pattern '^\s+\d+\s+[0-9A-F]+\s+(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Out-File -FilePath $def -Encoding ASCII -Append
+            & lib /def:$def /out:(Join-Path $libDir ($_.BaseName + ".lib")) /machine:x64 2>$null
+          }
+
+      - name: Clone Krita source
+        run: git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git C:\krita-src
+
+      - name: Configure Krita
+        continue-on-error: true
+        run: |
+          cd C:\krita-src
+          cmake -B build-cfg -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DENABLE_PYTHON=OFF -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 -DWITH_HEIF=OFF -DWITH_JPEG=OFF -DWITH_PNG=OFF -DWITH_TIFF=OFF -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF -DWITH_KDE=OFF -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF -DCMAKE_PREFIX_PATH="$env:Qt6_DIR;C:\krita-deps;C:\vcpkg\installed\x64-windows;C:\ecm-install" -DCMAKE_DISABLE_FIND_PACKAGE_KF5=ON -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON
+
+      - name: Create stubs
+        continue-on-error: true
+        shell: cmd
+        run: |
+          mkdir C:\krita-stubs 2>nul
+          if exist C:\krita-src\build-cfg\KoConfig.h copy C:\krita-src\build-cfg\KoConfig.h C:\krita-stubs\
+          echo #ifndef KOCONFIG_H > C:\krita-stubs\KoConfig.h
+          echo #define KOCONFIG_H >> C:\krita-stubs\KoConfig.h
+          echo #define HAVE_XSIMD 1 >> C:\krita-stubs\KoConfig.h
+          echo #define HAVE_LCMS24 1 >> C:\krita-stubs\KoConfig.h
+          echo #endif >> C:\krita-stubs\KoConfig.h
+          for %%e in (kritapigment_export kritaimage_export kritabrush_export kritaui_export kritaresources_export kritaglobal_export kritawidgetutils_export kritaversion_export kritamultiarch_export kritacommand_export kritaflake_export kritabasicflakes_export kritawidgets_export kritastore_export kritakoplugin_export kritametadata_export kritalibkis_export kritalibkra_export kritapsd_export kritapsdutils_export kritaimpex_export kritalibpaintop_export kritaresourcewidgets_export kritaqmlwidgets_export kritaqmicinterface_export kritacolor_export kritaexifcommon_export kritatiffpsd_export) do (
+            echo #ifndef %%e_H > C:\krita-stubs\%%e.h
+            echo #define %%e_H >> C:\krita-stubs\%%e.h
+            echo #define EXPORT >> C:\krita-stubs\%%e.h
+            echo #endif >> C:\krita-stubs\%%e.h
+          )
+          echo #ifndef KLOCALIZEDSTRING_H > C:\krita-stubs\klocalizedstring.h
+          echo #define KLOCALIZEDSTRING_H >> C:\krita-stubs\klocalizedstring.h
+          echo #include ^<QString^> >> C:\krita-stubs\klocalizedstring.h
+          echo struct KLocalizedString { QString m; KLocalizedString() {} KLocalizedString(const char* s) : m(QString::fromUtf8(s)) {} operator QString() const { return m; } }; >> C:\krita-stubs\klocalizedstring.h
+          echo inline KLocalizedString i18n(const char* t, ...) { return KLocalizedString(t); } >> C:\krita-stubs\klocalizedstring.h
+          echo inline KLocalizedString i18nc(const char* c, const char* t, ...) { return KLocalizedString(t); } >> C:\krita-stubs\klocalizedstring.h
+          echo #endif >> C:\krita-stubs\klocalizedstring.h
+          echo #ifndef KCONFIGGROUP_H > C:\krita-stubs\kconfiggroup.h
+          echo #define KCONFIGGROUP_H >> C:\krita-stubs\kconfiggroup.h
+          echo #include ^<QSettings^> >> C:\krita-stubs\kconfiggroup.h
+          echo #include ^<QVariant^> >> C:\krita-stubs\kconfiggroup.h
+          echo class KConfigGroup { public: KConfigGroup() {} QVariant readEntry(const QString^& k, const QVariant^& d=QVariant()) const { return d; } void writeEntry(const QString^&, const QVariant^&) {} bool hasKey(const QString^&) const { return false; } }; >> C:\krita-stubs\kconfiggroup.h
+          echo #endif >> C:\krita-stubs\kconfiggroup.h
+          echo #ifndef KSHAREDCONFIG_H > C:\krita-stubs\ksharedconfig.h
+          echo #define KSHAREDCONFIG_H >> C:\krita-stubs\ksharedconfig.h
+          echo #include ^<kconfiggroup.h^> >> C:\krita-stubs\ksharedconfig.h
+          echo class KSharedConfig { public: static KConfigGroup group(const QString^&) { return KConfigGroup(); } }; >> C:\krita-stubs\ksharedconfig.h
+          echo typedef QSharedPointer^<KSharedConfig^> KSharedConfigPtr; >> C:\krita-stubs\ksharedconfig.h
+          echo #endif >> C:\krita-stubs\ksharedconfig.h
+          echo #ifndef KPLUGINFACTORY_H > C:\krita-stubs\kpluginfactory.h
+          echo #define KPLUGINFACTORY_H >> C:\krita-stubs\kpluginfactory.h
+          echo #include ^<QObject^> >> C:\krita-stubs\kpluginfactory.h
+          echo class KPluginFactory : public QObject { Q_OBJECT public: KPluginFactory() {} }; >> C:\krita-stubs\kpluginfactory.h
+          echo #define K_PLUGIN_FACTORY(name, ...) class name : public KPluginFactory { Q_OBJECT public: name() {} }; >> C:\krita-stubs\kpluginfactory.h
+          echo #endif >> C:\krita-stubs\kpluginfactory.h
+          echo #ifndef KPLUGINMETADATA_H > C:\krita-stubs\kpluginmetadata.h
+          echo #define KPLUGINMETADATA_H >> C:\krita-stubs\kpluginmetadata.h
+          echo #include ^<QString^> >> C:\krita-stubs\kpluginmetadata.h
+          echo #include ^<QJsonObject^> >> C:\krita-stubs\kpluginmetadata.h
+          echo class KPluginMetaData { public: QString name() const { return QString(); } QJsonObject rawData() const { return QJsonObject(); } bool isValid() const { return true; } }; >> C:\krita-stubs\kpluginmetadata.h
+          echo #endif >> C:\krita-stubs\kpluginmetadata.h
+          echo #ifndef KDEBUG_H > C:\krita-stubs\kdebug.h
+          echo #define KDEBUG_H >> C:\krita-stubs\kdebug.h
+          echo #include ^<QDebug^> >> C:\krita-stubs\kdebug.h
+          echo #define qCDebug(c) qDebug() >> C:\krita-stubs\kdebug.h
+          echo #define qCWarning(c) qWarning() >> C:\krita-stubs\kdebug.h
+          echo #define qCCritical(c) qCritical() >> C:\krita-stubs\kdebug.h
+          echo #endif >> C:\krita-stubs\kdebug.h
+
+      - name: Setup MSVC and compile
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          set KSR C:\krita-src
+          set LIBDIR=C:\krita-libs
+          set VCPKG=C:\vcpkg\installed\x64-windows
+          set DEPS=C:\krita-deps
+          set QT=C:\Qt\6.6.3\msvc2019_64
+          set STUBS=C:\krita-stubs
+          set ECM=C:\ecm-install\include
+          
+          cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD ^
+            -I"native\krita_bridge" -I"%STUBS%" ^
+            -I"%KSR%\libs\brush" -I"%KSR%\libs\image" -I"%KSR%\libs\image\brushengine" ^
+            -I"%KSR%\libs\pigment" -I"%KSR%\libs\widgetutils" -I"%KSR%\libs\global" ^
+            -I"%KSR%\libs\resources" -I"%KSR%\libs\command" -I"%KSR%\libs\flake" ^
+            -I"%KSR%\libs\basicflakes" -I"%KSR%\libs\ui" -I"%KSR%\libs\widgets" ^
+            -I"%KSR%\libs\store" -I"%KSR%\libs\koplugin" -I"%KSR%\libs\metadata" ^
+            -I"%KSR%\libs\version" -I"%KSR%\libs\multiarch" -I"%KSR%\libs\psd" ^
+            -I"%KSR%\libs\psdutils" -I"%KSR%\libs\resourcewidgets" -I"%KSR%\libs\impex" ^
+            -I"%KSR%\libs\libkis" -I"%KSR%\libs\libkra" -I"%KSR%\krita" ^
+            -I"%VCPKG%\include" -I"%QT%\include" -I"%QT%\include\QtCore" ^
+            -I"%QT%\include\QtGui" -I"%QT%\include\QtWidgets" -I"%QT%\include\QtXml" ^
+            -I"%QT%\include\QtSvg" -I"%QT%\include\QtConcurrent" ^
+            -I"%DEPS%\include" -I"%ECM%" ^
+            /DKRITA_VERSION_STRING="6.0.4" /DGENERIC_KRITA_LIB_VERSION=21 /DGENERIC_KRITA_LIB_SOVERSION=21 ^
+            /DQT_CORE_LIB /DQT_GUI_LIB /DQT_WIDGETS_LIB /DQT_XML_LIB /DQT_SVG_LIB /DQT_CONCURRENT_LIB ^
+            /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES ^
+            native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll ^
+            /link /LIBPATH:"%LIBDIR%" /LIBPATH:"%QT%\lib" /LIBPATH:"%VCPKG%\lib" ^
+            libkritalibbrush.lib libkritaimage.lib libkritalibpaintop.lib libkritapigment.lib ^
+            libkritaresources.lib libkritaglobal.lib libkritawidgetutils.lib libkritaversion.lib ^
+            libkritamultiarch.lib libkritacommand.lib libkritaflake.lib libkritabasicflakes.lib ^
+            libkritaui.lib libkritawidgets.lib libkritastore.lib libkritakoplugin.lib ^
+            libkritametadata.lib libkritapsd.lib libkritapsdutils.lib libkritaimpex.lib ^
+            libkritalibkis.lib libkritalibkra.lib libkritaresourcewidgets.lib ^
+            Qt6Core.lib Qt6Gui.lib Qt6Widgets.lib Qt6Xml.lib Qt6Svg.lib Qt6Concurrent.lib Qt6Network.lib ^
+            libboost_system.lib ^
+            /SUBSYSTEM:CONSOLE /MACHINE:X64
+          
+          if exist krita_bridge.dll (echo SUCCESS) else (echo FAILED && exit 1)
+
+      - name: Upload krita_bridge.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-bridge-dll
+          path: krita_bridge.dll
+          retention-days: 90
