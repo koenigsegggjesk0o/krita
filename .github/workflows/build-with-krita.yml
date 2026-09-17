@@ -164,7 +164,7 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
 
   compile-krita-bridge:
-    name: Step 2 — Compile krita_bridge.dll
+    name: Step 2 - Compile krita_bridge.dll
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
