@@ -194,7 +194,7 @@ jobs:
         run: |
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg install boost-system:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
+          C:\vcpkg\vcpkg install boost-system:x64-windows boost-headers:x64-windows boost-algorithm:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
 
       - name: Install extra-cmake-modules
         run: |
@@ -306,7 +306,7 @@ jobs:
           Write-Host "Lib files: $($libFiles.Count)"
           
           # Write compile command to batch file (fix PowerShell quote issue)
-          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
           $cmd | Out-File -FilePath compile.bat -Encoding ASCII -Force
           Write-Host "Command: $cmd"
           cmd /c compile.bat 2>&1
