@@ -176,7 +176,12 @@ jobs:
         with:
           arch: x64
 
-      - name: Install Qt6 (pre-built, 2 min instead of 2 hours)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Qt6 (pre-built)
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.0'
