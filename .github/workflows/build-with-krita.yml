@@ -181,14 +181,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Qt6 (pre-built)
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.7.0'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2019_64'
-          modules: 'qtwidgets qtsvg qtxml qtconcurrent'
+      - name: Install Qt6 via aqtinstall (fast, pre-built)
+        run: |
+          pip install aqtinstall
+          python -m aqt install-qt windows desktop 6.7.0 win64_msvc2019_64 -m qtwidgets qtsvg qtxml qtconcurrent --outputdir C:\Qt
+          $qtDir = "C:\Qt\6.7.0\msvc2019_64"
+          echo "Qt6_DIR=$qtDir" >> $env:GITHUB_ENV
+          Write-Host "Qt6 installed at: $qtDir"
+          Get-ChildItem "$qtDir\include" -Directory | Select-Object Name
 
       - name: Install Boost + Eigen via vcpkg (fast, pre-built)
         run: |
