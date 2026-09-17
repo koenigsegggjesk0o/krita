@@ -144,7 +144,7 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          set KSR C:\krita-src
+          set KSR=C:\krita-src
           set LIBDIR=C:\krita-libs
           set VCPKG=C:\vcpkg\installed\x64-windows
           set DEPS=C:\krita-deps
