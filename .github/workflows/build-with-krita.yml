@@ -30,7 +30,7 @@ jobs:
       - name: Download Krita portable ZIP (contains all .dll)
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://github.com/koenigsegggjesk0o/krita/releases/download/v6.0.3-windows/krita-x64-6.0.3-portable.zip" -OutFile krita-portable.zip
+          Invoke-WebRequest -Uri "https://download.kde.org/stable/krita/6.0.3/krita-x64-6.0.3.zip" -OutFile krita-portable.zip
           Expand-Archive -Path krita-portable.zip -DestinationPath krita-files -Force
           Write-Host "Krita files extracted"
 
