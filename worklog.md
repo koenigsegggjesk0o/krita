@@ -259,3 +259,9 @@ Stage Summary:
 - Export pipeline (PNG/JPEG/OBJ/FeatherProject) is functional and regression-tested through the UI.
 - Health gates: flutter analyze 0 issues; flutter test 22/22 (bridge 7, gui 7, engine 8).
 - Known deferred: GIF/MP4/glTF exporters (pro), open/save project file dialogs (file_picker), joystick liquify UX depth, ticker muting for battery (continuous redraw by design today).
+
+Addendum (5-loop-11, post-push):
+- First public-repo sync push (64522ce) broke the Android build: the public repo had a STALE lib/ffi/krita_bindings.dart (missing loop-7 preset getters currentSize/currentOpacity/currentSpacing), no native/cmake/, and no krita_bridge_test.dart — the loop only synced files touched that day. Lesson recorded: sync diffs must be FULL-TREE diffs, not per-loop file lists. Fixed in 7a69bf4; App workflow GREEN (run 35271841597).
+- Artifacts verified: Windows zip (feather_krita.exe + krita_bridge.dll v3 66048B), APK with libkrita_bridge.so for arm64-v8a/armeabi-v7a/x86_64.
+- RELEASE v0.8-editor-wired published (id 391048429) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.8-editor-wired
+- Private HEAD: 10385ab (+ worklog commits). Public CI repo HEAD: 7a69bf4, all green.
