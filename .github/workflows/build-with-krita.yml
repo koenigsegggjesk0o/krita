@@ -184,7 +184,7 @@ jobs:
       - name: Install Qt6 via aqtinstall (fast, pre-built)
         run: |
           pip install aqtinstall
-          python -m aqt install-qt windows desktop 6.7.0 win64_msvc2019_64 -m qtwidgets qtsvg qtxml qtconcurrent --outputdir C:\Qt
+          python -m aqt install-qt windows desktop 6.7.0 win64_msvc2019_64 --outputdir C:\Qt
           $qtDir = "C:\Qt\6.7.0\msvc2019_64"
           echo "Qt6_DIR=$qtDir" >> $env:GITHUB_ENV
           Write-Host "Qt6 installed at: $qtDir"
