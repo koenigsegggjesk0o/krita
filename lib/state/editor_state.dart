@@ -118,6 +118,10 @@ class EditorState extends ChangeNotifier {
 
   void _forward() => notifyListeners();
 
+  /// Public change-notification wrapper. Widgets that mutate [EditorState]
+  /// fields directly (e.g. grid toggles) call this to rebuild listeners.
+  void notify() => notifyListeners();
+
   // ----- Brush engine lifecycle -----------------------------------------
 
   void _tryLoadBrushEngine() {

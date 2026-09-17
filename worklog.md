@@ -237,3 +237,25 @@ Stage Summary:
 - Engine layer (texture compositing, mirror, raycast, export) is under automated test for the first time — steps 4-8 of the roadmap now have a regression gate, not just a code audit.
 - Health gates for every future loop: flutter analyze (0 issues) + flutter test (15 tests).
 - Roadmap: steps 1-3 done+proven; step 4 (canvas integration) audited + engine-tested; steps 5-8 (3D preview, export) engine-tested; remaining: on-device/e2e GUI verification and pro features.
+
+---
+Task ID: 5-loop-11
+Agent: Z.ai Code (main, autonomous loop)
+Task: Wire the REAL editor — mount CanvasWidget/EditorState into the app, real exporters, GUI test suite
+
+Work Log:
+- CRITICAL GAP FOUND: lib/screens/main_screen.dart was still the beta MOCK — a static "3D Canvas" placeholder with dead undo/redo buttons (onPressed: () {}) and local setState brush state. CanvasWidget (the real raycast→UV→dab 3D viewport, 836 lines) was NEVER mounted anywhere; the shipped APK/EXE never showed a working editor despite 9 loops of engine work.
+- REWROTE MainScreen as the real editor screen: owns one EditorState (injectable for tests), mounts CanvasWidget full-viewport, GlassAppBar (undo/redo wired to StrokeManager history, rename dialog, settings shortcut), BrushSettingsPanel right dock (sliders/color/mirror → native engine), StrokeListPanel left dock (Select tool toggles it), JoystickWidget (move/rotate/scale/liquify via applyJoystickTransform/applyLiquify) for select/liquify tools, GlassBottomBar drives setActiveTool. Light tool toggles grid+mirror-plane overlays; EditorState got a public notify() wrapper.
+- REAL EXPORTERS implemented behind ExportScreen's ExportRunner: PNG (img.encodePng from TexturePainter RGBA), JPEG (quality), OBJ (guide-surface mesh → v/vt/vn/f), FeatherProject (versioned JSON: strokes + brush + surface + texture size). GIF/MP4/glTF return an honest "coming in a future build" error. Files land in ~/feather_exports (env-overridable via FEATHER_EXPORT_DIR, deterministic in tests).
+- BUG FIXES forced by the new widget tests:
+  * ExportScreen/SettingsScreen were shown via showModalBottomSheet(isScrollControlled) → unbounded height → the 560px Dialog content overflowed the 600px test surface and the export FilledButton landed at y=1129 (untappable, off-screen). Both are Dialog-rooted screens → now shown via showDialog. Also wrapped ExportScreen's body in Flexible+SingleChildScrollView so short/landscape screens scroll instead of clipping actions.
+  * Export stall under fake-async: _runExport awaited real async file IO which NEVER completes inside widget-test fake async ("Exporting… 50%" forever, 0-byte file). Switched to sync IO (writeAsBytesSync/writeAsStringSync) — encoder was already sync; export now completes everywhere.
+  * StrokeListPanel _Header Row overflowed 11px (hard-coded title + Spacer) → Expanded+ellipsis title.
+- test/gui_test.dart — 7 widget tests driving the REAL app through the gesture system: mount assertions (canvas+panels+docks+disabled undo), tool switching, a DRAG on the canvas center that raycasts onto the sphere and asserts stroke history + texture dirty + canUndo, app-bar undo/redo round-trip of that stroke, select tool showing Layers panel + joystick (and toggling off), export sheet writing a real .feather project file and showing "Saved: <path>", light-tool grid toggle. Tests use pump(fixed) not pumpAndSettle (the canvas Ticker schedules frames continuously by design).
+- Version bump v0.2→v0.8 (splash text + pubspec 0.8.0+1). flutter analyze: No issues. flutter test: 22/22 PASS (7 bridge + 7 gui + 8 engine).
+
+Stage Summary:
+- The shipped app is now a REAL editor: pointer→raycast→native dab→texture→stroke history→undo/redo→export all reachable from the GUI, replacing the dead mock. This was the last big unwired piece of the end-to-end GOAL.
+- Export pipeline (PNG/JPEG/OBJ/FeatherProject) is functional and regression-tested through the UI.
+- Health gates: flutter analyze 0 issues; flutter test 22/22 (bridge 7, gui 7, engine 8).
+- Known deferred: GIF/MP4/glTF exporters (pro), open/save project file dialogs (file_picker), joystick liquify UX depth, ticker muting for battery (continuous redraw by design today).
