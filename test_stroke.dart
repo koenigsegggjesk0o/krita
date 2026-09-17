@@ -2,7 +2,6 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:image/image.dart' as img;
@@ -17,6 +16,7 @@ final class BrushInputNative extends Struct {
   @Float() external double velocityX;
   @Float() external double velocityY;
   @Int32() external int flags;
+  // ignore: unused_field
   @Int32() external int _padding;
 }
 
@@ -150,7 +150,7 @@ void compositeDab(img.Image canvas, BrushDabNative dab, double cx, double cy) {
       if (dx < 0 || dx >= canvas.width) continue;
       final r = px[off], g = px[off + 1], b = px[off + 2];
       final af = a / 255.0;
-      final dst = canvas.getPixel(dx, dy) as int;
+      final dst = canvas.getPixel(dx, dy);
       final dr = (dst >> 16) & 0xFF, dg = (dst >> 8) & 0xFF, db = dst & 0xFF;
       final nr = (r * af + dr * (1 - af)).round();
       final ng = (g * af + dg * (1 - af)).round();
