@@ -281,4 +281,3 @@ jobs:
           name: krita-bridge-dll
           path: krita_bridge.dll
           retention-days: 90
-          retention-days: 90
