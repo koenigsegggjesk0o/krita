@@ -319,3 +319,9 @@ Stage Summary:
 - The brush picker is REAL for the first time: 3 bundled presets + any user .kpp dropped into ~/feather_presets load through the same tolerant parser the native engine uses.
 - The editor no longer burns CPU while idle: frame ticker mutes at rest and wakes on interaction; the camera damping actually damps now (cumulative-elapsed bug fixed).
 - Remaining deferred: MP4 exporter, on-device/e2e verification, camera state in project files, file_picker UX polish.
+
+Addendum (5-loop-13, post-push):
+- Public repo sync pushed (06ab262): Build Feather-Krita App run 35282509128 SUCCESS with v0.10 code.
+- Artifacts verified: Windows zip = feather_krita.exe + krita_bridge.dll (66048 B v3); APK ships libkrita_bridge.so for arm64-v8a / armeabi-v7a / x86_64.
+- RELEASE v0.10-preset-library published (id 391102452) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.10-preset-library
+- Private HEAD: 573716b (+ worklog). Public CI repo HEAD: 06ab262, all green. Health gates: analyze 0 issues, 39/39 tests (twice).
