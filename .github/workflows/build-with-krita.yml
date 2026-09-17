@@ -305,7 +305,11 @@ jobs:
           Write-Host "Include paths: $($includePaths.Count)"
           Write-Host "Lib files: $($libFiles.Count)"
           
-          cl /nologo /std:c++17 /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64 2>&1
+          # Write compile command to batch file (fix PowerShell quote issue)
+          $cmd = "cl /nologo /std:c++17 /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+          $cmd | Out-File -FilePath compile.bat -Encoding ASCII -Force
+          Write-Host "Command: $cmd"
+          cmd /c compile.bat 2>&1
           
           if (Test-Path krita_bridge.dll) {
             Write-Host "SUCCESS: krita_bridge.dll compiled"
