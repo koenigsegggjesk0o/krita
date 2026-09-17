@@ -37,18 +37,29 @@ jobs:
       - name: Copy Krita DLLs to Flutter project
         shell: pwsh
         run: |
-          $kritaBin = "krita-files\krita-x64-6.0.3\bin"
-          $destDir = "windows\flutter\external"
+          # Find Krita bin folder (might be different name)
+          $kritaRoot = Get-ChildItem "krita-files" -Directory | Select-Object -First 1
+          $kritaBin = Join-Path $kritaRoot.FullName "bin"
+          Write-Host "Krita bin: $kritaBin"
+          
+          if (-not (Test-Path $kritaBin)) {
+            Write-Host "ERROR: Krita bin folder not found!"
+            Write-Host "Contents of krita-files:"
+            Get-ChildItem "krita-files" -Recurse -Depth 1 | Format-Table FullName
+            exit 1
+          }
+          
+          $destDir = "krita-dlls"
           New-Item -ItemType Directory -Force -Path $destDir
           
-          # Copy all Krita libraries
-          Copy-Item "$kritaBin\libkrita*.dll" -Destination $destDir -Force
-          Copy-Item "$kritaBin\krita*.dll" -Destination $destDir -Force -Force
-          Copy-Item "$kritaBin\Qt6*.dll" -Destination $destDir -Force -ErrorAction SilentlyContinue
-          Copy-Item "$kritaBin\lib*.dll" -Destination $destDir -Force -ErrorAction SilentlyContinue
+          # Copy ALL dlls from Krita bin
+          Get-ChildItem "$kritaBin\*.dll" | ForEach-Object {
+            Copy-Item $_.FullName -Destination $destDir -Force
+            Write-Host "Copied: $($_.Name)"
+          }
           
-          Write-Host "Copied Krita DLLs:"
-          Get-ChildItem $destDir -Filter "*.dll" | Format-Table Name, Length
+          Write-Host "=== Total DLLs copied ==="
+          (Get-ChildItem $destDir -Filter "*.dll").Count
 
       - name: Build Flutter Windows
         shell: pwsh
@@ -66,27 +77,43 @@ jobs:
           if (-not (Test-Path $buildDir)) {
             $buildDir = "build\windows\x64\runner\Debug"
           }
-          $kritaBin = "krita-files\krita-x64-6.0.3\bin"
           
-          # Copy ALL Krita DLLs to build output
+          # Find Krita root
+          $kritaRoot = Get-ChildItem "krita-files" -Directory | Select-Object -First 1
+          $kritaBin = Join-Path $kritaRoot.FullName "bin"
+          $kritaShare = Join-Path $kritaRoot.FullName "share\krita"
+          
+          Write-Host "Build dir: $buildDir"
+          Write-Host "Krita bin: $kritaBin"
+          
+          # Copy ALL Krita DLLs
           Get-ChildItem "$kritaBin\*.dll" | ForEach-Object {
-            Copy-Item $_.FullName -Destination $buildDir -Force -ErrorAction SilentlyContinue
+            Copy-Item $_.FullName -Destination $buildDir -Force
           }
           
-          # Copy kritaplugins folder
-          $pluginsDir = Join-Path $buildDir "kritaplugins"
-          New-Item -ItemType Directory -Force -Path $pluginsDir
-          Get-ChildItem "$kritaBin\kritaplugins\*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName -Destination $pluginsDir -Force -ErrorAction SilentlyContinue
+          # Copy kritaplugins
+          $pluginsSrc = Join-Path $kritaBin "kritaplugins"
+          if (Test-Path $pluginsSrc) {
+            $pluginsDst = Join-Path $buildDir "kritaplugins"
+            New-Item -ItemType Directory -Force -Path $pluginsDst
+            Get-ChildItem "$pluginsSrc\*.dll" | ForEach-Object {
+              Copy-Item $_.FullName -Destination $pluginsDst -Force
+            }
           }
           
-          # Copy data folder (brushes, presets, etc)
-          $dataDir = Join-Path $buildDir "data"
-          New-Item -ItemType Directory -Force -Path $dataDir
-          Copy-Item "krita-files\krita-x64-6.0.3\share\krita" -Destination $dataDir -Recurse -Force -ErrorAction SilentlyContinue
+          # Copy data (brushes, presets, bundles)
+          if (Test-Path $kritaShare) {
+            $dataDst = Join-Path $buildDir "data\krita"
+            New-Item -ItemType Directory -Force -Path $dataDst
+            Copy-Item $kritaShare -Destination $dataDst -Recurse -Force
+          }
           
-          Write-Host "Build output contents:"
+          Write-Host "=== Build output ==="
           Get-ChildItem $buildDir | Format-Table Name, Length
+          Write-Host "=== kritaplugins ==="
+          Get-ChildItem (Join-Path $buildDir "kritaplugins") -ErrorAction SilentlyContinue | Format-Table Name
+          Write-Host "=== data ==="
+          Get-ChildItem (Join-Path $buildDir "data") -ErrorAction SilentlyContinue | Format-Table Name
 
       - name: Package as ZIP
         shell: pwsh
