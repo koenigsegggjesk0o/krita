@@ -265,3 +265,30 @@ Addendum (5-loop-11, post-push):
 - Artifacts verified: Windows zip (feather_krita.exe + krita_bridge.dll v3 66048B), APK with libkrita_bridge.so for arm64-v8a/armeabi-v7a/x86_64.
 - RELEASE v0.8-editor-wired published (id 391048429) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.8-editor-wired
 - Private HEAD: 10385ab (+ worklog commits). Public CI repo HEAD: 7a69bf4, all green.
+
+---
+Task ID: 5-loop-12
+Agent: Z.ai Code (main, autonomous loop)
+Task: Persistence + pro-format exports — .feather project open/restore, GIF stroke-replay, glTF mesh export
+
+Work Log:
+- Private repo step2-qt-bridge: still the known billing/runner-allocation failure (0 steps, no new runs). Public builder repo: all green at 7a69bf4.
+- Health gates on entry: flutter analyze 0 issues, flutter test 22/22.
+- PERSISTENCE: added per-point texture UVs to StrokePoint (u/v in JSON, nullable for legacy docs). The canvas now records hit.uv on every stroke point; Stroke.mirrored() nulls UVs on mirror copies (they are overlay-only, never stamped into the texture — keeps replay faithful).
+- NEW lib/io/feather_project.dart: .feather project document v2 (adds nextId + mirror flags to the loop-11 v1 payload). Parse is tolerant (v1 loads fine, future versions rejected with a clear FormatException). applyTo() restores fileName/brush/surface and rebuilds strokes through StrokeManager.fromJsonString so PROJECT LOAD IS UNDOABLE (undo brings the previous document back).
+- NEW lib/widgets/open_project_dialog.dart: "Open project" dialog (path field + Browse via file_picker with graceful fallback + recent-exports list from the export dir). Wired to GlassAppBar's folder button (was a "coming in a future build" toast).
+- NEW lib/io/gif_exporter.dart: animated GIF via stroke replay — dabs are stamped into a fresh TexturePainter following the canvas's own spacing heuristic, snapshotting one frame per time slice. Strokes without UVs are skipped; eraser strokes replay through BlendMode.erase.
+- NEW lib/io/gltf_exporter.dart: single-file glTF 2.0 with embedded base64 buffer (POSITION+min/max, NORMAL, TEXCOORD_0, uint32 indices, 4-byte aligned views).
+- EXTRACTED the canvas's synthetic dab into lib/engine/synthetic_dab.dart (shared by canvas fallback and GIF replay; replay uses per-stroke colors since the native engine holds one global color).
+- TWO REAL BUGS FOUND AND FIXED:
+  1. PNG/JPEG exports had RED/BLUE CHANNELS SWAPPED: image 3.x packs pixels #AABBGGRR (R = LOW byte) but _encodeTexture packed ARGB. The v0.8 PNG/JPEG path was silently wrong; fixed in main_screen + the GIF snapshotter, comments added.
+  2. GIF first frame lost its strokes: image's NeuralQuantizer default samplingFactor=10 dropped the sparse red cluster (~1.6 samples) → whole frame quantized to black. Fixed with samplingFactor:1 + DitherKernel.None.
+  Also: TexturePainter now skips undo-buffer copies when maxUndoSteps<=0 (replay textures were wasting a 1MB memcpy per dab).
+- Tests: test/project_test.dart (5: round-trip incl. UVs, undoable applyTo restore, legacy v1 parse, malformed/future-version rejection, type-name mapping), test/gif_gltf_test.dart (4: glTF structure+buffer length, progressive replay frames, no-UV skip, eraser-replay erase), gui_test +1 (open-dialog flow writes a temp .feather, loads through the REAL dialog, asserts strokes/brush/filename/UV restore — sync IO in fake-async, per loop-11 lesson).
+- flutter analyze: 0 issues. flutter test: 32/32 PASS (bridge 7, project 5, gif/gltf 4, gui 8, engine 8). Version bumped 0.9.0+1; README updated.
+
+Stage Summary:
+- The editor now PERSISTS: save .feather (v2) and open it back with strokes, brush settings, surface type, mirror flags — and the restore itself is undoable.
+- Pro-tier exports GIF (animated stroke replay) and glTF (shareable single-file model) are real, replacing two "coming in a future build" placeholders. Export bugs found by the new tests also fixed the v0.8 PNG/JPEG channel swap.
+- Roadmap: steps 1-7 done + regression-gated; remaining deferred: MP4 exporter, on-device/e2e verification, file_picker UX polish, ticker muting.
+- This loop's deliverables live in lib/io/, lib/widgets/open_project_dialog.dart, lib/engine/synthetic_dab.dart.
