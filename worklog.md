@@ -211,3 +211,29 @@ Stage Summary:
 - First automated regression suite for the bridge is in-tree (flutter test) — future loops must keep it green.
 - Releases: v0.6-bridge-working, v0.7-eraser-fix (installable Windows zip + Android APK).
 - Private repo HEAD: e738955. Public builder repo HEAD: 3efb70c. Both green.
+
+---
+Task ID: 5-loop-10
+Agent: Z.ai Code (main, autonomous loop)
+Task: Advance steps 4-8 — linux platform scaffold, engine test suite, lint hygiene
+
+Work Log:
+- Private repo step2-qt-bridge: still the billing/runner-allocation failure (0 steps) — unchanged, documented for the user. Public builder repo: all green.
+- Scaffolded the missing linux/ platform folder (flutter create --platforms=linux --project-name feather_krita .). The repo previously had NO linux target at all.
+- Added a CMake install rule in linux/CMakeLists.txt bundling assets/native/linux/libkrita_bridge.so into the app bundle's lib/ dir — exactly the Dart FFI loader's first search candidate. Falls back to a build-time WARNING if the .so is absent.
+- Local `flutter build linux` is impossible in this sandbox (no sudo → cannot install libgtk-3-dev); the scaffold + bundling rule make Linux a first-class target wherever GTK exists.
+- Wrote test/engine_test.dart (8 tests) covering the previously-untested 3D engine:
+  * TexturePainter: composites a REAL native red dab at texture center (normal blend), erase blend fully clears painted pixels (native eraser mask through BlendMode.erase), undo/redo round-trip.
+  * StrokeManager: live X mirror creates a copy with mirrorOfId set; local points stay untouched and the flip lives in the transform matrix (world X negated via transform3) — test initially asserted point-space negation and was corrected to the actual design; undo/redo reverts/reapplies a stroke add.
+  * GuideSurface.sphere: raycast from +Z hits at (0,0,1), distance 4, front-face normal, UV in range; away-pointing ray misses.
+  * PNG export: texture pixels survive an encode/decode round-trip (image 3.3.0 packed-int API).
+- flutter test: 15/15 PASS (7 bridge + 8 engine). flutter analyze: clean after fixes.
+- flutter create also dropped a template analysis_options.yaml that turned on flutter_lints 4 retroactively (75 findings). Tuned it to keep the "zero issues" health gate meaningful (style-only lints ignored until triaged) and fixed the 4 real findings it exposed: 2 malformed Color constants in app_theme.dart (10-digit hex like 0xFFEBEBF599 → intended 0x99EBEBF5 / 0x993C3C43), 2 .length emptiness checks in canvas_widget.dart → isNotEmpty/isEmpty.
+- Replaced the flutter-template README.md with a real project README (architecture table, platform status, build instructions, release links).
+- Synced all of the above to the public builder repo (3458cab) — workflows re-triggered.
+
+Stage Summary:
+- Repo now has a linux/ target with automatic native-bridge bundling; Windows/Android/Linux all wired for the bridge.
+- Engine layer (texture compositing, mirror, raycast, export) is under automated test for the first time — steps 4-8 of the roadmap now have a regression gate, not just a code audit.
+- Health gates for every future loop: flutter analyze (0 issues) + flutter test (15 tests).
+- Roadmap: steps 1-3 done+proven; step 4 (canvas integration) audited + engine-tested; steps 5-8 (3D preview, export) engine-tested; remaining: on-device/e2e GUI verification and pro features.
