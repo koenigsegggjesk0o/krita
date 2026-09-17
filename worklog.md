@@ -292,3 +292,10 @@ Stage Summary:
 - Pro-tier exports GIF (animated stroke replay) and glTF (shareable single-file model) are real, replacing two "coming in a future build" placeholders. Export bugs found by the new tests also fixed the v0.8 PNG/JPEG channel swap.
 - Roadmap: steps 1-7 done + regression-gated; remaining deferred: MP4 exporter, on-device/e2e verification, file_picker UX polish, ticker muting.
 - This loop's deliverables live in lib/io/, lib/widgets/open_project_dialog.dart, lib/engine/synthetic_dab.dart.
+
+Addendum (5-loop-12, post-push):
+- Full-tree sync to the public builder repo was REJECTED by GitHub push protection: scripts/release_v07.py / release_v08.py embedded the raw GitHub token (they had been committed to the private repo in loop 9 where no push protection exists). Fixed at the source: both scripts now read FEATHER_GH_TOKEN from the environment. Lesson: NEVER carry token-bearing files into the public repo; scripts must be env-clean.
+- Public repo re-pushed (d83d472): Build Feather-Krita App run 35280026556 SUCCESS (Windows + Android + bridge all green with v0.9 code).
+- Artifacts verified: Windows zip = feather_krita.exe + krita_bridge.dll (66048 B, v3); APK ships libkrita_bridge.so for arm64-v8a / armeabi-v7a / x86_64.
+- RELEASE v0.9-persistence published (id 391093402) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.9-persistence
+- Private HEAD: e5f5306. Public CI repo HEAD: d83d472, all green. Health gates: analyze 0 issues, 32/32 tests.
