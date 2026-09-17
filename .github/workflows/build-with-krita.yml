@@ -176,11 +176,20 @@ jobs:
         with:
           arch: x64
 
-      - name: Install vcpkg + Qt6 + Boost + Eigen
+      - name: Install Qt6 (pre-built, 2 min instead of 2 hours)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.0'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtwidgets qtsvg qtxml qtconcurrent'
+
+      - name: Install Boost + Eigen via vcpkg (fast, pre-built)
         run: |
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg install qtbase:x64-windows boost-system:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
+          C:\vcpkg\vcpkg install boost-system:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
 
       - name: Install extra-cmake-modules
         run: |
@@ -242,6 +251,15 @@ jobs:
           $libDir = "C:\krita-libs"
           $vcpkgDir = "C:\vcpkg\installed\x64-windows"
           $depsDir = "C:\krita-deps"
+          
+          # Find Qt6 path from install-qt-action
+          $qtDir = $env:Qt6_DIR -replace '\\lib\\cmake\\Qt6$', ''
+          if (-not $qtDir) { $qtDir = (Get-ChildItem "C:\Qt\6.*\msvc*" -Directory | Select-Object -First 1).FullName }
+          Write-Host "Qt6 dir: $qtDir"
+          
+          $qtInclude = Join-Path $qtDir "include"
+          $qtLib = Join-Path $qtDir "lib"
+          
           $includePaths = @(
             "native\krita_bridge", "$kritaSrc\libs\brush", "$kritaSrc\libs\image",
             "$kritaSrc\libs\image\brushengine", "$kritaSrc\libs\pigment",
@@ -254,17 +272,34 @@ jobs:
             "$kritaSrc\libs\psd", "$kritaSrc\libs\psdutils",
             "$kritaSrc\libs\resourcewidgets", "$kritaSrc\libs\impex",
             "$kritaSrc\libs\libkis", "$kritaSrc\libs\libkra",
-            "$kritaSrc\krita", "$vcpkgDir\include", "$vcpkgDir\include\qt6",
-            "$vcpkgDir\include\qt6\QtCore", "$vcpkgDir\include\qt6\QtGui",
-            "$vcpkgDir\include\qt6\QtWidgets", "$vcpkgDir\include\qt6\QtXml",
-            "$vcpkgDir\include\qt6\QtSvg", "$vcpkgDir\include\qt6\QtConcurrent",
+            "$kritaSrc\krita", "$vcpkgDir\include",
+            "$qtInclude", "$qtInclude\QtCore", "$qtInclude\QtGui",
+            "$qtInclude\QtWidgets", "$qtInclude\QtXml",
+            "$qtInclude\QtSvg", "$qtInclude\QtConcurrent",
             "$depsDir\include", "C:\ecm-install\include"
           )
           $incArgs = ($includePaths | ForEach-Object { "-I`"$_`"" }) -join " "
-          $libArgs = ((Get-ChildItem "$libDir\*.lib" | ForEach-Object { "`"$($_.FullName)`"" }) -join " ")
+          
+          # Collect .lib files (Krita import libs + Qt6 libs)
+          $libFiles = @()
+          Get-ChildItem "$libDir\*.lib" | ForEach-Object { $libFiles += $_.FullName }
+          # Qt6 libs
+          $qtLibs = @("Qt6Core.lib", "Qt6Gui.lib", "Qt6Widgets.lib", "Qt6Xml.lib", "Qt6Svg.lib", "Qt6Concurrent.lib", "Qt6Network.lib")
+          foreach ($ql in $qtLibs) {
+            $qp = Join-Path $qtLib $ql
+            if (Test-Path $qp) { $libFiles += $qp }
+          }
+          # Boost
+          $boostLib = Join-Path $vcpkgDir "lib\libboost_system.lib"
+          if (Test-Path $boostLib) { $libFiles += $boostLib }
+          
+          $libArgs = ($libFiles | ForEach-Object { "`"$_`"" }) -join " "
           $defines = "/DKRITA_VERSION_STRING=`"6.0.4`" /DGENERIC_KRITA_LIB_VERSION=21 /DGENERIC_KRITA_LIB_SOVERSION=21 /DQT_CORE_LIB /DQT_GUI_LIB /DQT_WIDGETS_LIB /DQT_XML_LIB /DQT_SVG_LIB /DQT_CONCURRENT_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES"
           
-          Write-Host "=== Compiling ==="
+          Write-Host "=== Compiling krita_bridge.cpp ==="
+          Write-Host "Include paths: $($includePaths.Count)"
+          Write-Host "Lib files: $($libFiles.Count)"
+          
           cl /nologo /std:c++17 /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64 2>&1
           
           if (Test-Path krita_bridge.dll) {
