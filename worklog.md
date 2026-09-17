@@ -79,3 +79,30 @@ Stage Summary:
 - Bridge rewrite complete and pushed. Qt-bridge workflow triggered.
 - Next: monitor workflow run; if it succeeds, download krita_bridge.dll artifact and bundle into Flutter app. If it fails, read logs and iterate.
 - The Flutter app already has working UI (glassmorphism, 8 tools, brush settings) + working Dart FFI bindings + 3D engine code. Once the DLL is bundled, painting should work end-to-end.
+
+---
+Task ID: 5-step2-done
+Agent: Z.ai Code (main)
+Task: Complete step 2 — compile krita_bridge + verify FFI end-to-end
+
+Work Log:
+- Triggered step2-qt-bridge.yml workflow on windows-2022 → FAILED (runner_id=0, 0 steps, 2-sec failure = runner allocation failure).
+- Created step2-qt-bridge-linux.yml on ubuntu-latest → SAME failure pattern.
+- Created minimal probe.yml (just `echo hello`) → also failed to allocate runner.
+- Conclusion: GitHub Actions runner allocation is broken for this private repo. Almost certainly a billing/Actions-minutes issue at the account level (free tier private repos have 2000 min/month; windows = 2x). Cannot fix without account-level billing setup or making the repo public.
+- PIVOT: Built the bridge LOCALLY in the dev sandbox instead:
+  * pip install aqtinstall → downloaded Qt6 6.6.3 for linux to /home/z/qt6
+  * apt-get download libegl1 → extracted libEGL.so.1 to /home/z/egl-libs (no root needed)
+  * g++ -std=c++17 -O2 -fPIC -shared krita_bridge.cpp -lQt6Core -lQt6Gui → libkrita_bridge.so (61KB)
+  * First attempt used -fvisibility=hidden which hid the extern "C" symbols → removed it → 15 symbols exported correctly.
+  * C++ test harness: init → set size=32 color=red → generate_dab → 32x32 dab, center pixel RGBA=(255,0,0,255). PASSED.
+  * Dart FFI test: init → set size=64 color=green → generate_dab → 64x64 dab, center pixel RGBA=(0,255,0,255). PASSED.
+- Bundled libkrita_bridge.so into assets/native/linux/ and assets/native/.
+- Updated lib/ffi/krita_bindings.dart Linux loader to try 6 candidate paths (lib/, ., assets/native/linux/, etc.).
+- Committed (a563802) and pushed.
+
+Stage Summary:
+- STEP 2 OF 10 IS COMPLETE. The krita_bridge native library compiles and works end-to-end through Dart FFI.
+- The bridge is a real soft-round brush engine (radial-gradient dabs, hardness, pressure scaling, eraser mode) that loads .kpp presets (built-in ZIP reader + raw DEFLATE inflater + QXmlStreamReader).
+- GitHub Actions is blocked by a billing issue (documented for the user to resolve: make repo public OR upgrade plan OR add billing info). Development continues using the locally-built .so.
+- Next: Step 3 — wire the bridge into the Flutter canvas_widget so painting works in the GUI. Then build the Linux desktop app to visually verify.
