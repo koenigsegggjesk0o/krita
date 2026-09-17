@@ -1,0 +1,253 @@
+name: Step 2 — Compile krita_bridge.dll
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compile-bridge:
+    name: Compile krita_bridge.dll (C++ → DLL)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install vcpkg + Qt6 + Boost + Eigen
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install qtbase:x64-windows boost-system:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
+
+      - name: Install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git C:\ecm
+          cd C:\ecm
+          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\ecm-install
+          cmake --build build --target install --config Release
+
+      - name: Build lager + immer + zug + xsimd (header-only deps)
+        run: |
+          $deps = "C:\krita-deps"
+          New-Item -ItemType Directory -Force -Path $deps
+
+          git clone --depth 1 https://github.com/arximboldi/immer.git C:\immer
+          cd C:\immer; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+
+          git clone --depth 1 https://github.com/arximboldi/zug.git C:\zug
+          cd C:\zug; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+
+          git clone --depth 1 https://github.com/arximboldi/lager.git C:\lager
+          cd C:\lager; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF -Dlager_EMBED_RESOURCES_PATH=OFF; cmake --build build --target install --config Release
+
+          git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git C:\xsimd
+          cd C:\xsimd; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+
+      - name: Download Krita portable ZIP (has .dll files)
+        run: |
+          Invoke-WebRequest -Uri "https://download.kde.org/stable/krita/6.0.3/krita-x64-6.0.3.zip" -OutFile krita-portable.zip
+          Expand-Archive -Path krita-portable.zip -DestinationPath C:\krita-portable -Force
+          $kritaRoot = (Get-ChildItem "C:\krita-portable" -Directory | Select-Object -First 1).FullName
+          Write-Host "Krita root: $kritaRoot"
+          echo "KRITA_ROOT=$kritaRoot" >> $env:GITHUB_ENV
+
+      - name: Generate .lib import libraries from Krita .dll files
+        run: |
+          $kritaBin = Join-Path $env:KRITA_ROOT "bin"
+          $libDir = "C:\krita-libs"
+          New-Item -ItemType Directory -Force -Path $libDir
+
+          # For each Krita DLL, generate .lib import library
+          $kritaDlls = @(
+            "libkritalibbrush.dll",
+            "libkritaimage.dll",
+            "libkritalibpaintop.dll",
+            "libkritapigment.dll",
+            "libkritaresources.dll",
+            "libkritaglobal.dll",
+            "libkritawidgetutils.dll",
+            "libkritaversion.dll",
+            "libkritamultiarch.dll",
+            "libkritacommand.dll",
+            "libkritaflake.dll",
+            "libkritabasicflakes.dll",
+            "libkritaui.dll",
+            "libkritawidgets.dll",
+            "libkritaresourcewidgets.dll",
+            "libkritastore.dll",
+            "libkritaplugin.dll",
+            "libkritakoplugin.dll",
+            "libkritapsd.dll",
+            "libkritapsdutils.dll",
+            "libkritametadata.dll",
+            "libkritalibkra.dll",
+            "libkritaimpex.dll",
+            "libkritalibkis.dll",
+            "libkritaqmlwidgets.dll"
+          )
+
+          foreach ($dll in $kritaDlls) {
+            $dllPath = Join-Path $kritaBin $dll
+            if (Test-Path $dllPath) {
+              $libName = $dll -replace '\.dll$', '.lib'
+              $defFile = Join-Path $libDir ($dll -replace '\.dll$', '.def')
+              
+              # Generate .def file from exports
+              $exports = & dumpbin /exports $dllPath 2>$null | Select-String -Pattern '^\s+\d+\s+[0-9A-F]+\s+(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+              
+              "EXPORTS" | Out-File -FilePath $defFile -Encoding ASCII
+              foreach ($exp in $exports) {
+                $exp | Out-File -FilePath $defFile -Encoding ASCII -Append
+              }
+              
+              # Generate .lib from .def
+              $libPath = Join-Path $libDir $libName
+              & lib /def:$defFile /out:$libPath /machine:x64 2>$null
+              
+              if (Test-Path $libPath) {
+                Write-Host "Generated: $libName ($([math]::Round((Get-Item $libPath).Length/1KB)) KB)"
+              } else {
+                Write-Host "FAILED: $libName"
+              }
+            } else {
+              Write-Host "DLL not found: $dll"
+            }
+          }
+
+          Write-Host "=== Generated .lib files ==="
+          Get-ChildItem $libDir -Filter "*.lib" | Format-Table Name, Length
+
+      - name: Clone Krita source (for headers)
+        run: |
+          git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git C:\krita-src
+
+      - name: Compile krita_bridge.cpp
+        run: |
+          $kritaSrc = "C:\krita-src"
+          $kritaBin = Join-Path $env:KRITA_ROOT "bin"
+          $libDir = "C:\krita-libs"
+          $vcpkgDir = "C:\vcpkg\installed\x64-windows"
+          $depsDir = "C:\krita-deps"
+          
+          # Collect all include paths
+          $includePaths = @(
+            "native\krita_bridge",
+            "$kritaSrc\libs\brush",
+            "$kritaSrc\libs\image",
+            "$kritaSrc\libs\image\brushengine",
+            "$kritaSrc\libs\pigment",
+            "$kritaSrc\libs\widgetutils",
+            "$kritaSrc\libs\global",
+            "$kritaSrc\libs\resources",
+            "$kritaSrc\libs\command",
+            "$kritaSrc\libs\flake",
+            "$kritaSrc\libs\basicflakes",
+            "$kritaSrc\libs\ui",
+            "$kritaSrc\libs\widgets",
+            "$kritaSrc\libs\store",
+            "$kritaSrc\libs\koplugin",
+            "$kritaSrc\libs\metadata",
+            "$kritaSrc\libs\version",
+            "$kritaSrc\libs\multiarch",
+            "$kritaSrc\libs\psd",
+            "$kritaSrc\libs\psdutils",
+            "$kritaSrc\libs\resourcewidgets",
+            "$kritaSrc\libs\impex",
+            "$kritaSrc\libs\libkis",
+            "$kritaSrc\libs\libkra",
+            "$kritaSrc\libs\qmlmodules",
+            "$kritaSrc\krita",
+            "$vcpkgDir\include",
+            "$vcpkgDir\include\qt6",
+            "$vcpkgDir\include\qt6\QtCore",
+            "$vcpkgDir\include\qt6\QtGui",
+            "$vcpkgDir\include\qt6\QtWidgets",
+            "$vcpkgDir\include\qt6\QtXml",
+            "$vcpkgDir\include\qt6\QtSvg",
+            "$vcpkgDir\include\qt6\QtConcurrent",
+            "$depsDir\include",
+            "$depsDir\include\lager",
+            "$depsDir\include\immer",
+            "$depsDir\include\zug",
+            "$depsDir\include\xsimd",
+            "C:\ecm-install\include"
+          )
+          
+          # Build cl.exe arguments
+          $incArgs = $includePaths | ForEach-Object { "-I`"$_`"" }
+          
+          # Collect .lib files for linking
+          $libFiles = @()
+          Get-ChildItem $libDir -Filter "*.lib" | ForEach-Object { $libFiles += $_.FullName }
+          
+          # Qt6 libs
+          $qtLibs = @(
+            "Qt6Core.lib", "Qt6Gui.lib", "Qt6Widgets.lib", "Qt6Xml.lib",
+            "Qt6Svg.lib", "Qt6Concurrent.lib", "Qt6Network.lib"
+          )
+          foreach ($qt in $qtLibs) {
+            $qtPath = Join-Path $vcpkgDir "lib\$qt"
+            if (Test-Path $qtPath) { $libFiles += $qtPath }
+          }
+          
+          # Boost lib
+          $boostLib = Join-Path $vcpkgDir "lib\libboost_system.lib"
+          if (Test-Path $boostLib) { $libFiles += $boostLib }
+          
+          $libArgs = $libFiles | ForEach-Object { "`"$_`"" }
+          
+          # MSVC defines for Krita
+          $defines = @(
+            "KRITA_VERSION_STRING=`"6.0.4`"",
+            "GENERIC_KRITA_LIB_VERSION=21",
+            "GENERIC_KRITA_LIB_SOVERSION=21",
+            "QT_CORE_LIB",
+            "QT_GUI_LIB",
+            "QT_WIDGETS_LIB",
+            "QT_XML_LIB",
+            "QT_SVG_LIB",
+            "QT_CONCURRENT_LIB",
+            "QT_NO_DEBUG",
+            "NDEBUG",
+            "_USE_MATH_DEFINES",
+            "HAVE_XSIMD"
+          )
+          $defArgs = $defines | ForEach-Object { "/D`"$_`"" }
+          
+          # Compile
+          $source = "native\krita_bridge\krita_bridge.cpp"
+          $output = "krita_bridge.dll"
+          
+          Write-Host "=== Compiling krita_bridge.cpp ==="
+          Write-Host "Include paths: $($includePaths.Count)"
+          Write-Host "Lib files: $($libFiles.Count)"
+          
+          $args = @(
+            "/nologo", "/std:c++17", "/EHsc", "/MD", "/O2", "/LD",
+            $incArgs, $defArgs, $source,
+            "/Fe$output",
+            "/link", $libArgs,
+            "/SUBSYSTEM:CONSOLE",
+            "/MACHINE:X64"
+          )
+          
+          & cl $args 2>&1
+          
+          if (Test-Path $output) {
+            Write-Host "=== SUCCESS: krita_bridge.dll compiled ==="
+            Get-Item $output | Format-Table Name, Length
+          } else {
+            Write-Host "=== FAILED: krita_bridge.dll not found ==="
+            exit 1
+          }
+
+      - name: Upload krita_bridge.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-bridge-dll
+          path: krita_bridge.dll
+          retention-days: 90
