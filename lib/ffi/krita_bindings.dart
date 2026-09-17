@@ -314,7 +314,28 @@ DynamicLibrary _loadKritaBridge() {
     throw StateError('krita_bridge.dll not found in search path');
   }
   if (Platform.isLinux) {
-    return DynamicLibrary.open('libkrita_bridge.so');
+    // Try several candidate locations: alongside the executable, in the
+    // bundle's lib folder, in a dev path, and finally the bare name (which
+    // relies on LD_LIBRARY_PATH).
+    final candidates = <String>[
+      'lib/libkrita_bridge.so',
+      'libkrita_bridge.so',
+      './libkrita_bridge.so',
+      'assets/native/linux/libkrita_bridge.so',
+      'assets/native/libkrita_bridge.so',
+      '../assets/native/linux/libkrita_bridge.so',
+    ];
+    for (final c in candidates) {
+      try {
+        return DynamicLibrary.open(c);
+      } on ArgumentError {
+        // continue
+      } on OSError {
+        // continue
+      }
+    }
+    throw StateError('libkrita_bridge.so not found. Set LD_LIBRARY_PATH or '
+        'place the .so next to the executable.');
   }
   if (Platform.isMacOS) {
     return DynamicLibrary.open('libkrita_bridge.dylib');
