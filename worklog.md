@@ -151,3 +151,23 @@ Stage Summary:
 - STEP 2 OF 10-STEP ROADMAP IS COMPLETE AND VERIFIED END-TO-END: krita_bridge.dll compiled (MSVC x64), runtime-tested on Windows, bundled into the Flutter Windows build via CMake, and the Dart FFI layer proven against the same C ABI on Linux.
 - Public CI builder repo: koenigsegggjesk0o/feather-krita-build (run a4a09cb = green). Use it for all future Windows native builds; private repo remains the app source of truth.
 - Next loop: Step 3 — wire krita_bridge into the Flutter canvas UI (BrushEngineProvider loading krita_bridge.dll, replacing any stub painter), then trigger build-app.yml-equivalent in the public repo, then Steps 4-10 (canvas integration, 3D preview, export).
+
+---
+Task ID: 5-loop-7
+Agent: Z.ai Code (main, autonomous loop)
+Task: Fix Windows CI (zlib on MSVC), rebuild DLL, rebundle, sync repos
+
+Work Log:
+- Detected agent race on native/krita_bridge/krita_bridge.cpp: another loop commit (18c62f2) replaced the hand-rolled inflater with system zlib, breaking MSVC (no zlib.h on Windows runners) while Linux kept compiling.
+- Wrote synthetic .kpp generator (make_test_kpp.py: DEFLATED + STORED ZIPs, preset-named XML like real Krita files, decoy subdir XML) and extended smoke_test.cpp with preset value assertions (size=77, opacity=0.42, spacing=0.07).
+- Reproduced the OTHER agent's bug locally: the hand-written RFC1951 Inflator hangs (killed after 11s) on real zlib-produced DEFLATE streams — it was never exercised by CI (CI smoke test only generates default dabs).
+- Resolution: zlib-only bridge (#include <zlib.h> unconditional). Linux = system zlib; Windows CI = vcpkg zlib:x64-windows-static-md. Buggy fallback deleted (174 lines).
+- Windows CI debugging chain (each verified via logs): aqt Qt extraction flake (retry OK) → vcvars64.bat silently overrides VCPKG_ROOT (fixed: hardcode C:\vcpkg paths before vcvars) → vcpkg installed/ tree contained only pkgconfig (fixed: point at packages/ staging dir) → zlib 1.3.2 port names its static lib zs.lib (fixed: detection chain zlib.lib → zlibstatic.lib → zs.lib).
+- Bridge CI now GREEN with FULL coverage: compile + smoke test + DEFLATED preset load + STORED preset load + export verification, all on Windows.
+- Rebuilt krita_bridge.dll v2 (66KB) downloaded from artifact; bundled to windows/runner/ (now git-tracked — .gitignore exception added), assets/native/; synced to public repo windows/runner/.
+- EditorState.loadBrushPreset now syncs loaded preset values into UI state via new native getters (krita_brush_get_size/opacity/spacing/hardness/preset_name + Dart bindings). flutter analyze: No issues.
+
+Stage Summary:
+- Private repo (feather-krita-flutter @ b68290f): bridge source zlib-only, DLL v2 bundled and tracked in git, preset values flow to UI. flutter analyze clean.
+- Public CI repo (feather-krita-build @ 0f90f4e): bridge workflow GREEN with preset tests; app workflow GREEN (Windows zip 10.4MB + Android APK 19.3MB artifacts verified: exe+DLL side by side; APK has 3 ABIs).
+- Known gap (next loops): Android APK lacks libkrita_bridge.so per-ABI (falls back to synthetic dabs) — needs NDK cross-build of the bridge; Windows EXE bundle uses DLL v1 for the last app build, next app build picks up v2.
