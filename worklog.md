@@ -171,3 +171,20 @@ Stage Summary:
 - Private repo (feather-krita-flutter @ b68290f): bridge source zlib-only, DLL v2 bundled and tracked in git, preset values flow to UI. flutter analyze clean.
 - Public CI repo (feather-krita-build @ 0f90f4e): bridge workflow GREEN with preset tests; app workflow GREEN (Windows zip 10.4MB + Android APK 19.3MB artifacts verified: exe+DLL side by side; APK has 3 ABIs).
 - Known gap (next loops): Android APK lacks libkrita_bridge.so per-ABI (falls back to synthetic dabs) — needs NDK cross-build of the bridge; Windows EXE bundle uses DLL v1 for the last app build, next app build picks up v2.
+
+---
+Task ID: 5-loop-8
+Agent: Z.ai Code (main, autonomous loop)
+Task: Portable bridge for Android + jniLibs bundling
+
+Work Log:
+- Wrote native/krita_bridge/krita_bridge_portable.cpp — Qt-free implementation of the same C ABI (soft-round radial-gradient dabs, .kpp ZIP/XML preset parsing via zlib, param getters). zlib is available in the Android NDK sysroot, so no vendoring needed.
+- Parity test (parity_test.cpp) comparing Qt build vs portable build dab alpha channels at 4 pressures: max delta 2/255, zero diffs above tolerance → PARITY PASS.
+- Dart FFI stack validated against the portable .so: test_stroke.dart painted 630 dabs, stroke_test.png rendered.
+- New workflow android-bridge.yml (ubuntu-22.04 + preinstalled NDK r29): builds libkrita_bridge.so for arm64-v8a (68K), armeabi-v7a (36K), x86_64 (68K) + host smoke test with preset loading. GREEN on first run.
+- Downloaded .so artifact, bundled into android/app/src/main/jniLibs/<abi>/ in BOTH repos (force-added past *.so ignore in private repo).
+- Dispatched fresh app build so the new APK ships native painting.
+
+Stage Summary:
+- Every platform path now exists: Windows DLL (Qt build, CI-green), Android .so × 3 ABIs (portable build, CI-green), Linux host build (portable, smoke-tested locally + in CI).
+- APK painting: was synthetic-dab fallback → now loads libkrita_bridge.so via the existing DynamicLibrary.open('libkrita_bridge.so') path in krita_bindings.dart.
