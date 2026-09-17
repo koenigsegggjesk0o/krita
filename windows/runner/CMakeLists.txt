@@ -38,3 +38,20 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# ---------------------------------------------------------------------------
+# Feather-Krita native brush bridge (krita_bridge.dll)
+# Copy the prebuilt DLL next to the runner executable so Dart FFI can load
+# it via DynamicLibrary.open('krita_bridge.dll').
+# ---------------------------------------------------------------------------
+set(KRITA_BRIDGE_DLL "${CMAKE_CURRENT_SOURCE_DIR}/krita_bridge.dll")
+if(EXISTS "${KRITA_BRIDGE_DLL}")
+  add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${KRITA_BRIDGE_DLL}" "$<TARGET_FILE_DIR:${BINARY_NAME}>"
+    COMMENT "Copying krita_bridge.dll next to runner executable"
+  )
+  message(STATUS "Feather-Krita: bundling krita_bridge.dll from ${KRITA_BRIDGE_DLL}")
+else()
+  message(WARNING "Feather-Krita: krita_bridge.dll not found at ${KRITA_BRIDGE_DLL} — FFI will fail at runtime")
+endif()
