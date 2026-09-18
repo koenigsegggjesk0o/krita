@@ -1050,3 +1050,15 @@ Work Log:
 
 Stage Summary:
 - All dependency provisioning on Windows is now PROVEN + CACHED. Remaining frontier: Krita configure completion -> MSVC engine compile -> bridge DLL -> smoke. Krita source untouched throughout.
+
+---
+Task ID: 5-loop-34 (monitoring beacon 6 — loop-34 session still ACTIVE)
+Agent: Z.ai Code (main, autonomous loop)
+Task: live status
+
+Work Log:
+- Configure-frontier cleared in run 19 (53eeb70): fix17 fribidi (vendored raqm dep), fix18 quazip (the single missing REQUIRED package — KRA/ORA zip I/O). pkg-config+exiv2 version fix worked. Krita configure now COMPLETES on MSVC for the first time; the job is in the kritaimage/kritalibbrush compile phase (~25-40 min).
+- Feature summary confirmed correct optional-package minimization: WebP/SeExpr/OpenEXR/GIF/HEIF/OpenJPEG/JXL/FFTW3/OCIO/SIP/PyQt/MLT/Poppler/KDcraw/IcoTool missing = OK; GSL recommended-missing = OK; everything REQUIRED present.
+
+Stage Summary:
+- Windows pipeline: deps (cached), KF5, immer/zug/lager, configure ALL GREEN. Only the MSVC compile + bridge link + smoke remain. Next failure class: C4xxx/C2xxx compile errors in krita targets or bridge LNK errors.
