@@ -727,3 +727,17 @@ Work Log:
 
 Stage Summary:
 - A persisted colour history now ships end to end: every brush-colour pick is recorded most-recent-first (capped at 12, deduped) and surfaced as tappable swatches in both the brush panel ("Recent" row) and the colour picker dialog ("Recent" section) — tap to reuse, long-press to remove. SharedPreferences-backed so the palette survives restarts. Pure-Dart (no native-engine coupling), 9 unit tests, analyze clean. Loop-28 candidates: verify the loop-27 CI run on the ubuntu runner, release v0.19 (colour history is a user-visible workflow win), on-device GUI verification (still pending since loop-22), CAVLC 8x8 (i8x8DCT) if ever needed.
+
+---
+Task ID: 5-loop-27 (validation addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the loop-27 colour-history tree
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as 33413b0 (.github excluded per the loop-14 rule).
+- Build Feather-Krita App run 35324510431 = SUCCESS at 33413b0: build-windows ✅, build-android ✅ (the latter runs `flutter test --concurrency=1` serial regression gate — the 9 new colour-history tests + 83 existing all pass on the 7 GB ubuntu runner, 92/92 cumulative).
+- Private HEAD: 9c33124 (+ this addendum); public CI repo HEAD: 33413b0, all green.
+- Health: analyze 0 issues; per-file local gate green (color_history 9/9, stroke_smoother+file_picker_ux 13/13, gui 9/9 after OOM recovery, keyboard 6/6 per-test). Local full-file flakiness on keyboard/gui remains the documented 4 GB-box kernel-OOM root cause (dmesg-confirmed `oom-kill task=flutter_tester anon-rss 1570108kB` this loop, exact loop-22/24/26 signature); CI ubuntu (7 GB, serial) is the arbiter and is green.
+
+Stage Summary:
+- Loop-27 fully validated end to end: colour history shipped and CI-green; the brush panel's "Recent" row + the picker's "Recent" section surface the persisted most-recent-first palette (tap to reuse, long-press to remove) across restarts. Seven releases worth of features now CI-validated (v0.13 → v0.18 published; v0.19 ready to release). Loop-28 candidates: release v0.19 (colour history is a user-visible workflow win, version already bumped 0.19.0+1), on-device GUI verification (still pending since loop-22), CAVLC 8x8 (i8x8DCT) if ever needed.
