@@ -660,3 +660,22 @@ Work Log:
 
 Stage Summary:
 - v0.17 ships loop-23's keyboard-driven editor (full hotkey map + About-version fix) to end users (Windows + Android). Loop-23 is fully validated end to end: per-test local gate green, CI serial suite green, release published. Loop-25 candidates: on-device GUI verification (still pending since loop-22), CAVLC 8x8 (i8x8DCT) if ever needed, keep the per-file/per-test gate as the local recipe (kernel OOM re-confirmed via dmesg this loop).
+
+---
+Task ID: 5-loop-25
+Agent: Z.ai Code (main, autonomous loop)
+Task: brush stabilizer (stroke smoothing) — moving-average post-capture path stabilizer with persisted strength slider
+
+Work Log:
+- Entry gates: working tree clean at bd6f8e8; public builder CI green at 85ecbfd; flutter analyze 0 issues; disk 86% / mem 2.1 GB free.
+- NEW lib/utils/stroke_smoother.dart: pure StrokeSmoother utility. Symmetric moving-average window over a captured [StrokePoint] list — each output point is the average of itself + `radius` neighbours each side, with the window clamped at the stroke ends. Position, pressure, tilt, time and UV all average together (no pressure/position skew). strength in [0,1] maps to a window radius in [0, 6] (maxRadius). strength=0 is a deep-copy no-op; short inputs (<3 points) return unchanged. Any null UV in a window propagates null (consistency). Stateless and safe to call from the paint loop.
+- CANVAS WIRING (lib/widgets/canvas_widget.dart): _endStroke now smooths _livePoints via StrokeSmoother.smooth(strength: widget.state.brushSmoothing) before constructing the Stroke. KEY DESIGN: live dabbing during the gesture uses the RAW pointer stream (no input lag — the user sees exactly what they draw); only the RECORDED stroke geometry is smoothed at commit. This sidesteps the classic stabilizer trade-off (smoothing vs responsiveness) by splitting the two paths. strength=0 = the old .map((p) => p.copy()).toList() path (deep copy, same result).
+- STATE (lib/state/editor_state.dart): new field _brushSmoothing (default 0.0 = off), getter brushSmoothing, setter setBrushSmoothing(double) that clamps [0,1] and notifyListeners(). Read by CanvasWidget at stroke commit; no native-engine coupling (smoothing is pure-Dart post-processing).
+- BRUSH PANEL (lib/widgets/brush_settings_panel.dart): new "Smoothing" GlassSlider (icon waves_rounded, toolSelect accent, 0-100% formatter) placed after the Smudge slider, wired to state.setBrushSmoothing. Live preview as the user drags.
+- SETTINGS PERSISTENCE (lib/screens/settings_screen.dart): new _smoothing field loaded from SharedPreferences 'stylus.smoothing' (default 0.0), saved on change, AND reflected into the live EditorState via widget.state.setBrushSmoothing both at load (so the first stroke after launch is already stabilized) and on slider change. The Stylus card gained a third "Stroke smoothing" GlassSlider (icon waves_rounded, toolLiquify accent).
+- TESTS (test/stroke_smoother_test.dart, 9 tests): strength=0 deep-copy no-op, strength>0 reduces jitter (centre point |y| strictly decreases on a zig-zag), output length matches input across 5 strengths, strength=1 does not collapse a line to a point (span stays >2.0), radiusFor monotonic [0,1]->[0,6], UV smooths in lockstep with position (centre uv.x = 0.5 ± 1e-9), empty input -> empty output, null-UV propagation, short input (<3) unchanged. All 9 pass.
+- HEALTH: analyze 0 issues; per-file gate — stroke_smoother 9/9, file_picker_ux 4/4, gui 9/9 (gui_test's "canvas ticker" flaked once on the documented 4GB-box OOM, passed clean on re-run after memory recovery). 11 test files, 83 tests total.
+- Version 0.18.0+1; README test count 83.
+
+Stage Summary:
+- A brush stabilizer now ships end to end: the Stylus card's "Stroke smoothing" slider (persisted, 0-100%) drives a symmetric moving-average that smooths the recorded stroke path at commit time, while live dabbing stays raw for zero input lag. Pure-Dart, no native-engine coupling, fully unit-tested. Loop-26 candidates: verify the loop-25 CI run, release v0.18, on-device GUI verification, CAVLC 8x8 if ever needed.
