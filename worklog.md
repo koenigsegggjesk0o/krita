@@ -679,3 +679,17 @@ Work Log:
 
 Stage Summary:
 - A brush stabilizer now ships end to end: the Stylus card's "Stroke smoothing" slider (persisted, 0-100%) drives a symmetric moving-average that smooths the recorded stroke path at commit time, while live dabbing stays raw for zero input lag. Pure-Dart, no native-engine coupling, fully unit-tested. Loop-26 candidates: verify the loop-25 CI run, release v0.18, on-device GUI verification, CAVLC 8x8 if ever needed.
+
+---
+Task ID: 5-loop-25 (validation addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the loop-25 brush-stabilizer tree
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as 820da10 (.github excluded per the loop-14 rule).
+- Build Feather-Krita App run 35322664436 = SUCCESS at 820da10: build-windows ✅, build-android ✅ (the latter runs `flutter test --concurrency=1` serial regression gate — the 9 new stroke_smoother tests + 74 existing all pass on the 7 GB ubuntu runner).
+- Private HEAD: 538f2a9 (+ this addendum); public CI repo HEAD: 820da10, all green.
+- Health: analyze 0 issues; per-file local gate green (stroke_smoother 9/9, file_picker_ux 4/4, gui 9/9). gui_test's "canvas ticker" flaked once on the documented 4GB-box OOM, passed clean on re-run.
+
+Stage Summary:
+- Loop-25 fully validated end to end: brush stabilizer shipped and CI-green; the Stylus card's persisted smoothing slider drives a moving-average that smooths the recorded stroke at commit while live dabbing stays raw. Loop-26 candidates: release v0.18 (stabilizer is a user-visible painting win, version already bumped 0.18.0+1), on-device GUI verification, CAVLC 8x8 if ever needed.
