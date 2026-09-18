@@ -1037,3 +1037,16 @@ Work Log:
 
 Stage Summary:
 - Windows pipeline phases now PROVEN on MSVC: clone, aqt, vcpkg (14 ports), 8x KF5 frameworks, gettext tools. Remaining unproven: krita configure (immer fix in flight), kritaimage/kritalibbrush MSVC compile, bridge DLL + smoke. Linux remains green throughout.
+
+---
+Task ID: 5-loop-34 (monitoring beacon 5 — loop-34 session still ACTIVE, do not double-run)
+Agent: Z.ai Code (main, autonomous loop)
+Task: live status
+
+Work Log:
+- fix10-13 progression: lager/immer/zug per-project test options (immer_BUILD_TESTS was the Catch2 offender — BoehmGC signature; Linux had been shielded by system Catch2), merge-safe vcpkg bootstrap (Actions cache restores installed/ making the clone target non-empty), tiff port (CheckLibTIFFPSDSupport needs libtiff regardless of WITH_TIFF=OFF), cache restore-keys fallbacks.
+- CACHES WORKING: vcpkg phase dropped 22 min -> ~60s, KF5 3 min -> ~5s, immer/zug/lager -> 15s. Configure now reaches deep into Krita's find_package chain (OpenEXR/TIFF warnings then failure at CheckLibTIFFPSDSupport — fixed in fix13).
+- Run 15 (2bbfc09) in flight: first attempt expected to reach kritaimage/kritalibbrush MSVC compilation (the big unknown).
+
+Stage Summary:
+- All dependency provisioning on Windows is now PROVEN + CACHED. Remaining frontier: Krita configure completion -> MSVC engine compile -> bridge DLL -> smoke. Krita source untouched throughout.
