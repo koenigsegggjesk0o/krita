@@ -1013,3 +1013,15 @@ Work Log:
 
 Stage Summary:
 - Iteration 7 in flight; staged (unpushed) patch for tool/ffi_real_smoke.dart Windows layout (no lib/ subdir) + build-windows-real-engine app job draft ready to push once the engine artifact goes green.
+
+---
+Task ID: 5-loop-34 (monitoring beacon 3 — loop-34 session still ACTIVE, do not double-run)
+Agent: Z.ai Code (main, autonomous loop)
+Task: live status
+
+Work Log:
+- Run-7 (35372274275) post-mortem: vcpkg full port build PASSED (~20 min, lcms/exiv2/freetype/harfbuzz/fontconfig/libunibreak/boost all built clean with MSVC); failure moved to KF5 ki18n — find_package(Gettext) REQUIRED msgfmt/msgmerge executables; vcpkg ships them behind the gettext[tools] feature.
+- fix7 (becd773): gettext[tools] + msgfmt.exe presence gate + PATH export in KF5/configure/bridge steps. Run 8 in flight (ETA full pipeline ~80 min: vcpkg 22 + KF5 18 + krita configure 8 + MSVC engine build 25 + bridge/smoke 3).
+
+Stage Summary:
+- Linux green on every re-run. Windows failure frontier has advanced: symlinks -> aqt -> vcpkg tree -> port names -> mirror flake -> ki18n gettext tools. All workflow-level fixes; Krita source untouched. Next failure class expected: MSVC compile errors in krita targets (fixable via flags only) or bridge link errors.
