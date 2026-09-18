@@ -68,8 +68,11 @@ int main() {
     in2.pressure = 1.0;
     BrushDab soft;
     std::memset(&soft, 0, sizeof(soft));
+    int softWidth = 0;
     if (krita_brush_generate_dab(b, &in2, &soft)) {
-        CHECK(soft.width >= 60, "soft dab sized from size=64");
+        softWidth = soft.width; // captured BEFORE release (release zeroes it)
+        std::printf("  soft dab width=%d\n", softWidth);
+        CHECK(softWidth >= 60, "soft dab sized from size=64");
         const uint8_t* c = soft.pixels + (soft.height / 2) * soft.stride + (soft.width / 2) * 4;
         const uint8_t* edge = soft.pixels + (soft.height / 2) * soft.stride + 4; // near left edge
         std::printf("  soft center alpha=%u edge alpha=%u\n", c[3], edge[3]);
@@ -88,9 +91,9 @@ int main() {
     std::memset(&half, 0, sizeof(half));
     if (krita_brush_generate_dab(b, &in3, &half)) {
         const uint8_t* c = half.pixels + (half.height / 2) * half.stride + (half.width / 2) * 4;
-        std::printf("  half-pressure center alpha=%u\n", c[3]);
+        std::printf("  half-pressure center alpha=%u dab width=%d (soft was %d)\n", c[3], half.width, softWidth);
         CHECK(c[3] < 255, "half pressure scales alpha down");
-        CHECK(half.width < soft.width, "half pressure shrinks dab");
+        CHECK(half.width < softWidth, "half pressure shrinks dab");
         krita_brush_release_dab(b, &half);
     } else {
         CHECK(false, "half-pressure dab generated");
