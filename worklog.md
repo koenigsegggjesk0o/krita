@@ -841,3 +841,31 @@ Work Log:
 
 Stage Summary:
 - The thin real-engine wrapper EXISTS and its CI build + runtime smoke test is the active run (builder repo, commit 90d64f0, workflow krita-build.yml). If green: loop-31 downloads libkrita_bridge_real.so + stripped libkrita*.so, wires the Linux desktop build end-to-end, and starts the Windows/Android matrix of the same real source. If the smoke test fails: logs give the exact Krita API mismatch to fix IN THE WRAPPER (never in Krita source).
+
+---
+Task ID: 5-loop-30 (mid-loop addendum: REAL engine smoke test 17/18 green on CI runner)
+Agent: Z.ai Code (main, autonomous loop)
+Task: iterate the krita-build.yml bridge compile to green (fix1-fix3)
+
+Work Log:
+- fix1: bridge-source clone simplified to plain shallow clone (sparse-checkout no-ops after --no-checkout; run 35333205382).
+- fix2: bridge link needed -lz + Qt5Core/Gui/Xml (wrapper uses inflateRaw for .kpp + QDomDocument; run 35333540930).
+- fix3: correct Krita brush lib target is `kritalibbrush` NOT `kritabrush` (ninja error caught by pipefail; artifact libs: libkritalibbrush.so); added runtime libqt5svg5 (run 35333888664).
+- fix4: KF5 headers on the runner live at /usr/include/KF5/<Mod>/ — klocalizedstring.h (KI18n) needed by KisResourceTypes.h (run 35349556439→35335595307 discovery chain).
+- fix5+fix6: include flags now extracted from ninja -t commands (kritalibbrush 49 dirs + resources/pigment/image targets + full-graph 500 dirs) + on-disk discovery for klocalizedstring.h + Eigen3 + OpenEXR half.h (HAVE_OPENEXR is ON in the generated KoConfig.h despite WITH_OPENEXR=OFF).
+- fix7/8: Eigen (/usr/include/eigen3) and half.h (/usr/include/Imath) resolved.
+- fix9: `-fno-operator-names` — KoColorSpaceMaths.h declares functions NAMED xor/and/or; Krita keeps KDE's flag on GCC (only strips it for MSVC with /permissive). This unblocked ALL Krita headers: the bridge TU now compiles cleanly.
+- zlib.h include + KisGlobalResourcesInterface::instance() (static factory lives on the global interface, not the base) fixed in the wrapper (app repo commits a374296, 75375ce).
+- fix10: REORDER — collect stripped libs into artifact/lib BEFORE building the bridge; smoke test now links bridge + krita libs (verifies the bridge's full symbol closure) and runs with rpath only; added -lKF5I18n.
+- fix11: removed `set -o pipefail` from the bridge step (grep -m1 early-exit kills the pipeline with exit 2).
+- SMOKE RUN @ c92a710 (run 35351234478): 17/18 CHECKS GREEN ON THE REAL ENGINE —
+  version: FeatherBridge-Krita/2.0 (real engine 5.3.4 via libkritaversion)
+  hard dab: exact color passthrough 32/64/160, center opaque, corner transparent
+  soft dab: center alpha=255 vs edge alpha=3 (REAL gaussian falloff)
+  half pressure: center alpha=128 (REAL pressure->alpha)
+  eraser: black mask 0/0/0/255 (REAL eraser path)
+  1 FAIL: "half pressure shrinks dab" — auto-brush mask path ignores KisDabShape scale.
+- fix3-wrapper (fa45cb3): pressure->size now via KisBrush::setScale (the real KisPaintOp path); re-dispatched.
+
+Stage Summary:
+- The real Krita v5.3.4/v6.0.4-source engine generates CORRECT dabs through our C ABI on the CI runner: colors, falloff, pressure-alpha, eraser all verified against unmodified libkritalibbrush/libkritaimage/libkritapigment code. One sizing fix (setScale) re-dispatched; on green, loop-31 downloads libkrita_bridge_real.so + stripped libkrita*.so and wires the app (Linux platform first), then Windows/Android matrix.
