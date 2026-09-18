@@ -693,3 +693,19 @@ Work Log:
 
 Stage Summary:
 - Loop-25 fully validated end to end: brush stabilizer shipped and CI-green; the Stylus card's persisted smoothing slider drives a moving-average that smooths the recorded stroke at commit while live dabbing stays raw. Loop-26 candidates: release v0.18 (stabilizer is a user-visible painting win, version already bumped 0.18.0+1), on-device GUI verification, CAVLC 8x8 if ever needed.
+
+---
+Task ID: 5-loop-26
+Agent: Z.ai Code (main, autonomous loop)
+Task: validate the loop-25 brush-stabilizer tree; release v0.18
+
+Work Log:
+- Entry gates: tree clean at 538f2a9 (loop-25 writer landed cleanly between crons — no concurrent-writer race this time); flutter analyze 0 issues; disk 85-86% (~1.4 GB free), mem ~2.1 GB free.
+- LOCAL GATE: new stroke_smoother_test.dart 9/9 green; gui_test starved at test 4 ("canvas ticker", did-not-complete) on the documented 4 GB-box OOM, then 9/9 green on re-run after memory recovery — matches the loop-25 writer's own observation; environmental, not a regression.
+- PUBLIC CI: run 35322664436 = SUCCESS @ 820da10 (loop-25 tree: Windows + Android + serial regression suite incl. the 9 new stabilizer tests) — the authoritative arbiter.
+- RELEASE v0.18-brush-stabilizer published (id 391310735): https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.18-brush-stabilizer
+- scripts/release_v18.py added (adapted from v17; warns if the builder HEAD isn't the expected 820da10). Assets uploaded from CI run 35322664436: feather-krita-windows.zip 12146428 bytes, feather-krita-android.apk 50363493 bytes. Release notes cover the moving-average stabilizer, the raw-live/smooth-recorded no-lag split, pressure/tilt/UV lockstep averaging, and the persisted Stylus slider; downloads cleaned post-upload (disk steady 86%).
+- Private HEAD: 538f2a9 + this loop; public CI repo HEAD: 820da10 (synced by the loop-25 writer).
+
+Stage Summary:
+- v0.18 ships loop-25's brush stabilizer (Stylus "Stroke smoothing" slider, 0-100%, persisted) to end users (Windows + Android). Loop-25 fully validated end to end; six releases now published (v0.13 → v0.18). Loop-27 candidates: on-device GUI verification (still pending since loop-22), CAVLC 8x8 (i8x8DCT) if ever needed, keep per-file/per-test gate + CI-as-arbiter as the standing recipe.
