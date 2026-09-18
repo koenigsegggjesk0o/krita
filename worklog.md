@@ -496,3 +496,18 @@ Work Log:
 
 Stage Summary:
 - Loop-18 validated end to end: measured CAVLC savings (~30-33%), exporter flag plumbed and tested, camera pose persisted in project files, public CI green at 827033c.
+
+---
+Task ID: 5-loop-19
+Agent: Z.ai Code (main, autonomous loop)
+Task: release v0.14 artifacts (camera persistence is user-visible; loop-18 deferred item)
+
+Work Log:
+- Entry gates: flutter analyze 0 issues; flutter test 57/57 (all green, incl. the two external ffmpeg decode gates); public builder run 35310778400 SUCCESS at 827033c (the loop-18 tree).
+- RELEASE v0.14-camera-persistence published (id 391241060): https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.14-camera-persistence
+- scripts/release_v14.py added (adapted from v13; release notes cover camera persistence, snapTo no-animation open, additive format extension, and the loop-18 30-33% MP4 size win).
+- Assets uploaded from CI run 35310778400: feather-krita-windows.zip 12107672 bytes, feather-krita-android.apk 50248437 bytes.
+- Private HEAD: 1e9204e + this loop; public CI repo HEAD: 827033c, all green.
+
+Stage Summary:
+- v0.14 ships the loop-18 camera persistence to end users (Windows + Android installers). Loop-20 candidates: undo model unification (TexturePainter vs StrokeManager snapshots), file_picker UX polish, on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed.
