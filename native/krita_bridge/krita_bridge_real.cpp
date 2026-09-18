@@ -514,9 +514,14 @@ bool krita_brush_generate_dab(KritaBrushContext* handle,
         scale = sizeFactor * (handle->size / eff);
     }
 
+
     // Real Krita dab generation:
     //   tip image -> pyramid scaling/rotation -> colorize through mask.
-    const KisDabShape shape(scale, 1.0, 0.0);
+    // Size scaling goes through KisBrush::setScale (the real KisPaintOp
+    // path for pressure->size); the auto-brush mask generator path does
+    // not consume KisDabShape scale directly.
+    handle->brush->setScale(scale);
+    const KisDabShape shape(1.0, 1.0, 0.0);
     const KisPaintInformation info(QPointF(0.0, 0.0), pressure);
     const KoColor c = abiColorToKoColor(handle, eraser);
 
