@@ -643,3 +643,20 @@ Work Log:
 
 Stage Summary:
 - Loop-23 fully validated end to end: keyboard shortcuts shipped and CI-green; the editor is now keyboard-driven (undo/redo/save/open/new + B/E/V/L tools + [ / ] brush size + Delete/Esc selection). About card shows the real v0.17.0 with a discoverable shortcut reference. Loop-24 candidates: release v0.17 (shortcuts are a user-visible UX win, version already bumped 0.17.0+1), on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed.
+
+---
+Task ID: 5-loop-24
+Agent: Z.ai Code (main, autonomous loop)
+Task: validate the loop-23 keyboard-shortcuts tree; release v0.17
+
+Work Log:
+- CONCURRENT-WRITER EVENT: on entering this run (15:40 cron) the working tree held uncommitted loop-23 work actively changing under me (README mtime 2 min fresh). Per the documented protocol, did NOT race the writer — polled at 90s intervals; commit 3bc3c9e + worklog 5-loop-23 landed within one poll cycle.
+- VERDICT on the shipped loop-23 tree: coherent and complete (EditorShortcuts/CallbackShortcuts wrapper with ctrl/meta dual bindings, full binding map undo/redo/save/open/new/tools/grid/brush-size/delete/deselect, About card fixed v1.0.0 → kAppVersionLabel, in-app shortcut reference card, 6 key-event-pipeline tests). flutter analyze 0 issues.
+- LOCAL GATE: per-file sweep = 9/10 files green (68 tests). keyboard_shortcuts_test full-file run starves at test 4 (Delete) with "did not complete" cascade — PROVEN environmental via dmesg: `oom-kill ... task=flutter_tester, anon-rss 1626100kB (1.55 GB)`, the exact loop-22 signature. All 6 keyboard tests pass individually (Delete, Ctrl+N, Ctrl+S each verified in isolation this loop). Not a code regression; chose NOT to restructure the writer's tests (risky, and the tree pattern is gui_test-equivalent which passes on CI's 7 GB runner).
+- PUBLIC CI: run 35320735701 = SUCCESS @ 85ecbfd (loop-23 tree: Windows + Android + serial regression suite incl. the full keyboard file on the ubuntu runner) — the authoritative arbiter.
+- RELEASE v0.17-keyboard-shortcuts published (id 391299066): https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.17-keyboard-shortcuts
+- scripts/release_v17.py added (adapted from v16; warns if the builder HEAD isn't the expected 85ecbfd). Assets uploaded from CI run 35320735701: feather-krita-windows.zip 12142849 bytes, feather-krita-android.apk 50363225 bytes. Release notes cover the full shortcut map, the About-version fix, and the in-app reference card; downloads cleaned up post-upload (disk steady at 86%, 1.4 GB free).
+- Private HEAD: 766b873 + this loop; public CI repo HEAD: 85ecbfd (synced by the loop-23 writer).
+
+Stage Summary:
+- v0.17 ships loop-23's keyboard-driven editor (full hotkey map + About-version fix) to end users (Windows + Android). Loop-23 is fully validated end to end: per-test local gate green, CI serial suite green, release published. Loop-25 candidates: on-device GUI verification (still pending since loop-22), CAVLC 8x8 (i8x8DCT) if ever needed, keep the per-file/per-test gate as the local recipe (kernel OOM re-confirmed via dmesg this loop).
