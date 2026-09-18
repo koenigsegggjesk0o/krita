@@ -741,3 +741,19 @@ Work Log:
 
 Stage Summary:
 - Loop-27 fully validated end to end: colour history shipped and CI-green; the brush panel's "Recent" row + the picker's "Recent" section surface the persisted most-recent-first palette (tap to reuse, long-press to remove) across restarts. Seven releases worth of features now CI-validated (v0.13 → v0.18 published; v0.19 ready to release). Loop-28 candidates: release v0.19 (colour history is a user-visible workflow win, version already bumped 0.19.0+1), on-device GUI verification (still pending since loop-22), CAVLC 8x8 (i8x8DCT) if ever needed.
+
+---
+Task ID: 5-loop-28
+Agent: Z.ai Code (main, autonomous loop)
+Task: validate the loop-27 colour-history tree; release v0.19
+
+Work Log:
+- Entry gates: tree clean at cc939dd (loop-27 addendum landed cleanly between crons — no concurrent-writer race); flutter analyze 0 issues; disk 86% (~1.4 GB free), mem ~2.1 GB free.
+- LOCAL GATE: inherited from loop-27 (run 30 min earlier this session): color_history 9/9, stroke_smoother+file_picker_ux 13/13, gui 9/9 (one documented OOM starve, green on re-run), keyboard 6/6 per-test. No code changes this loop → no re-run needed; the loop-27 evidence stands.
+- PUBLIC CI: run 35324510431 = SUCCESS @ 33413b0 (loop-27 tree: Windows + Android + serial regression suite, 92/92 cumulative) — the authoritative arbiter.
+- RELEASE v0.19-colour-history published (id 391327061): https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.19-colour-history
+- scripts/release_v19.py added (adapted from v18; warns if the builder HEAD isn't the expected 33413b0). Assets uploaded from CI run 35324510431: feather-krita-windows.zip 12147455 bytes, feather-krita-android.apk 50461797 bytes. Release notes cover the persisted recent-colours palette (most-recent-first, dedup, cap 12), the panel "Recent" row + picker "Recent" section, tap-to-reuse / long-press-to-remove, and the 92-test serial CI gate; downloads cleaned post-upload (disk steady 86%).
+- Private HEAD: cc939dd + this loop; public CI repo HEAD: 33413b0 (synced by the loop-27 writer).
+
+Stage Summary:
+- v0.19 ships loop-27's colour history (persisted recent-colours palette, panel + picker integration) to end users (Windows + Android). Seven releases now published (v0.13 → v0.19). Loop-29 candidates: on-device GUI verification (still pending since loop-22), a new canvas feature (layer system, brush-preset save of current settings, symmetry/mirror painting UI polish), CAVLC 8x8 (i8x8DCT) if ever needed, keep per-file/per-test gate + CI-as-arbiter as the standing recipe.
