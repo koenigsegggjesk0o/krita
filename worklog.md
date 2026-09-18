@@ -629,3 +629,17 @@ Work Log:
 
 Stage Summary:
 - The editor is now fully keyboard-driven: undo/redo/save/open/new, all four primary tools, brush-size stepping, and selection delete/deselect are one keystroke away. The About card shows the real version and a discoverable shortcut reference. Loop-24 candidates: verify the loop-23 CI run on the ubuntu runner, release v0.17 (shortcuts are a user-visible UX win), on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed.
+
+---
+Task ID: 5-loop-23 (validation addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the loop-23 tree
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as 85ecbfd (.github excluded per the loop-14 rule; release_v16.py from loop-22 came along — harmless, not compiled).
+- Build Feather-Krita App run 35320735701 = SUCCESS at 85ecbfd: build-windows ✅, build-android ✅ (the latter runs `flutter test --concurrency=1` serial regression gate before the APK build — the 6 new keyboard-shortcut tests + 68 existing all pass on the 7 GB ubuntu runner).
+- Private HEAD: 3bc3c9e (+ this addendum); public CI repo HEAD: 85ecbfd, all green.
+- Health: analyze 0 issues; per-file local gate 74/74 (10 files). Full-file flakiness on the 4 GB box remains the documented OOM root cause (loop-20/21); CI ubuntu is the arbiter and is green.
+
+Stage Summary:
+- Loop-23 fully validated end to end: keyboard shortcuts shipped and CI-green; the editor is now keyboard-driven (undo/redo/save/open/new + B/E/V/L tools + [ / ] brush size + Delete/Esc selection). About card shows the real v0.17.0 with a discoverable shortcut reference. Loop-24 candidates: release v0.17 (shortcuts are a user-visible UX win, version already bumped 0.17.0+1), on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed.
