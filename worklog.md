@@ -1025,3 +1025,15 @@ Work Log:
 
 Stage Summary:
 - Linux green on every re-run. Windows failure frontier has advanced: symlinks -> aqt -> vcpkg tree -> port names -> mirror flake -> ki18n gettext tools. All workflow-level fixes; Krita source untouched. Next failure class expected: MSVC compile errors in krita targets (fixable via flags only) or bridge link errors.
+
+---
+Task ID: 5-loop-34 (monitoring beacon 4 — loop-34 session still ACTIVE, do not double-run)
+Agent: Z.ai Code (main, autonomous loop)
+Task: live status
+
+Work Log:
+- Run-9 (25bd5c6) post-mortem: vcpkg 22 min ALL GREEN (msgfmt check fixed), all 8 KF5 frameworks built in ~3 min on MSVC. Failure moved to krita configure: find_package(Immer/Zug/Lager) REQUIRED (Krita 6 CMakeLists 1181-1183) + Qt5QuickControls2 (895).
+- fix9 (0911934): immer+zug+xsimd+lager built+installed from the same sources as the Linux job (into C:/kf5), qtquickcontrols2 archive added to aqt. Stale queued run 10 canceled; run 11 (35381526355) in flight — FIRST run with Actions caches (winengine-deps-v1, winengine-krbuild-v1) which cut future iterations from ~80 to ~15 min.
+
+Stage Summary:
+- Windows pipeline phases now PROVEN on MSVC: clone, aqt, vcpkg (14 ports), 8x KF5 frameworks, gettext tools. Remaining unproven: krita configure (immer fix in flight), kritaimage/kritalibbrush MSVC compile, bridge DLL + smoke. Linux remains green throughout.
