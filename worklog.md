@@ -380,3 +380,16 @@ Stage Summary:
 - MP4 export is REAL: the export sheet's MP4 card produces a playable H.264 MP4 on every platform, verified against ffmpeg end-to-end.
 - The encoder is intentionally simple (flat + PCM hybrid); file sizes are acceptable for painting content and the design leaves a clean upgrade path to full CAVLC.
 - Roadmap: steps 1-7 done + MP4 export added and regression-gated (49 tests). Remaining deferred: CAVLC residuals for MP4 size, on-device/e2e GUI verification, camera state in project files, file_picker UX polish, undo model unification.
+
+---
+Task ID: 5-loop-15 (addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: v0.12-mp4-export released; public CI green
+
+Work Log:
+- Public repo sync pushed (53d5ef4, .github/ excluded from the mirror as established in loop-14 — the stray step2-qt-bridge.yml in that repo did not trigger).
+- Build Feather-Krita App run 35291745222 SUCCESS at 53d5ef4.
+- Artifacts verified before release: Windows zip = feather_krita.exe + krita_bridge.dll (66048 B); APK ships libkrita_bridge.so for arm64-v8a / armeabi-v7a / x86_64.
+- RELEASE v0.12-mp4-export published (id 391144069) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.12-mp4-export
+- release_v12.py added: fetches the latest successful builder run's artifacts via curl -L (302 handling), re-extracts the GitHub wrapper zip, uploads. One gotcha: missing `import urllib.request` (module was imported implicitly by usage in v11 via from-import) — fixed on first run.
+- Private HEAD: d1eb3f8 (+ worklog addendum). Public CI repo HEAD: 53d5ef4, all green. Health gates: analyze 0 issues, 49/49 tests x2.
