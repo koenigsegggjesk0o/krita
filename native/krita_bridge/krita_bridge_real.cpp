@@ -65,6 +65,8 @@
 #include <string>
 #include <vector>
 
+#include <zlib.h>
+
 // ---------------------------------------------------------------------------
 // Glue: minimal PKZIP entry extraction for .kpp preset files.
 // (Serialization only — the extracted XML is parsed by Krita's own code.)
