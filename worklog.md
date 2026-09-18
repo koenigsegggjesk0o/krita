@@ -564,3 +564,17 @@ Work Log:
 
 Stage Summary:
 - Users can now (a) name exports explicitly via Save As…, (b) see file size + relative time + delete on open-dialog quick-picks, (c) reopen recently-opened projects even when the exports dir is empty, and (d) copy the export path or reveal it in the file manager from the success card. Loop-22 candidates: verify the loop-21 CI run on the ubuntu runner, on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed.
+
+---
+Task ID: 5-loop-21 (addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the loop-21 tree
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as fc1c919 (.github excluded per the loop-14 rule).
+- Build Feather-Krita App run 35317284942 IN_PROGRESS at fc1c919 (Windows + Android + serial regression suite). Loop-22 entry gate: verify this run's conclusion; the 4 new file_picker_ux tests + the reshaped export action rows are the surface area to watch.
+- Private HEAD: a23cb1d; public CI repo HEAD: fc1c919.
+- Health: analyze 0 issues; 68 tests green per-file; local full-suite serial flake on `app bar undo/redo` is the documented 4 GB box memory pressure (loop-20 root cause), not a code regression — CI ubuntu runner (7 GB) is expected to pass.
+
+Stage Summary:
+- Loop-21 shipped end to end pending CI: Save As dialog, open-dialog size+time+recents, post-export copy-path/show-in-folder, 4 new tests, version 0.16.0+1. Loop-22: check run 35317284942, then on-device GUI verification or CAVLC 8x8.
