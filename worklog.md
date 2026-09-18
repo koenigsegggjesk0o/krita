@@ -412,3 +412,14 @@ Stage Summary:
 - The CAVLC residual encoder is ~90% built and validated against single-MB ffmpeg cases; four real bitstream bugs were found and fixed via a bisect harness. The last multi-MB desync is isolated to a reproducible case (32x32 gray diagonal gradient) with all evidence tooling in place.
 - The exporter output remains ffmpeg-validated (flat+PCM); no broken MP4s can ship.
 - Roadmap: steps 1-7 done + GIF/glTF/PNG/MP4 exports + 51 tests. Deferred: finish CAVLC multi-MB desync (loop 17 primary), camera state in project files, file_picker UX polish, undo model unification, on-device GUI verification.
+
+---
+Task ID: 5-loop-16 (addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the gated CAVLC tree
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as 0c79f94 (.github excluded per the loop-14 rule).
+- Build Feather-Krita App run 35304220430 SUCCESS at 0c79f94: the gated tree (flat+PCM default, CAVLC machinery present) builds and passes CI on Windows + Android targets.
+- Private HEAD: 1326460; public CI repo HEAD: 0c79f94, all green. Health gates: analyze 0 issues, 51/51 tests.
+- No release this loop (no user-visible change; the exporter output is byte-compatible with v0.12). Loop 17 primary: find the multi-MB CAVLC desync (repro: scripts/cavlc_bisect.dart v11_diag32 + mp4_smoke), flip enableResiduals on, then release v0.13.
