@@ -795,3 +795,28 @@ Work Log:
 
 Stage Summary:
 - Root cause of the shipped app's silent native-engine fallback is PROVEN (Qt runtime DLLs missing next to the exe; DLL artifact == committed DLL, Qt-linked). The fix is designed, verified against the artifact, and documented for re-landing in loop-30 after the real-Krita build settles. The real-Krita v6.0.4 build (run 35327961173) is the active priority and belongs to the PIVOT writer's track.
+
+---
+Task ID: 5-loop-29 (milestone addendum: REAL Krita v6.0.4 libraries built — CI-verified)
+Agent: Z.ai Code (main, autonomous loop — second 17:10-cron writer)
+Task: monitor the PIVOT writer's real-Krita build run 35327961173; verify and document the outcome
+
+Work Log:
+- BUILD SUCCESS: run 35327961173 = SUCCESS @ 855f8ef (started 09:08:19Z, finished 09:26:28Z — 18 min on the ubuntu runner). The krita-build.yml workflow cloned krita-source/ (actual Krita v6.0.4, unmodified) from the private repo main branch and built the kritaimage target on the public builder repo. FIRST-EVER successful build of real Krita code in this project's history.
+- ARTIFACT VERIFIED: krita-brush-engine (id 10540945438, 31.8 MB zip) downloaded and inspected. Contents: 14 REAL libkrita*.so libraries (v6.0.4, ELF x86-64, not stripped), each with .so/.so.20/.so.20.0.0 variants:
+  - libkritaimage.so 9.5 MB — 5341 exported T symbols — the dab-rendering core (KisMaskGenerator family, KisPaintDevice, fixpaint ops)
+  - libkritapigment.so 6.8 MB — KoColorSpace engine
+  - libkritaglobal.so 763 KB, libkritaflake.so 7.1 MB, libkritawidgetutils.so 2.4 MB, libkritaresources.so 1.6 MB, libkritawidgets.so 1.8 MB, libkritapsdutils.so 1.0 MB, libkritametadata.so 315 KB, libkritaplugin.so 142 KB, libkritacommand.so 189 KB, libkritastore.so 122 KB, libkritamultiarch.so 30 KB, libkritaversion.so 16 KB.
+  - Verified via `file` (ELF 64-bit shared objects) + `nm -D` symbol count on libkritaimage.
+- WHAT THIS MEANS: the user's directive ("code krita asli, gaboleh bikin sendiri, gaboleh diubah") now has a REAL, CI-reproducible foundation. No more reimplementation — the brush engine core exists as unmodified Krita v6.0.4 binaries.
+- LOCAL DISK HYGIENE: /tmp/krita-engine* cleaned after inspection (box at 96%, 442 MB free — the artifact stays downloadable from CI; do NOT store it locally).
+
+- HANDOFF TO LOOP-30 (the wiring plan, in priority order):
+  1. Build the missing kritabrush target (.kpp/KisBrush parsing lives there, NOT in kritaimage) + strip the .so files (not-stripped 95 MB -> ~15-20 MB) in the same krita-build.yml run.
+  2. REWRITE krita_bridge.cpp as a thin C ABI wrapper that CALLS the real classes (KisCircleMaskGenerator / KisGaussCircleMaskGenerator for dabs, KisBrush + KZip for .kpp) — krita_bridge.h and the Dart FFI bindings stay byte-identical; the reimplementation body is replaced by real calls. The reimplementation stays as the compile fallback ONLY until the real libs are wired on every platform.
+  3. RE-LAND the Qt/CRT runtime bundling (this loop's reverted 7ba837c diff on the builder repo): the real libs need Qt5Core/Gui/Widgets + KF5 + boost next to the exe — the missing-runtime silent-fallback root cause documented in the previous addendum applies DOUBLE for the real libs.
+  4. Platform matrix: Linux x86-64 libs DONE (this run). Windows .dll + Android NDK (.so per ABI) builds of the SAME real source are the follow-up runs of krita-build.yml (windows-2022 + android NDK jobs).
+  5. Runtime smoke test pattern: reuse the step2 clean-room load test — dlopen the real libkritaimage.so and call a Krita symbol from the bridge.
+
+Stage Summary:
+- THE PIVOT IS REAL: actual Krita v6.0.4 brush-engine libraries now build reproducibly in CI (run 35327961173 SUCCESS, artifact 10540945438 verified: 14 real libkrita*.so, kritaimage with 5341 symbols). The remaining work is wiring: kritabrush target, the C ABI wrapper around real classes, runtime bundling, and the Windows/Android matrix — all loop-30+ items, all documented with evidence here.
