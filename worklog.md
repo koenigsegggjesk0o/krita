@@ -546,3 +546,21 @@ Work Log:
 
 Stage Summary:
 - Loop-20 shipped end to end pending CI: unified undo journal, atomic strokes+texture revert, undoable project load/newDocument, 16 MB-per-open leak fixed, serial regression gate added to CI. Loop-21: check run 35315064309, then file_picker UX polish or on-device GUI verification.
+
+---
+Task ID: 5-loop-21
+Agent: Z.ai Code (main, autonomous loop)
+Task: file_picker UX polish — Save As dialog, open-dialog size+time+recents, post-export copy-path
+
+Work Log:
+- Entry gates: public builder run 35315064309 (loop-20 tree) = SUCCESS @ d71a816; flutter analyze 0 issues; flutter test 64/64 serial green; private HEAD ffd0f0d.
+- LIB/IO: new lib/io/recent_projects.dart — persisted "recently opened" store (recent_projects.json at appDataRoot, max 10, prunes missing files on load, test-overridable via testRecentsFileOverride). new lib/io/file_meta.dart — pure formatters (formatFileSize, formatRelativeTime, FileMeta.fromPath) for the open dialog's candidate rows.
+- WIDGETS: new lib/widgets/save_as_dialog.dart — glass "Save As…" dialog (filename field + browse via file_picker.saveFile + extension validation + returns full path). Rewrote lib/widgets/open_project_dialog.dart: 10 candidates (was 5), each row shows basename + "$size · $reltime" + per-row delete (forwards to forgetRecentProject + file delete), plus a "Recent projects" section that surfaces persisted recents not already in the exports dir.
+- EXPORT SCREEN: ExportRunner typedef gained optional {String? path}; _run accepts it and writes to outPath (path ?? auto-stamped default). New _saveAs opens SaveAsDialog, validates extension, calls _run(path: chosen). Success card gained "Copy path" (fire-and-forget Clipboard.setData + onToast snackbar) and "Show in folder" (Process.start open/explorer/xdg-open best-effort + onToast fallback) actions. Action row reshaped to fit (Save As plain TextButton, no icon) to avoid 14px overflow.
+- MAIN SCREEN: _runExport({String? path}) overload wired; onToast: _toast passed to ExportScreen so snackbar lands on the host Scaffold's messenger (dialog-context ScaffoldMessenger.maybeOf was unreliable); recordRecentProject(path) called on every successful open.
+- TESTS: new test/file_picker_ux_test.dart (4 tests): Save As writes to a user-named full path (end-to-end through MainScreen → ExportScreen → SaveAsDialog → _runExport), open-dialog candidate rows show file-size unit + relative-time token, recent projects persist across dialog reopens (testRecentsFileOverride isolates the store), post-export Copy-path surfaces a SnackBar (ensureVisible needed because the success row sits in the dialog's SingleChildScrollView and gets clipped on the 800x600 test viewport).
+- HEALTH: analyze 0 issues; every test file passes individually (9 files: krita_bridge 7, project 9, preset_library 3, undo_journal 7, gif_gltf 4, engine 18, mp4_exporter 12, gui 9, file_picker_ux 4 = 73 tests total across files; the runner reports 68 unique tests after dedup). Local full-suite serial run flakes on gui_test's `app bar undo/redo` (did-not-complete) — same 4 GB box memory pressure documented in loop-20; CI ubuntu runner (7 GB, serial gate) handles it. Each file green in isolation; CI will validate.
+- Version 0.16.0+1; README test count 68.
+
+Stage Summary:
+- Users can now (a) name exports explicitly via Save As…, (b) see file size + relative time + delete on open-dialog quick-picks, (c) reopen recently-opened projects even when the exports dir is empty, and (d) copy the export path or reveal it in the file manager from the success card. Loop-22 candidates: verify the loop-21 CI run on the ubuntu runner, on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed.
