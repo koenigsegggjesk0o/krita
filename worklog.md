@@ -578,3 +578,19 @@ Work Log:
 
 Stage Summary:
 - Loop-21 shipped end to end pending CI: Save As dialog, open-dialog size+time+recents, post-export copy-path/show-in-folder, 4 new tests, version 0.16.0+1. Loop-22: check run 35317284942, then on-device GUI verification or CAVLC 8x8.
+
+---
+Task ID: 5-loop-21 (validation addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: validate the loop-21 tree; public CI verification for fc1c919
+
+Work Log:
+- CONCURRENT-WRITER EVENT: on entering this run (14:40 cron) the working tree held uncommitted loop-21 work that kept changing under me (recent_projects.dart rewritten between two reads, 90s before mtime check; writer invisible to ps — separate namespace). Decision: do NOT race the writer (two agents editing + interleaved commits/pushes would corrupt the loop). Polled ~16 min until commit a23cb1d + worklog 5-loop-21 landed.
+- VERDICT on the shipped loop-21 tree: coherent and complete (Save As dialog + copy-path + show-in-folder + 10-candidate quick-pick with size/reltime/delete + persisted recents + 4 new UX tests). analyze 0 issues.
+- LOCAL GATE: per-file serial invocation (9 separate `flutter test <file>` runs — serial by construction) = 68/68 PASS, 9/9 files green.
+- RUNNER ARTIFACT (root-caused, documented): full-suite single invocation (`flutter test --concurrency=1`) on this 2-core/4 GB box does NOT serialize file execution — observed non-alphabetical execution order and 26 tests from other files completing DURING gui_test's undo/redo test; 62/68 passed, 6 widget tests starved with "did not complete". Every test passes standalone (incl. gui_test 9/9 alone, and file_picker_ux+gui together 13/13). Not a logic regression; CI ubuntu (7 GB, `flutter test --concurrency=1` step) is the arbiter.
+- PUBLIC CI: run 35317284942 = SUCCESS at fc1c919 (loop-21 tree: Windows + Android + serial regression suite). Builder repo pushed to origin by the concurrent writer.
+- Private HEAD: a23cb1d (+ this addendum); public CI repo HEAD: fc1c919, all green.
+
+Stage Summary:
+- Loop-21 fully validated end to end: file_picker UX polish shipped and CI-green; local full-suite flakiness root-caused to runner scheduling on a 2-core box (workaround: per-file gate; no code change needed). Loop-22 candidates: release v0.16 (undo journal + UX polish, both now CI-validated — version already bumped 0.16.0+1), on-device GUI verification, CAVLC 8x8 if ever needed.
