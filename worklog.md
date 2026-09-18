@@ -869,3 +869,29 @@ Work Log:
 
 Stage Summary:
 - The real Krita v5.3.4/v6.0.4-source engine generates CORRECT dabs through our C ABI on the CI runner: colors, falloff, pressure-alpha, eraser all verified against unmodified libkritalibbrush/libkritaimage/libkritapigment code. One sizing fix (setScale) re-dispatched; on green, loop-31 downloads libkrita_bridge_real.so + stripped libkrita*.so and wires the app (Linux platform first), then Windows/Android matrix.
+
+---
+Task ID: 5-loop-30 (FINAL: GREEN — real-engine bridge verified end-to-end, artifact 18/18 smoke OK)
+Agent: Z.ai Code (main, autonomous loop)
+Task: finish the real-engine CI pipeline; verify the artifact; hand off wiring to loop-31
+
+Work Log:
+- fix4-smoke (8f000df): the last smoke failure was a TEST bug — krita_brush_release_dab zeroes width/height, and the test compared half.width < soft.width AFTER releasing soft (soft.width==0). softWidth now captured before release. The engine's pressure->size scaling was CORRECT all along (dab width 39 = 64 x 0.6 pressure factor, confirmed in run 35355199216).
+- RUN 35355199216 = SUCCESS @ c92a710 (builder repo, ~20 min). SMOKE OK — real Krita bridge end-to-end, 18/18 checks:
+  * version: FeatherBridge-Krita/2.0 (real engine 5.3.4 — KRITA_VERSION_STRING from the unmodified source tree)
+  * hard dab: exact straight-RGBA color passthrough (32/64/160 for 0x2040A0), opaque center, transparent corner
+  * soft dab: REAL gaussian falloff (center alpha 255 vs edge alpha 3), width exactly 64
+  * half pressure: alpha 128 (255x0.5), width 39 (64x0.6) — real pressure->alpha AND pressure->size
+  * eraser: black-alpha mask (0/0/0/255) for the Dart BlendMode.erase compositor
+- ARTIFACT VERIFIED (krita-brush-engine, run 35355199216, 76 MB unpacked): libkrita_bridge_real.so (ELF x86-64, DT_NEEDED closure = 18 libkrita*/KF5/Qt5 libs, rpath $ORIGIN) + stripped real libkrita*.so files (all SONAME variants as real files) + bin/smoke_test_real. Local re-run of the smoke binary only lacks libKF5I18n.so.5 on this Debian sandbox — CI green stands.
+- Krita source tree: UNTOUCHED throughout (all fixes went into the builder workflow + the thin wrapper + the smoke test).
+- Box-reset recovery completed earlier in-loop: repo re-cloned, worklog restored; Flutter SDK reinstall via tarball was started (still incomplete at loop end — loop-31 must run flutter analyze per cron protocol step 6).
+
+Stage Summary:
+- MILESTONE: the unmodified Krita brush engine now builds AND runs through our stable C ABI (krita_bridge.h byte-identical, Dart FFI untouched), CI-reproducibly, with an 18-point runtime smoke gate. The user directive ("code krita asli, gaboleh bikin sendiri, gaboleh diubah") is satisfied by construction: every mask/falloff/compositing computation executes in real libkrita* code; the wrapper only converts structs and byte order.
+- HANDOFF TO LOOP-31 (priority order):
+  1. Wire the real engine into the app: download artifact libkrita_bridge_real.so + libkrita*.so into the Linux desktop bundle (linux/ + assets/native/), extend CMake/install step, verify FFI load end-to-end on Linux CI. NOTE: the bridge's DT_NEEDED needs KF5/Qt5 runtime (libKF5I18n.so.5 etc.) bundled next to it on target machines.
+  2. Windows: MSVC build of the same real source (kritaimage+kritalibbrush) on windows-2022 in krita-build.yml; wrapper compiles with /permissive (see Krita's own CMakeLists clang-cl/msvc branch); bundle with the Qt/KF5 runtime re-land (loop-29 addendum's reverted 7ba837c pattern).
+  3. Android: NDK cross-build of kritaimage+kritalibbrush per ABI (arm64-v8a first).
+  4. Preset loading upgrade: mask-generator-level preset params are real; paintop-settings-level (size/opacity sliders) still best-effort — needs kritaui build or a settings-layer decision.
+  5. flutter analyze (SDK reinstall), 92-test serial gate, tag v0.20-real-engine release when Windows lands.
