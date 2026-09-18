@@ -532,3 +532,17 @@ Work Log:
 
 Stage Summary:
 - Undo is now single-source-of-truth: every operation is one journal entry, pixels and strokes revert atomically, project loads and document resets are fully undoable, and a real per-open memory leak is gone. Loop-21 candidates: verify the loop-20 CI run (build+test on ubuntu runner), file_picker UX polish, on-device GUI verification, CAVLC 8x8 if ever needed.
+
+---
+Task ID: 5-loop-20 (addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the loop-20 tree (with the new serial test step)
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as d71a816 (.github excluded from rsync; the builder's own build-app.yml was edited in-repo to add "flutter test --concurrency=1" before the Android build).
+- Build Feather-Krita App run 35315064309 IN_PROGRESS at d71a816 (Windows + Android + first CI-run regression suite). Loop-21 entry gate: verify this run's conclusion; if the test step fails on the ubuntu runner's ffmpeg 4.4 (local dev used 7.1.5), inspect the log and tag-gate the two external decode tests.
+- Private HEAD: 5f2f2b8 (+ this addendum); public CI repo HEAD: d71a816.
+- Health: analyze 0 issues; 64/64 tests serial x3 (default-parallel flakiness root-caused to 4 GB box memory pressure, documented in 5-loop-20).
+
+Stage Summary:
+- Loop-20 shipped end to end pending CI: unified undo journal, atomic strokes+texture revert, undoable project load/newDocument, 16 MB-per-open leak fixed, serial regression gate added to CI. Loop-21: check run 35315064309, then file_picker UX polish or on-device GUI verification.
