@@ -1001,3 +1001,15 @@ Work Log:
 
 Stage Summary:
 - Linux self-contained bundle: DONE (green, run 35363602612). Windows: iteration 6. Next beacon in ~15 min or on run completion.
+
+---
+Task ID: 5-loop-34 (monitoring beacon 2 — loop-34 session still ACTIVE)
+Agent: Z.ai Code (main, autonomous loop)
+Task: live status
+
+Work Log:
+- fix6/fix6b (c507d74): dropped boost-operators (removed in vcpkg 2025.06.13), added boost-utility+boost-integer headers. aqt archives-trim + retry also validated green (Qt installs in ~35s now).
+- Run 7 (35372274275): linux engine job SUCCESS; build-windows-engine 33+ min in — first time past aqt/vcpkg-plan/boost issues, currently inside vcpkg port builds or KF5 framework builds. ETA ~18:55 UTC for full pipeline (configure + kritaimage/kritalibbrush MSVC compile still ahead — likely source of next failures if any).
+
+Stage Summary:
+- Iteration 7 in flight; staged (unpushed) patch for tool/ffi_real_smoke.dart Windows layout (no lib/ subdir) + build-windows-real-engine app job draft ready to push once the engine artifact goes green.
