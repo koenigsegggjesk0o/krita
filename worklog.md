@@ -820,3 +820,24 @@ Work Log:
 
 Stage Summary:
 - THE PIVOT IS REAL: actual Krita v6.0.4 brush-engine libraries now build reproducibly in CI (run 35327961173 SUCCESS, artifact 10540945438 verified: 14 real libkrita*.so, kritaimage with 5341 symbols). The remaining work is wiring: kritabrush target, the C ABI wrapper around real classes, runtime bundling, and the Windows/Android matrix — all loop-30+ items, all documented with evidence here.
+
+---
+Task ID: 5-loop-30 (real bridge wired: libkrita_bridge_real.so CI build launched)
+Agent: Z.ai Code (main, autonomous loop)
+Task: per loop-29 handoff — build kritabrush target, write the thin C ABI wrapper that CALLS real Krita classes, launch CI build + real-engine smoke test
+
+Work Log:
+- BOX RESET RECOVERY: this sandbox was recreated (old /home/z/fkr-step1 + Flutter SDK + worklog gone, disk back to 8G free). Re-cloned feather-krita-flutter (shallow, single-branch) — HEAD 66c8dbf (loop-29 milestone), worklog restored from git.
+- MILESTONE CONFIRMED: run 35327961173 = SUCCESS @ 855f8ef (18 min). Artifact krita-brush-engine (10540945438, 31.8 MB) re-downloaded: 14 real libkrita*.so v6.0.4 (93 MB unstripped, headers not needed at runtime for FFI).
+- ABI-VERIFIED WRAPPER (native/krita_bridge/krita_bridge_real.cpp, NEW file — krita_bridge.cpp fallback untouched): implements the UNCHANGED krita_bridge.h C ABI by calling REAL Krita code, signatures verified against the actual v6.0.4 source (raw.githubusercontent):
+  * tip: KisGaussCircleMaskGenerator(diameter, ratio, hfade, vfade, spikes=2, antialias) / KisCircleMaskGenerator for hardness>=0.999 — same mapping Krita's own KisAutoBrushFactory uses (fade = 1-hardness, spikes=2 = Krita default for round tips)
+  * dab: KisAutoBrush(gen, 0, 0, 1) -> KisBrush::mask(dst, KoColor, KisDabShape, KisPaintInformation, subPixelX, subPixelY) -> generateMaskAndApplyMaskOrCreateDab -> brush pyramid + KisBrushMaskApplicator (ALL in libkritabrush/libkritaimage, zero painting math re-implemented)
+  * color: KoColor(QColor, KoColorSpaceRegistry::instance()->rgb8()) — rgb8() is the profile-less KoRgbU8ColorSpace singleton (headless-safe, verified in KoColorSpaceRegistry.cpp:619)
+  * presets: real KisBrush::fromXML(<brush>, KisResourcesInterface::instance()) + real MaskGenerator diameter + brush spacing attr; param-level parsing remains best-effort glue
+  * output: per-channel byte-order PROBE (transparent-primary KoColors identify R/G/B indices for any Krita layout) -> straight-alpha R,G,B,A + ABI pressure->alpha scaling; matches the fake bridge's QImage::Format_RGBA8888 output that the Dart compositor expects (verified lib/engine/texture_painter.dart)
+- NEW CI SMOKE TEST (native/krita_bridge/smoke_test_real.cpp): init/version, hard dab (exact color passthrough + opaque center + transparent corner), soft falloff (center vs edge), pressure->alpha + pressure->size scaling, eraser black-mask — runs ON THE RUNNER against the built libs.
+- BUILDER WORKFLOW EXTENDED (builder commit 90d64f0): krita-build.yml now (1) clones bridge sources from the app repo feather-krita-flutter via sparse checkout, (2) builds targets kritaimage + kritabrush (kritabrush = libs/brush: KisBrush/KisAutoBrush + KisResourcesInterface dep), (3) compiles libkrita_bridge_real.so against the real libs (g++ -shared, rpath $ORIGIN), (4) compiles + RUNS smoke_test_real on the runner, (5) collects STRIPPED real-file libkrita*.so variants + bridge + smoke binary into the artifact.
+- Dart FFI bindings byte-identical (per handoff plan); krita_bridge.h untouched; flutter analyze deferred in-loop (SDK lost with box reset, reinstall started; no Dart changes made this loop).
+
+Stage Summary:
+- The thin real-engine wrapper EXISTS and its CI build + runtime smoke test is the active run (builder repo, commit 90d64f0, workflow krita-build.yml). If green: loop-31 downloads libkrita_bridge_real.so + stripped libkrita*.so, wires the Linux desktop build end-to-end, and starts the Windows/Android matrix of the same real source. If the smoke test fails: logs give the exact Krita API mismatch to fix IN THE WRAPPER (never in Krita source).
