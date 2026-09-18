@@ -951,3 +951,25 @@ Work Log:
 
 Stage Summary:
 - Loop-32 COMPLETE: real Krita engine wired end-to-end on Linux CI (8/8 smoke green), release v0.20 tagged, cron updated for 10-hour autonomous continuation. Next loops (33+): Windows MSVC real engine build, Android NDK, patchelf self-contained bundle, full Krita menu/tab features + Feather-3D engine.
+
+---
+Task ID: 5-loop-33
+Agent: Z.ai Code (main, autonomous loop)
+Task: monitor loop-32 outcome, restore local Flutter SDK, verify v0.20 release, accept handoff (non-colliding run — loop-32 session was active in this worktree)
+
+Work Log:
+- STATE ON ENTRY: builder repo fix progression 35359404825 / 35359787873 / 35360299904 failed -> RUN 35360652133 (ed5a3f2, libunibreak5 fix) = SUCCESS. Full matrix green: build-linux-real-engine (Dart FFI smoke 8/8 through the app's own krita_bindings.dart), build-windows, build-android (92-test serial regression).
+- FLUTTER SDK RESTORED (box-reset recovery finished): /home/z/flutter from the release tarball via scripts/flutter_install.sh (resumable, 1.4 GB). NOTE: the mirror resolved the 3.35.3-pinned URL to current stable 3.47.4 (Dart 3.13.3); the CI pin (3.35.3) remains the arbiter — drift is analyze-infos-only.
+- flutter analyze (protocol step 6, first since the box reset): 73 issues, ALL info-level (deprecated_member_use — the 3.47 SDK flags post-3.41 deprecations the 3.35 CI does not), 0 errors / 0 warnings. Dart healthy. (loop-32's session concurrently ran the same check with identical results, using this SDK.)
+- RELEASE v0.20-real-engine-linux VERIFIED COMPLETE — created by the loop-32 session (id 391577499, tag @ 71a34d9), all 3 assets attached: feather-krita-linux-real-engine.zip 47.1 MB (REAL libkrita_bridge.so + 14 libkrita*.so v6.0.4), feather-krita-windows.zip 12.1 MB and feather-krita-android.apk 50.5 MB (both still fallback-engine builds pending real Windows/Android). My duplicate-create attempt was correctly rejected (HTTP 422, tag exists) — scripts/release_v20.py committed as the verified template for v0.21+.
+- Left uncommitted (parallel-session WIP, not mine): analysis_options.yaml (analyzer excludes build/android/web/windows/linux), pubspec.lock (3.47 pub churn).
+- Housekeeping: 1.4 GB tarball deleted (disk 38%, 5.9 G free). Cron 393463 superseded by 395817 (every 30 min, current-state instructions) per loop-32 addendum — next trigger arrives with fresh instructions.
+
+Stage Summary:
+- MILESTONE LOCKED IN: v0.20-real-engine-linux is LIVE — the first release shipping the REAL unmodified Krita v6.0.4 brush engine (Linux bundle, 8/8 Dart FFI smoke). "code krita asli, gaboleh bikin sendiri, gaboleh diubah" satisfied by construction. Cumulative releases v0.13 -> v0.20 (8).
+- LOOP-34 PRIORITY (per loop-32 handoff, unchanged):
+  1. Windows real engine: MSVC build of kritaimage+kritalibbrush on windows-2022 in krita-build.yml; bundle Qt5/KF5 runtime DLLs next to the exe; replace the fallback krita_bridge.dll.
+  2. Android real engine: NDK cross-build per ABI (arm64-v8a first).
+  3. patchelf --set-rpath '$ORIGIN' on all libkrita*.so -> self-contained Linux zip (no LD_LIBRARY_PATH reliance).
+  4. build-app.yml cleanup: drop verbose ldd/readelf diagnostics, keep the Dart smoke as the gate.
+  5. Beyond: full Krita menu/tab features + Feather-3D engine.
