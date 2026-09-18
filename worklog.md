@@ -444,3 +444,18 @@ Work Log:
 Stage Summary:
 - The H.264 encoder's residual path is now ffmpeg-EXACT end to end: block order, dequant scale, DC matrix convention, and intra prediction all verified against the n7.1.5 sources AND per-pixel decode checks. The enableResiduals gate is ON, so MP4 export gets real CAVLC residuals (smaller files than the flat+PCM fallback for brush edges).
 - Roadmap: steps 1-7 done + GIF/glTF/PNG/MP4 exports + 52 tests; MP4 residual coding promoted from experimental to default. Next candidates: release v0.13 artifacts via CI, CAVLC 8x8 (i8x8DCT) if ever needed, camera state in project files, undo model unification, on-device GUI verification.
+
+---
+Task ID: 5-loop-17 (addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: v0.13-cavlc-residuals released; public CI green
+
+Work Log:
+- Public repo sync pushed as 323fc73; Build Feather-Krita App run 35309263742 SUCCESS (Windows + Android).
+- RELEASE v0.13-cavlc-residuals published (id 391232199) with both installers: https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.13-cavlc-residuals
+- release_v13.py added (adapted from v12; new release notes covering the four ffmpeg-exact fixes).
+- Private HEAD: f94ebce (+ this addendum); public CI repo HEAD: 323fc73, all green.
+- Health: analyze 0 issues, 52/52 tests x2, 27/27 bisect cases ffmpeg-clean, per-pixel luma err <= 13.
+
+Stage Summary:
+- v0.13 ships the CAVLC residual path as the default MP4 encoder mode. Loop 18 candidates: measure v0.12-vs-v0.13 MP4 sizes on real painting content, camera state in project files, undo model unification, on-device GUI verification.
