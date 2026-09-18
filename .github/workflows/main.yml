@@ -109,14 +109,22 @@ jobs:
           grep -E "CMake Error|Could NOT find.*Required|FAILED" /tmp/configure.log | head -20
           exit $EXIT
 
-      - name: Build Krita FULL (semua target — app utuh bisa gambar)
+      - name: Build brush engine libs only (kritaimage + kritalibbrush + deps)
         run: |
           cd /opt/krita
           set -o pipefail
-          # Build SEMUA target Krita (app utuh, bukan cuma brush library)
-          # Ini termasuk: krita app, semua plugin, semua resource, UI, canvas, dll
-          # Estimasi: 1.5-3 jam di GitHub Actions runner
-          cmake --build build --parallel $(nproc) 2>&1 | tail -100
+          # loop-29 PIVOT: build ONLY the brush engine libraries, NOT the full
+          # Krita app. Building full Krita (app + UI + all plugins + resources)
+          # OOMs on the 7GB free runner. kritaimage pulls its transitive deps
+          # (kritapigment, kritaglobal, kritaresources, kritaversion,
+          # kritamultiarch, kritalibbrush) automatically. --parallel 2 to stay
+          # within RAM during the link phase. Source code UNCHANGED (real
+          # Krita v6.0.4 from krita-source/, per project directive: no
+          # reimplementation, no modification of Krita source).
+          cmake --build build --target kritaimage --parallel 2 2>&1 | tail -300
+          echo "=== Build exit: $? ==="
+          echo "=== Brush engine .so files produced ==="
+          find build -name "libkrita*.so*" -newer build/CMakeCache.txt 2>/dev/null | head -30
 
       - name: Install Krita ke prefix
         run: |
