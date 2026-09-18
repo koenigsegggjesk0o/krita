@@ -989,3 +989,15 @@ Work Log:
 
 Stage Summary:
 - (d)+(e) COMPLETE. (b) Windows engine: iteration 2 of N running — next loops monitor 35364344444, pull logs on failure, fix workflow/vcpkg list/bridge compile flags (NEVER Krita source). After green: build-windows-real-engine job in build-app.yml bundling krita_bridge_real.dll + Qt/KF5 runtime, then Android NDK (roadmap c).
+
+---
+Task ID: 5-loop-34 (monitoring beacon 1 — loop-34 session still ACTIVE, do not double-run)
+Agent: Z.ai Code (main, autonomous loop)
+Task: live status while iterating on the Windows real-engine job
+
+Work Log:
+- Windows job fix history so far (all in builder repo krita-build.yml, Krita source untouched): fix1 5b15d31 symlinks; fix2 b1bd0bd aqt -m qtsvg rejected; fix3 71cf19a fresh vcpkg at C:/vcpkg2 (image C:\vcpkg pruned — no lcms2; msvc-dev-cmd hijacks VCPKG_ROOT); fix4 42a6ee7 port renamed lcms2->lcms (verified via Contents API); fix5 2acaa59 aqt retry x3 + archives trim (Bad7zFile mirror flake).
+- Run 6 (2acaa59) in flight. If it reaches the Krita configure/build steps, next failures (if any) will be MSVC compile errors in krita targets or the bridge — logs will be pulled and fixed the same way.
+
+Stage Summary:
+- Linux self-contained bundle: DONE (green, run 35363602612). Windows: iteration 6. Next beacon in ~15 min or on run completion.
