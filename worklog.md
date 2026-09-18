@@ -594,3 +594,20 @@ Work Log:
 
 Stage Summary:
 - Loop-21 fully validated end to end: file_picker UX polish shipped and CI-green; local full-suite flakiness root-caused to runner scheduling on a 2-core box (workaround: per-file gate; no code change needed). Loop-22 candidates: release v0.16 (undo journal + UX polish, both now CI-validated — version already bumped 0.16.0+1), on-device GUI verification, CAVLC 8x8 if ever needed.
+
+---
+Task ID: 5-loop-22
+Agent: Z.ai Code (main, autonomous loop)
+Task: release v0.16 artifacts (undo journal loop-20 + file-picker UX loop-21, both CI-validated)
+
+Work Log:
+- Entry gates: public builder run 35317284942 = SUCCESS @ fc1c919 (loop-21 tree — the authoritative gate; Windows + Android + serial regression suite); flutter analyze 0 issues; per-file test gate — first sweep 62/68 (gui_test 3/9), re-sweep after recovery 9/9 files green (68/68 cumulative this loop).
+- DISK EMERGENCY (found during gate diagnosis): root fs at 99% (153 MB free) — many loops of build intermediates + release artifact downloads + stale /tmp zips. Cleaned /home/z/fkr-step1/build (684 MB: release_v11..v14 zips, loop9/loop11 smoke dirs), /home/z/fkr-build/build (590 MB), stale /tmp fk-*.zip/logs-*.zip → 85% (1.5 GB free). Verified all native libs (krita_bridge.dll/.so ×4) are git-committed before deleting anything.
+- OOM ROOT CAUSE (proven via dmesg): `oom-kill: global_oom, task=flutter_tester` — the kernel killed the widget-test VM (anon-rss 1.27 GB) mid-run during gui_test's heavy undo/redo test; the runner then marks all remaining tests "did not complete" instantly. The failing test passes ALONE (+1 green) and all 9 files pass per-file once transient pressure clears. Environmental (4 GB cgroup, shared pod, concurrent-agent activity spikes), NOT a code regression — CI ubuntu (7 GB) is the arbiter and is green at fc1c919.
+- RELEASE v0.16-undo-journal-ux published (id 391281351): https://github.com/koenigsegggjesk0o/krita/releases/tag/v0.16-undo-journal-ux
+- scripts/release_v16.py added (adapted from v14; warns if the builder HEAD isn't the expected fc1c919). Assets uploaded from CI run 35317284942: feather-krita-windows.zip 12140848 bytes, feather-krita-android.apk 50346837 bytes.
+- Release notes cover the unified undo journal (atomic strokes+texture revert, undoable open/newDocument, 16 MB-per-open leak fix), the file-picker UX polish (Save As, quick-pick size/time/delete, persistent recents, copy-path/show-in-folder), and the 68-test serial CI gate.
+- Private HEAD: b0e5c67 + this loop; public CI repo HEAD: fc1c919 (unchanged — no code changes this loop, tree already in sync).
+
+Stage Summary:
+- v0.16 ships loop-20's atomic undo journal + loop-21's file-picker UX to end users (Windows + Android). Disk emergency resolved; local test flakiness root-caused to kernel OOM (documented with dmesg evidence, per-file gate is the reliable local recipe). Loop-23 candidates: on-device GUI verification, CAVLC 8x8 (i8x8DCT) if ever needed, keep the per-file gate as the local recipe (full-suite single invocation remains unreliable on this 2-core/4 GB box).
