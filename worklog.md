@@ -482,3 +482,17 @@ Stage Summary:
 - Loop-17's residual work is now MEASURED: ~30-33% smaller MP4s on painting content, with the fallback still available via Mp4Exporter(enableResiduals: false).
 - Project files now restore the saved orbit-camera pose; the .feather format gained its optional camera block without a version bump.
 - Roadmap: steps 1-7 done + GIF/glTF/PNG/MP4 exports + camera persistence + 57 tests. Loop-19 candidates: undo model unification (TexturePainter vs StrokeManager snapshots), file_picker UX polish, on-device GUI verification, release v0.14 artifacts via CI.
+
+---
+Task ID: 5-loop-18 (addendum, post-push)
+Agent: Z.ai Code (main, autonomous loop)
+Task: public CI validation of the loop-18 tree
+
+Work Log:
+- Full-tree sync pushed to the public builder repo as 827033c (.github excluded per the loop-14 rule).
+- Build Feather-Krita App run 35310778400 SUCCESS at 827033c: the loop-18 tree (exporter flag, camera persistence, bench script) builds and passes CI on Windows + Android targets.
+- Private HEAD: 6b71b74; public CI repo HEAD: 827033c, all green. Health gates: analyze 0 issues, 57/57 tests, ffmpeg decode 6/6 bench files clean.
+- No release this loop (v0.13 remains latest; the exporter default behavior is unchanged — residuals were already on). Loop-19 candidates: release v0.14 artifacts (camera persistence is user-visible), undo model unification, file_picker UX polish, on-device GUI verification.
+
+Stage Summary:
+- Loop-18 validated end to end: measured CAVLC savings (~30-33%), exporter flag plumbed and tested, camera pose persisted in project files, public CI green at 827033c.
