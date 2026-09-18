@@ -42,7 +42,7 @@
 #include <kis_mask_generator.h>      // libs/image  (gauss/circle generators)
 #include <kis_fixed_paint_device.h>  // libs/image
 #include <kis_paint_information.h>   // libs/image/brushengine
-#include <KisResourcesInterface.h>   // libs/resources
+#include <KisGlobalResourcesInterface.h> // libs/resources
 #include <KoColor.h>                 // libs/pigment
 #include <KoColorSpaceRegistry.h>    // libs/pigment
 #include <KritaVersionWrapper.h>     // libs/version
@@ -378,7 +378,7 @@ int32_t krita_brush_load_preset(KritaBrushContext* handle, const char* path) {
     QDomElement brushEl = firstDescendant(root, "brush");
     if (!brushEl.isNull()) {
         KisBrushSP realBrush =
-            KisBrush::fromXML(brushEl, KisResourcesInterface::instance());
+            KisBrush::fromXML(brushEl, KisGlobalResourcesInterface::instance());
         if (realBrush && realBrush->valid()) {
             handle->brush = realBrush;
             handle->brushFromPreset = true;
