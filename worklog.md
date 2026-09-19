@@ -1167,3 +1167,18 @@ Work Log:
 Stage Summary:
 - ROADMAP STATUS: (a) v0.20 release DONE (prior loop) | (b) WINDOWS REAL ENGINE DONE (this loop, end-to-end) | (c) Android REAL engine — NEXT PRIORITY (NDK per-ABI arm64-v8a; the merged-DLL design maps to merging objects into one libkrita_bridge.so via the Android NDK toolchain; note cross-DLL data issue does not exist on ELF) | (d) self-contained Linux DONE | (e) diagnostics cleanup DONE | (f) preset loading upgrade (paintop-settings-level params) — after (c).
 - Suggested next-loop v0.21 release: tag the Windows real-engine zip (artifact feather-krita-windows-real-engine from run 35450545562) following scripts/release_v20.py template.
+---
+Task ID: 5-loop-36 (beacon 1 — v0.21 release DONE + Android engine campaign dispatched)
+Agent: Z.ai Code (main, autonomous loop)
+Task: milestone lock for Windows; bootstrap roadmap (c)
+
+Work Log:
+- Box reset #3 detected this run (/home/z/fkr-step1 wiped). Workspace restored from loop-35's pushed state; /home/z/fkr/fkr-step1 moved back to canonical /home/z/fkr-step1. Remote HEAD == local (aab7642), tree clean, no concurrent writer (previous beacon written ~6 min prior by this conversation's own previous session, FINAL marker).
+- scripts/flutter_install.sh RECREATED (was wiped by reset #2) — now pins 3.35.3 (the CI arbitration version, kills the 3.47-vs-3.35 analyze drift). Flutter reinstall running in background.
+- RELEASED v0.21-real-engine-windows (release id 392116639): artifact feather-krita-windows-real-engine from builder run 35450545562 @ 8ed0efd (loop-35 final green app run) verified SUCCESS, downloaded via curl -sL (39.7MB), asset uploaded 39.85MB. Tag on app repo, target feather-krita-flutter @ aab7642. scripts/release_v21.py committed (template reuse pattern: full-list idempotency check, 5x retry uploads).
+- ROADMAP (c) Android REAL engine BOOTSTRAPPED: build-android-engine job added to krita-build.yml (builder commit 47510dd, workflow dispatched 204). Design = port of the proven loop-35 Windows merged-object architecture to the NDK: ubuntu-24.04 runner + preinstalled NDK, aqt Qt 5.15.2 android universal package, vcpkg android triplets (static .a linkage: zlib bzip2 lcms eigen3 exiv2 fribidi freetype harfbuzz libunibreak boost-16 gsl), ECM + 8 KF5 frameworks cross-built (kcoreaddons karchive kconfig ki18n kguiaddons kwidgetsaddons kcompletion kitemviews) with native host-tools pre-build (kconfig_compiler + desktoptojson to /opt/kf5-host, discovered via CMAKE_PROGRAM_PATH), immer/zug/xsimd/lager header-only, QuaZip cross, EMPTY_EXPORTS flags, build.ninja .so-link-edge prune (ELF variant of fix44), explicit-object closure build (>700 obj gate), ONE merged libkrita_bridge.so via NDK clang++ -nostdlib++ + explicit libc++_shared.so (Qt android uses libc++_shared — ODR-safe), llvm-nm export gate (>=5 krita_bridge syms), undefined-symbol triage report, Qt/KF5/icu runtime bundle, per-ABI artifact + caches.
+- Matrix abi=[x86_64] for bring-up (emulator-testable later); arm64-v8a is a one-line matrix add once green. Krita source untouched — dependency provisioning + workflow tooling only.
+
+Stage Summary:
+- ROADMAP: (a) DONE | (b) DONE (v0.21 release now also locked) | (c) IN PROGRESS — first run in flight, expect fix-chain iterations (likely first hits: KF5 host-tool discovery, X11/Qt5LinguistTools configure demands, exiv2/lcms cross-compile quirks, prune regex edge cases). Next beacon after first CI result. | (d) DONE | (e) DONE | (f) queued after (c).
+- NEXT-SESSION NOTES: flutter analyze still pending (SDK reinstalling); artifact download always curl -sL; cache keys andengine-deps-v1-<abi> / andengine-krbuild-<abi>-v1 (bump -vN when port list / cmake options change).
