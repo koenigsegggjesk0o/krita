@@ -1062,3 +1062,20 @@ Work Log:
 
 Stage Summary:
 - Windows pipeline: deps (cached), KF5, immer/zug/lager, configure ALL GREEN. Only the MSVC compile + bridge link + smoke remain. Next failure class: C4xxx/C2xxx compile errors in krita targets or bridge LNK errors.
+---
+Task ID: 5-loop-35 (resumed loop-34 work after session death; new session)
+Agent: Z.ai Code (main, autonomous loop)
+Task: continue Windows REAL engine push; restore Krita-source red line; fix bridge include failure
+
+Work Log:
+- Resumed ~8h after loop-34 session died (worklog mtime 7.9h stale). CI showed fix30-41 all FAILED (runs 03:58-05:29Z), latest 0719abf.
+- FORENSICS (downloaded 6 run logs): engine build reached [1032/1032] Linking bin\kritalibbrush.dll — all 16 krita*.lib built under clang-cl! All recent failures were: (a) fix37/38/39 → engine TUs (flake KoToolBase ScopedPerformanceLogger dllimport-undef, KoZoomActionState, kis_layer_utils.cpp KisChangeCloneLayersCommand pimpl sizeof) = classic dllexport-forced-instantiation artifacts; (b) fix40/41 → bridge step 'kis_auto_brush.h not found' DESPITE 192 include dirs = bash passed args with EMBEDDED DOUBLE QUOTES (/I"D:\...") to native clang-cl — quote chars became part of the path value, every include dir corrupted (fix41 adding dirs changed nothing = proof).
+- ROOT CAUSE of shims: dllexport/dllimport semantics force MSVC/clang-cl to eagerly instantiate member functions of exported classes (implicit dtor of pimpl class, unique_lock<Adapter>::try_lock through adapters, dllimport inline logger) — errors upstream never sees because Krita 6.0.4 ships Qt6/MSVC-cl, our closure is Qt5/clang-cl.
+- fix42 (dc85b5f, builder repo): REMOVED windows-msvc-compat.patch application step + deleted patch file (RED LINE: krita source never modified — loop-34 sessions had violated it). Replaced with workflow-level flags: -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON + -DCMAKE_CXX_FLAGS with EMPTY export macro defines (KRITAGLOBAL_/KRITAIMAGE_/KRITAPIGMENT_/KRITARESOURCES_/KRITASTORE_/KRITAPSDUTILS_/KRITAMETADATA_/KRITACOMMAND_/KRITAMULTIARCH_/KRITAVERSION_/BRUSH_/KRITAPLUGIN_/KRITAWIDGETS_/KRITAWIDGETUTILS_/KRITAFLAKE_/KRITACOMMON_=); bridge consumer TU gets same empty defines. Fixed /I quoting (bare /I<path>), /LIBPATH quoting, added Qt5Svg+Qt5Widgets runtime DLLs (kritalibbrush links Qt5::Svg; kritaimage→kritawidgets→Qt5Widgets).
+- Verified upstream: Krita master IDENTICAL for KisChangeCloneLayersCommand.h; KisScopedPerformanceLogger unchanged — shims were toolchain-drift artifacts, not Krita bugs.
+- Closure fact learned: kritaimage PUBLIC-links kritawidgets+kritawidgetutils upstream → flake/widgets mandatory in engine closure; cannot slim targets.
+- Run 35426110162 dispatched (dc85b5f); duplicate push-triggered run cancelled. Known residual risk: KoZoomActionState.cpp qMin(int, long long) = genuine Qt5-on-Win64 latent error (size()=int vs ptrdiff_t=long long) — Plan B ready: /FI forced-include qMin<A,B> enable_if overload shim (flag-level, source untouched).
+- App repo: analyze 0 errors / 73 infos. Roadmap (d) patchelf self-contained Linux + (e) diagnostics cleanup confirmed already done (04870a2).
+
+Stage Summary:
+- Linux engine stays green; Windows engine needs ONLY bridge+smoke after fix42's two surgeries (flags replace shims; quoting fix unblocks headers). If run green → next: wire build-windows-real-engine app job (re-draft lost) + bundle real DLLs. Krita source patch path ELIMINATED.
