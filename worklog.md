@@ -1153,3 +1153,17 @@ Work Log:
 
 Stage Summary:
 - ROADMAP (b) Windows REAL engine = milestone achieved end-to-end (engine artifact + smoke green; app wiring in flight). Remaining roadmap: (c) Android REAL engine (NDK per-ABI, arm64-v8a first — next priority), (f) preset loading upgrade (paintop-settings-level params). NOTE for next session: Flutter SDK was wiped by box reset #2 — reinstall before running analyze; the smoke-tool change (20f8e81) is dart:io-only and was written to be analysis-clean.
+---
+Task ID: 5-loop-35 (beacon 7 — FINAL: Windows REAL engine end-to-end COMPLETE, roadmap (b) closed)
+Agent: Z.ai Code (main, autonomous loop)
+Task: milestone lock
+
+Work Log:
+- GREEN CHAIN COMPLETE: krita-build.yml run 35447751600 SUCCESS (merged engine DLL, C++ smoke all-pass) -> build-app.yml run 35450545562 SUCCESS: build-windows-real-engine job built the Flutter Windows app, bundled krita_bridge.dll (renamed from krita_bridge_real.dll) + Qt5/KF5/vcpkg runtime DLLs beside the exe, ran the app's OWN Dart FFI smoke on the Dart VM: "FFI REAL-ENGINE SMOKE OK" (center 32/64/160/255, half-pressure 128/39, eraser mask), packaged feather-krita-windows-real-engine.zip (artifact feather-krita-windows-real-engine).
+- Last-mile fixes: builder-mirror sync of the smoke tool (CI runs the builder copy, not the app repo's), krita_bridge.dll rename in bundle step, Compress-Archive (no zip.exe on windows runners).
+- Loop-35 totals: ~20 dispatched iterations (fix42..fix45r + 3 app-wiring fixes), TWO box resets survived (workspaces rebuilt from pushed git state each time), Krita source BYTE-IDENTICAL upstream throughout (the 7-file MSVC patch from earlier sessions REMOVED and replaced by workflow-level compiler flags).
+- NOTE for next session: Flutter SDK wiped by box reset #2 — reinstall (scripts/flutter_install.sh pattern or release tarball) before running analyze; the Dart changes shipped here compile and RUN green in CI (stronger than analyze). Suggest committing a rebuild of /home/z/my-project/scripts/flutter_install.sh first thing.
+
+Stage Summary:
+- ROADMAP STATUS: (a) v0.20 release DONE (prior loop) | (b) WINDOWS REAL ENGINE DONE (this loop, end-to-end) | (c) Android REAL engine — NEXT PRIORITY (NDK per-ABI arm64-v8a; the merged-DLL design maps to merging objects into one libkrita_bridge.so via the Android NDK toolchain; note cross-DLL data issue does not exist on ELF) | (d) self-contained Linux DONE | (e) diagnostics cleanup DONE | (f) preset loading upgrade (paintop-settings-level params) — after (c).
+- Suggested next-loop v0.21 release: tag the Windows real-engine zip (artifact feather-krita-windows-real-engine from run 35450545562) following scripts/release_v20.py template.
