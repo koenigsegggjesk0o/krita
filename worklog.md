@@ -1259,3 +1259,17 @@ Work Log:
 Stage Summary:
 - KRITA TOP-LEVEL CONFIGURE ON ANDROID: green through dependency gates (Qt5-android 11 components, 7 KF5 cross frameworks, unwindstack stub, LibAV/ffmpeg, TIFF, Fontconfig, LibExiv2, LCMS2, PNG, ZLIB, Boost/Immer/Zug/Lager/xsimd, QuaZip, libunibreak, FriBidi).
 - Remaining: prune regex → object build (bionic compile errors possible) → merged .so link → export gates.
+---
+Task ID: 5-loop-36 (beacon 7 — MILESTONE: Android REAL engine x86_64 GREEN, arm64 dispatched)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) — x86_64 bring-up COMPLETE
+
+Work Log:
+- GREEN RUN 35476318546 (795c0b5): build-android-engine (x86_64) SUCCESS. 961 krita objects built (gates OK: kis_auto_brush.cpp.o, KoXmlNS.cpp.o, vendored raqm.c.o all present), merged libkrita_bridge.so = 313,611,560 bytes, **21 krita_* ABI symbols EXPORTED** (krita_brush_init/load_preset 5412B/generate_dab 1844B/set_color/get_opacity/get_size/spacing/hardness/smudge/release_dab/cleanup/destroy/...), 3678 undefined refs (Qt/KF5/bionic — by design, resolved at dlopen from libc++_shared + bundled libs). Windows engine job green in parallel (cache re-warm complete).
+- Final merge fixes this iteration: isystem include capture (cmake marks Qt dirs -isystem on android; the bridge TU needed them), llvm-readelf for all symbol work (runner NDK image is PRUNED — llvm-nm absent, only riscv64 libc++_shared.so in sysroot), gate pattern fixed (ABI symbols are krita_brush_* NOT krita_bridge — the file name ≠ symbol prefix), split bridge-TU compile from link for error isolation.
+- arm64-v8a ADDED to the matrix (8f999e2 dispatched) — the device deliverable ABI. Same pipeline; risk: aarch64-specific code paths (neon intrinsics guards in krita Vc/simd layers) — the objects already built once for x86_64; arm64 compile differences expected small.
+- Smoke exe link needs artifact/bin mkdir (fixed this push; non-fatal anyway).
+
+Stage Summary:
+- ROADMAP (c) STATUS: x86_64 bring-up DONE end-to-end at the engine level (configure → 961 objects → merged single .so → export gates). arm64-v8a in flight. NEXT: app wiring job build-android-real-engine in build-app.yml (jniLibs bundling + APK) following the build-windows-real-engine template, then v0.22 release.
+- Iteration total: ~25 dispatched runs for the android campaign. Krita source byte-identical upstream throughout.
