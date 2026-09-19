@@ -1097,3 +1097,16 @@ Work Log:
 
 Stage Summary:
 - Every fix42-45c failure was workflow/toolchain-level; krita source byte-identical upstream (verified KisChangeCloneLayersCommand + KisScopedPerformanceLogger vs KDE master). Linux job green throughout. Windows frontier now at the FINAL LINK: 954-object merged DLL + smoke. Next failure class: undefined symbols (missing libs) — vcpkg over-link + KF5 list should cover; lager/quazip glob added (quazip1-qt5.lib seen; lager header-only).
+---
+Task ID: 5-loop-35 (beacon 3 — box reset recovery; fix45f re-applied and dispatched)
+Agent: Z.ai Code (main, autonomous loop)
+Task: continue merged-DLL campaign after second box reset
+
+Work Log:
+- BOX RESET detected (~06:20 UTC window): /home/z/fkr-step1, builder-ws, /home/z/flutter all wiped (fresh rootfs, 1.9G used). All pushed work safe.
+- Recovered: builder repo re-cloned (was at fix45e 2dbfef8); fix45f (glob ALL C:/kf5/lib/*.lib replacing hand list — LNK1181 KF5Config.lib because KF5Config installs KF5ConfigCore/Gui) re-applied from session context, committed bbca7f8, dispatched run 35435594778.
+- App repo re-cloned at 741d58b (beacon 2); tool/ffi_real_smoke.dart Windows-layout patch re-applied (UNCOMMITTED until engine green — analyze needs Flutter SDK reinstall, deferred).
+- fix45e run (35434547989) result pre-reset: bridge TU COMPILED CLEAN with upstream /permissive (KoColorSpaceMaths xor/and method names OK — upstream adds add_compile_options("/permissive") for clang-cl at CMakeLists:530); failed ONLY at link: LNK1181 KF5Config.lib.
+
+Stage Summary:
+- Campaign frontier: link stage of the 954-object merged DLL. fix45f run in flight (35435594778). Remaining risk classes: other missing libs (glob mitigates), undefined symbols (over-link mitigates), runtime smoke DLL resolution (PATH set). If green: wire build-windows-real-engine job in builder build-app.yml + app-side commit + analyze (needs Flutter reinstall).
