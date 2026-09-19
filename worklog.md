@@ -1213,3 +1213,18 @@ Work Log:
 Stage Summary:
 - Fix chain: 8 iterations dispatched, all workflow-level (krita source untouched). Failure frontier advanced: NDK-absent → ECM(host) → LinguistTools(host cross) → Qt5Qml(host kconfig) → kconfig_compiler gate → ECM(cross find-root). Next expected frontier: krita top-level configure on ANDROID (X11/OpenGL guards), then compile errors in the object build, then merged-.so link closure.
 - Timeline: cold deps built and cached (vcpkg 5.5min static android, ECM, host tools ~2min); iteration cost now ~20min to reach the frontier.
+---
+Task ID: 5-loop-36 (beacon 4 — Android bring-up iterations 9-12: ki18n bug + infra hardening)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) — frameworks closure + infrastructure resilience
+
+Work Log:
+- Iteration 9 (c61fc4c): ki18n needed Qt5AndroidExtras — added to aqt archives (same pattern as Windows qtwinextras). karchive needed zstd — vcpkg zstd port added. Cross kcoreaddons+karchive+kconfig now BUILD+INSTALL (find-root + KF5_HOST_TOOLING mechanics working).
+- Iteration 10 (289c653): ki18n needed LibIntl on android (bionic lacks it) — vcpkg gettext port added (static libintl.a). ki18n then CONFIGURED and started building (36 TUs).
+- Iteration 11 (f6956f9): ki18n v5.116 UPSTREAM Qt5-ANDROID BUG found: kcatalog.cpp androidAssetBindtextdomain calls loadMessageCatalogFile which is DEFINED NOWHERE in the source tree (libintl-lite-era leftover; master/KF6 has the same dead call). We ship no translations, so fixed at TOOLCHAIN level: forced-include stub header neutralizes the dead assets:-catalog path (#define redirect to a no-op). Zero source edits, krita untouched. Also -landroid -llog on the ki18n shared link (AAssetManager symbols).
+- Iteration 12 (c72600b): infrastructure hardening after a TRANSIENT TLS flake killed both android (karchive clone curl 35) and windows (kwindowsystem clone) simultaneously at ~17:47Z: (1) 5x retry loops on ALL git clones (krita-source, bridge, ECM, host frameworks, cross frameworks, quazip); (2) deps cache bumped to andengine-deps-v3-<abi> with /opt/kf5-src DROPPED (clones re-run per run with retries; cache budget reserved for build trees — the 10GB repo cache cap EVICTED the loop-35 windows caches winengine-deps-v10/krbuild-v3, so windows is re-warming cold this run, expected ~2-3h).
+- Also: cache-save contention from cancelled duplicate runs diagnosed ("another job may be creating this cache") — queue hygiene: only ONE run kept per iteration, superseded runs cancelled explicitly.
+
+Stage Summary:
+- Failure frontier: kcoreaddons+karchive+kconfig cross-built GREEN; ki18n stub in flight; remaining frameworks are small. Next unknowns: krita top-level configure on ANDROID, ninja prune, 900-object NDK build, merged-.so link closure.
+- Roadmap (c) campaign ~12 iterations dispatched. All fixes workflow/toolchain-level.
