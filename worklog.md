@@ -1200,3 +1200,16 @@ Stage Summary:
 - Fix chain so far is pure workflow-level; krita source untouched. Bring-up trajectory matches expectations (dependency provisioning issues first, then framework cross-builds, then krita configure, then object build).
 - Expected next failure surfaces: kconfig cross host-tool discovery (kconfig_compiler via CMAKE_PROGRAM_PATH), ki18n cross, krita top-level configure demands (X11/OpenGL guards on ANDROID), build.ninja ELF prune regex, merged-.so link (undefined widget-layer symbols would mean adding kritawidgets/kxmlgui closure — plan B documented).
 - v0.21-real-engine-windows LIVE (release 392116639). Flutter 3.35.3 installed at /home/z/flutter.
+---
+Task ID: 5-loop-36 (beacon 3 — Android bring-up iterations 5-8: cross toolchain mechanics)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) — KF5 cross-build unblocking
+
+Work Log:
+- Run 5 (9a61411): host tools GATE PASSED (kconfig_compiler_kf5 found at /opt/kf5-host/lib/x86_64-linux-gnu/libexec/kf5/ — KF5 installs build tools under libexec/kf5 with _kf5 suffix, NOT bin/). FAILED at cross kcoreaddons: "Could NOT find ECM" under the NDK toolchain — android.toolchain.cmake sets FIND_ROOT_PATH_MODE_PACKAGE=ONLY, so CMAKE_PREFIX_PATH dirs outside CMAKE_FIND_ROOT_PATH are rejected.
+- Fix (5638a15, in flight): -DCMAKE_FIND_ROOT_PATH="$QTDIR;$KF5DIR;$VP/installed" added to cross frameworks + quazip + krita configure (toolchain appends sysroot roots after; our prefixes now rooted). Also verified KF5's OFFICIAL cross mechanism and wired it: KF5ConfigConfig.cmake.in / KF5CoreAddonsConfig.cmake.in honor KF5_HOST_TOOLING — find_file(KF5ConfigCompilerTargets.cmake PATHS ${KF5_HOST_TOOLING} NO_CMAKE_FIND_ROOT_PATH) imports the HOST kconfig_compiler/desktoptojson as KF5:: targets. -DKF5_HOST_TOOLING=$KF5HOST/lib/x86_64-linux-gnu/cmake added to cross frameworks + krita configure. Bundle step now also copies libc++_shared.so + builds smoke_test_real_android (PIE exe linked against the merged engine .so, for later adb/emulator run).
+- Engine job bundle improvements pushed (93301b6) — merged into 5638a15 run.
+
+Stage Summary:
+- Fix chain: 8 iterations dispatched, all workflow-level (krita source untouched). Failure frontier advanced: NDK-absent → ECM(host) → LinguistTools(host cross) → Qt5Qml(host kconfig) → kconfig_compiler gate → ECM(cross find-root). Next expected frontier: krita top-level configure on ANDROID (X11/OpenGL guards), then compile errors in the object build, then merged-.so link closure.
+- Timeline: cold deps built and cached (vcpkg 5.5min static android, ECM, host tools ~2min); iteration cost now ~20min to reach the frontier.
