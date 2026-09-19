@@ -1182,3 +1182,21 @@ Work Log:
 Stage Summary:
 - ROADMAP: (a) DONE | (b) DONE (v0.21 release now also locked) | (c) IN PROGRESS — first run in flight, expect fix-chain iterations (likely first hits: KF5 host-tool discovery, X11/Qt5LinguistTools configure demands, exiv2/lcms cross-compile quirks, prune regex edge cases). Next beacon after first CI result. | (d) DONE | (e) DONE | (f) queued after (c).
 - NEXT-SESSION NOTES: flutter analyze still pending (SDK reinstalling); artifact download always curl -sL; cache keys andengine-deps-v1-<abi> / andengine-krbuild-<abi>-v1 (bump -vN when port list / cmake options change).
+---
+Task ID: 5-loop-36 (beacon 2 — Android engine fix chain iterations 1-4)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) bring-up — first CI iterations
+
+Work Log:
+- analyze DONE with reinstalled Flutter 3.35.3 (CI arbitration version): 0 errors, 72 infos (deprecations only). pubspec.lock churn reverted, not committed.
+- Android engine iteration results (builder repo krita-build.yml, all x86_64 bring-up):
+  - Run 1 (47510dd): FAILED at host-tools step — host kcoreaddons configure could not find ECM (host step had no CMAKE_PREFIX_PATH; my earlier edit removed it instead of repointing). vcpkg android install of all 25 ports PASSED in 5.5 min (static x64-android), ECM cross install PASSED. NDK on runner = r29 (29.0.14206865).
+  - Run 2 (584bd45 fix: ECM prefix fix): FAILED at cross kcoreaddons configure — ECMPoQmTools requires Qt5LinguistTools, absent from the android Qt package. Fix: apt qttools5-dev (host config; .qm output arch-independent). vcpkg now cache-hit (4s).
+  - Run 3 (f5d9081 fix: LinguistTools): FAILED at host kconfig — needs Qt5Qml (apt qtdeclarative5-dev) and next would need host KF5CoreAddons (CMAKE_PREFIX_PATH now $KF5DIR;$KF5HOST). Host kcoreaddons DID build+install (desktoptojson + kconfig_compiler land in /opt/kf5-host/bin) in ~19s.
+  - Run 4 (1cfb8aa, in flight): all above fixes + deps cache bumped to andengine-deps-v2-<abi> now including /opt/kf5-build (cross framework build dirs) so the ~10 min framework builds persist across fix iterations.
+- Cancelled superseded/duplicate runs (concurrency group serializes; push auto-trigger + explicit dispatch double-books otherwise).
+
+Stage Summary:
+- Fix chain so far is pure workflow-level; krita source untouched. Bring-up trajectory matches expectations (dependency provisioning issues first, then framework cross-builds, then krita configure, then object build).
+- Expected next failure surfaces: kconfig cross host-tool discovery (kconfig_compiler via CMAKE_PROGRAM_PATH), ki18n cross, krita top-level configure demands (X11/OpenGL guards on ANDROID), build.ninja ELF prune regex, merged-.so link (undefined widget-layer symbols would mean adding kritawidgets/kxmlgui closure — plan B documented).
+- v0.21-real-engine-windows LIVE (release 392116639). Flutter 3.35.3 installed at /home/z/flutter.
