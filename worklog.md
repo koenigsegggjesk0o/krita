@@ -1079,3 +1079,21 @@ Work Log:
 
 Stage Summary:
 - Linux engine stays green; Windows engine needs ONLY bridge+smoke after fix42's two surgeries (flags replace shims; quoting fix unblocks headers). If run green → next: wire build-windows-real-engine app job (re-draft lost) + bundle real DLLs. Krita source patch path ELIMINATED.
+---
+Task ID: 5-loop-35 (beacon 2 — fix42..fix45c chain, Windows merged-DLL engine campaign)
+Agent: Z.ai Code (main, autonomous loop)
+Task: Windows REAL engine via red-line-compliant workflow surgery
+
+Work Log:
+- fix42 (dc85b5f): REMOVED windows-msvc-compat.patch application + deleted patch file (RED LINE restored — loop-34 had violated it). dllexport-forced-instantiation shims replaced by -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON + EMPTY krita export macro defines (KRITAGLOBAL_/KRITAIMAGE_/.../BRUSH_EXPORT=) in CMAKE_CXX_FLAGS + bridge TU. Fixed /I"..." embedded-quote arg corruption (bash passes literal quote chars to native clang-cl). PROVEN: all shim error classes vanished (2617 TUs compile clean unmodified!).
+- fix43 (2001001): merged single-DLL design — per-lib krita*.dll links abandoned (cross-DLL static-data imports like KoXmlNS::manifest unresolvable without dllimport); bridge links ALL krita objects into ONE krita_bridge_real.dll.
+- fix44 (983be33): build.ninja surgery step (prune 392 dll/lib link edges) — obj edges transitively depend on DLL links via AutoGen chains (ninja -k 0 stalled at 106 objs).
+- fix44b (6650413): CRLF normalize before surgery (split('\n\n') failed on \r\n; trailing \r defeated endswith).
+- fix44c (58821aa): build objects via explicit ninja outputs; diagnosed krbuild-v2 cache = 147KB immutable stub (saves silently rejected) -> key bumped to v3. LEARNED: ninja -t targets paths are BACKSLASH on Windows; fwd-slash grep matched nothing -> xargs ran bare ninja (built all 2621 targets incl app+plugins; 4 non-closure TUs failed — irrelevant once filtered).
+- fix45 (4ed0dae): explicit closure target list (955 objs planned); grep -m1 + || true defuses pipefail SIGPIPE silent step death (GitHub bash = -e -o pipefail); closure+ = kritaresourcewidgets (kritawidgets links it), Qt5PrintSupport.
+- fix45b (e2cdddb): -t commands on the OBJ file (alias chain emptied by prune); closure-filter the merge rsp (build/libs holds stale app-libs objs from 44c over-build). RESULT: bridge TU compiled 3 include levels deep — failed only at klocalizedstring.h (KF5 per-lib include dirs missing).
+- fix45c (e80f556, run 35433429207 IN FLIGHT): glob ALL Qt module + KF5 framework include subdirs into bridge TU.
+- App repo: tool/ffi_real_smoke.dart patched for Windows layout (no lib/ subdir; analyze still 0 errors) — UNCOMMITTED until engine green. Builder build-app.yml build-windows-real-engine job draft planned (template = build-linux-real-engine job).
+
+Stage Summary:
+- Every fix42-45c failure was workflow/toolchain-level; krita source byte-identical upstream (verified KisChangeCloneLayersCommand + KisScopedPerformanceLogger vs KDE master). Linux job green throughout. Windows frontier now at the FINAL LINK: 954-object merged DLL + smoke. Next failure class: undefined symbols (missing libs) — vcpkg over-link + KF5 list should cover; lager/quazip glob added (quazip1-qt5.lib seen; lager header-only).
