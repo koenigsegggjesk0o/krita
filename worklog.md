@@ -1139,3 +1139,17 @@ Work Log:
 
 Stage Summary:
 - This run is the full-stack test of: empty-export flags + build.ninja prune + explicit-object build + qmin /FI shim + merged 954-object DLL link with raqm/lib/system/KF5-13-framework closure. If green: artifact krita-brush-engine-windows contains ONE krita_bridge_real.dll + runtime DLLs -> wire build-windows-real-engine app job (template: build-linux-real-engine in builder build-app.yml) + smoke tool patch (already applied, uncommitted) + analyze (needs Flutter reinstall).
+---
+Task ID: 5-loop-35 (beacon 6 — WINDOWS REAL ENGINE GREEN: roadmap (b) achieved)
+Agent: Z.ai Code (main, autonomous loop)
+Task: Windows REAL engine milestone
+
+Work Log:
+- GREEN RUN 35447751600 (00e5572): build-windows-engine SUCCESS. C++ smoke ALL CHECKS PASS: init handle / hard dab / center RGBA 32 64 160 254 (exact 0x2040A0 passthrough) / center opaque / corner transparent / soft falloff / half-pressure alpha=128 (=255x0.5) width=39 (=64x0.6) / eraser black mask — "SMOKE OK — real Krita bridge end-to-end". Artifact krita-brush-engine-windows (24.5 MB): ONE merged krita_bridge_real.dll (bridge glue + 956 krita objects: image+brush+pigment+resources+store+global+widgets+flake+widgetutils+psdutils+metadata+command+multiarch+version+plugin+resourcewidgets+vendor raqm) + Qt5/KF5/vcpkg runtime DLLs.
+- Final fix chain this session: fix45g/h/h2/h3 (raqm+system libs+qmin shim), fix45i-m (KF5 +6 frameworks: kwindowsystem kiconthemes kcodecs kauth kconfigwidgets kxmlgui — kiconthemes AFTER kconfigwidgets; KF_IGNORE_PLATFORM_CHECK; Qt5WinExtras archive), fix45n/o (external raqm WRONG — Krita VENDORS patched raqm at 3rdparty_vendor/raqm target libraqm carrying the arbitrary-run-break patch; vendored objs built into closure), fix45p (/IMPLIB must be inside /link for clang-cl driver), fix45q (ldd loader audit), fix45r (quazip1-qt5.dll not KF5-prefixed — copy ALL C:/kf5/bin dlls).
+- RED LINE: krita source byte-identical upstream ALL ALONG (fix42 removed the 7-file patch; every subsequent fix was workflow/toolchain-level). The qmin shim is a /FI compiler-flag header, NOT a source edit.
+- APP WIRING (ec65853 builder): build-windows-real-engine job added to build-app.yml (downloads krita-brush-engine-windows from latest green run, bundles ALL dlls beside the exe, runs dart FFI smoke via patched tool/ffi_real_smoke.dart, uploads feather-krita-windows-real-engine zip). Dispatched; awaiting result.
+- App repo: tool/ffi_real_smoke.dart Windows-layout patch COMMITTED (20f8e81).
+
+Stage Summary:
+- ROADMAP (b) Windows REAL engine = milestone achieved end-to-end (engine artifact + smoke green; app wiring in flight). Remaining roadmap: (c) Android REAL engine (NDK per-ABI, arm64-v8a first — next priority), (f) preset loading upgrade (paintop-settings-level params). NOTE for next session: Flutter SDK was wiped by box reset #2 — reinstall before running analyze; the smoke-tool change (20f8e81) is dart:io-only and was written to be analysis-clean.
