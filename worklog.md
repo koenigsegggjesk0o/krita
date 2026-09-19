@@ -1110,3 +1110,19 @@ Work Log:
 
 Stage Summary:
 - Campaign frontier: link stage of the 954-object merged DLL. fix45f run in flight (35435594778). Remaining risk classes: other missing libs (glob mitigates), undefined symbols (over-link mitigates), runtime smoke DLL resolution (PATH set). If green: wire build-windows-real-engine job in builder build-app.yml + app-side commit + analyze (needs Flutter reinstall).
+---
+Task ID: 5-loop-35 (beacon 4 — link-stage closure: raqm + KF5 frameworks + qmin shim)
+Agent: Z.ai Code (main, autonomous loop)
+Task: resolve merged-DLL link undefined symbols
+
+Work Log:
+- fix45g (65b1846): bridge TU compiled CLEAN with upstream /permissive (xor/and method names — Krita CMakeLists:530 adds /permissive for clang-cl). Link failed: 21 unresolved = raqm_* (flake text) + SHGetKnownFolderPath/CoTaskMemFree (ole32/shell32) + KoZoomActionState (the PREDICTED Qt5 mixed-type qMin).
+- fix45g also: system libs added, KRITARESOURCEWIDGETS_EXPORT emptied, vcpkg raqm attempt FAILED (2025.06.13 has no raqm port).
+- fix45h/45h2 (61b1f34/1d7fbf2): libraqm v0.10.1 built from upstream — it is a MESON project (no CMakeLists) — meson setup/compile/install static against vcpkg pkgconf; produced libraqm.a.
+- fix45h3 (2da0b6c): expose libraqm.a as raqm.lib (COFF content, lld-link /LIBPATH). /FI qmin_shim.h landed: enable_if'd qMin<A,B> two-type overload (same-type still Qt's template) — KoZoomActionState.obj NOW COMPILES.
+- Consequence: previously-failing widget TUs' objs entered the merge -> exposed MISSING KF5 FRAMEWORKS: 362 __imp_ unresolved (KMessageBox/KConfigGroup/KToggleAction/KMainWindow...) = kxmlgui + kconfigwidgets + kwindowsystem + kcodecs + kauth never built.
+- fix45i (ec2e6ce, run 35439685190 IN FLIGHT): KF5 loop extended (+5 frameworks), deps cache v9->v10 (v9 immutable since fix41 era; saves silently failed all along — per-run rebuild cost removed).
+- NOTE: box reset #2 hit this session (~06:20Z); recovery from session context + git push history worked cleanly; worklog/tool patch re-applied.
+
+Stage Summary:
+- The link is down to EXTERNAL dependency completeness only: raqm ✓, system libs ✓, qmin ✓, KF5 5 more frameworks in flight (v10 cold build ~40 min). Next failure class: few remaining undefined (kglobalaccel? kcrash?) — extendable the same way. Krita source still byte-identical upstream.
