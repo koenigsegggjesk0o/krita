@@ -1126,3 +1126,16 @@ Work Log:
 
 Stage Summary:
 - The link is down to EXTERNAL dependency completeness only: raqm ✓, system libs ✓, qmin ✓, KF5 5 more frameworks in flight (v10 cold build ~40 min). Next failure class: few remaining undefined (kglobalaccel? kcrash?) — extendable the same way. Krita source still byte-identical upstream.
+---
+Task ID: 5-loop-35 (beacon 5 — fix45j: Qt5WinExtras + continuation repair; long cold run in flight)
+Agent: Z.ai Code (main, autonomous loop)
+Task: unblock kwindowsystem (Qt5WinExtras), repair link-line continuation bug
+
+Work Log:
+- fix45i run failed fast: kwindowsystem's CMakeLists:62 find_package(Qt5WinExtras) REQUIRED — archive absent from the aqt list.
+- AUDIT of fix45g's python edit found a REAL BUG: the chr(10) replace swallowed the line-continuation backslash after Qt5PrintSupport.lib — ole32/shell32/user32/advapi32/uuid/gdi32 became a SEPARATE bash line and were NEVER LINKED (explains the fat 362-error list).
+- fix45j (6fd48b5, run 35440362380 in flight): continuation repaired + Qt5WinExtras added (aqt archive qtwinextras + Qt5WinExtras.lib on the merge link + Qt5WinExtras.dll runtime copy) + WinExtras presence gate after aqt.
+- Deps cache v10 is COLD for this run: full vcpkg (14 ports ~22 min) + 13 KF5 frameworks + immer/zug/xsimd/lager + quazip + raqm (meson) — expect ~45 min before the krita configure; then cached objs (krbuild-v3) + merge + smoke.
+
+Stage Summary:
+- This run is the full-stack test of: empty-export flags + build.ninja prune + explicit-object build + qmin /FI shim + merged 954-object DLL link with raqm/lib/system/KF5-13-framework closure. If green: artifact krita-brush-engine-windows contains ONE krita_bridge_real.dll + runtime DLLs -> wire build-windows-real-engine app job (template: build-linux-real-engine in builder build-app.yml) + smoke tool patch (already applied, uncommitted) + analyze (needs Flutter reinstall).
