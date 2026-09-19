@@ -1228,3 +1228,18 @@ Work Log:
 Stage Summary:
 - Failure frontier: kcoreaddons+karchive+kconfig cross-built GREEN; ki18n stub in flight; remaining frameworks are small. Next unknowns: krita top-level configure on ANDROID, ninja prune, 900-object NDK build, merged-.so link closure.
 - Roadmap (c) campaign ~12 iterations dispatched. All fixes workflow/toolchain-level.
+---
+Task ID: 5-loop-36 (beacon 5 — Android bring-up iterations 13-17: krita configure frontier)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) — krita top-level configure on ANDROID
+
+Work Log:
+- Iteration 13 (b56fd33): ki18n stub v1 broke CMake's compiler try-compile (bare test has no Qt includes) — rewrote stub Qt-free (variadic template no-op). 
+- Iteration 14 (d0ab44b): ki18n TUs compiled BUT link failed: vcpkg GNU gettext libintl.a has hard bionic gaps (iconv/nl_langinfo/fgets_unlocked) — REPLACED with a workflow-generated minimal libintl shim (pass-through intl; every lookup returns msgid = untranslated source string, semantically identical to Linux/Windows builds that load no catalogs). libintl.h + libintl.a into $KF5DIR.
+- Iteration 15 (bbd3c7f): shim linked but C++-mangled — added extern "C" guards. RESULT: ALL 8 cross KF5 frameworks + QuaZip BUILT AND INSTALLED. First configure attempt reached krita's own gates.
+- Iteration 16 (fb1b353): krita's UPSTREAM ANDROID path activated (find_package(unwindstack REQUIRED) + ANDROID_SDK_ROOT fatal). Provided: (1) header-only unwindstack stub of the exact API surface KisAndroidCrashHandler.cpp uses (Regs/UnwinderFromPid/FrameData as inline no-ops — android crash backtrace is not an engine feature; zero link-time symbols); (2) Findunwindstack.cmake module; (3) -DANDROID_SDK_ROOT.
+- Iteration 17 (62b4761, in flight): TIFF REQUIRED unconditionally (CheckLibTIFFPSDSupport) + Fontconfig 2.13.1 REQUIRED unconditionally + LibAV (ffmpeg) REQUIRED on the ANDROID branch via pkg_check_modules. Added vcpkg tiff+fontconfig+ffmpeg[core,avcodec,avfilter,avformat,swscale] + PKG_CONFIG_PATH export pointing host pkg-config at the android triplet's .pc files (cross: nothing executed).
+
+Stage Summary:
+- Cross-toolchain layer COMPLETE: Qt5-android + 8 KF5 frameworks + ECM + host tools + vcpkg static ports + intl shim + unwindstack stub + quazip all provisioned and building reproducibly. Fix chain entirely workflow-level (krita source untouched).
+- Frontier now: krita configure tail → ninja prune → ~900-object NDK compile (first real android krita compile — expect bionic/glibc-ism fixes) → merged .so link closure.
