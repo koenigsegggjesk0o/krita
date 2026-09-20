@@ -1286,3 +1286,12 @@ Work Log:
 Stage Summary:
 - Roadmap (c): engine layer DONE for both ABIs. In flight: engine re-run bundling real libc++_shared; then app wiring re-dispatch → APK artifact feather-krita-android-real-engine → v0.22 release (scripts/release_v22.py next).
 - Loop-36 iteration count so far: ~28 dispatched runs. All fixes workflow/toolchain-level; krita byte-identical.
+---
+Task ID: 5-loop-36 (beacon 9 — engine artifact COMPLETE with libc++ bundle; app wiring re-dispatched)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) — artifact completeness
+
+Work Log:
+- libc++_shared.so saga resolved: r29 runner NDK ships only riscv64 → download NDK r27c from dl.google.com + selective unzip of sysroot per-triple libc++_shared.so (aarch64 1.79MB, x86_64 1.62MB) → bundled per-ABI into the engine artifact. Two path bugs fixed en route (suffix-strip pattern — ${VAR%-[0-9]*} does NOT match android24, sed 's/[0-9]*$//' used).
+- GREEN RUN 35482134347 (04311d8): BOTH matrix ABIs SUCCESS — arm64-v8a + x86_64, each with: merged 313MB libkrita_bridge.so (961 objects, 21 ABI exports) + Qt5/KF5/ICU runtime + REAL libc++_shared.so + smoke exe.
+- build-app.yml RE-DISPATCHED: build-android-real-engine will now find the arm64-v8a artifact → jniLibs bundle → DT_NEEDED audit → flutter build apk --release → APK content verify → artifact feather-krita-android-real-engine.
