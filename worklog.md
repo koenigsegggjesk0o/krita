@@ -1295,3 +1295,17 @@ Work Log:
 - libc++_shared.so saga resolved: r29 runner NDK ships only riscv64 → download NDK r27c from dl.google.com + selective unzip of sysroot per-triple libc++_shared.so (aarch64 1.79MB, x86_64 1.62MB) → bundled per-ABI into the engine artifact. Two path bugs fixed en route (suffix-strip pattern — ${VAR%-[0-9]*} does NOT match android24, sed 's/[0-9]*$//' used).
 - GREEN RUN 35482134347 (04311d8): BOTH matrix ABIs SUCCESS — arm64-v8a + x86_64, each with: merged 313MB libkrita_bridge.so (961 objects, 21 ABI exports) + Qt5/KF5/ICU runtime + REAL libc++_shared.so + smoke exe.
 - build-app.yml RE-DISPATCHED: build-android-real-engine will now find the arm64-v8a artifact → jniLibs bundle → DT_NEEDED audit → flutter build apk --release → APK content verify → artifact feather-krita-android-real-engine.
+---
+Task ID: 5-loop-36 (beacon 10 — FINAL: roadmap (c) CLOSED, v0.22 released, real engine on ALL platforms)
+Agent: Z.ai Code (main, autonomous loop)
+Task: milestone lock — Android complete
+
+Work Log:
+- GREEN CHAIN COMPLETE: krita-build run 35482134347 (both android ABIs + real libc++_shared bundled) → build-app run 35483528288: ALL FIVE jobs SUCCESS (build-windows, build-windows-real-engine, build-android, build-android-real-engine, build-linux-real-engine). build-android-real-engine: arm64 artifact download → jniLibs/arm64-v8a bundle (engine .so + Qt5 + KF5 + ICU + libc++_shared) → DT_NEEDED audit PASS (hard gate) → flutter build apk --release → APK verify (engine + Qt present) → 110MB feather-krita-android-real-engine.apk uploaded.
+- RELEASED v0.22-real-engine-android (release id 392287189, tag on feather-krita-flutter @ 5c0e0a4): 114.7MB APK asset. scripts/release_v22.py committed (auto-finds latest green build-app run carrying the artifact; idempotency full-list check).
+- analyze: 0 errors (Flutter 3.35.3, reinstalled this session after box reset #3; scripts/flutter_install.sh recreated pinning the CI version).
+
+Stage Summary:
+- ROADMAP: (a) v0.20 Linux ✓ | (b) v0.21 Windows ✓ | (c) v0.22 Android ✓ — **THE REAL KRITA ENGINE NOW SHIPS ON ALL THREE PLATFORMS**, unmodified v6.0.4 source behind one stable C ABI, byte-identical Dart bindings everywhere. | (d) self-contained Linux ✓ (prior) | (e) diagnostics cleanup ✓ (prior) | (f) preset loading upgrade (paintop-settings-level params) — LAST REMAINING roadmap item, next loop.
+- Loop-36 session totals: ~33 dispatched CI iterations for the android campaign (NDK cross-build of Qt5 + 8 KF5 frameworks + vcpkg static ports + intl shim + unwindstack stub + ffmpeg/fontconfig/tiff + merged single-.so link), v0.21 + v0.22 releases published, box reset #3 survived (workspace + Flutter SDK rebuilt).
+- NEXT-SESSION NOTES: (1) roadmap (f) preset loading upgrade; (2) polish: x86_64 emulator C++ smoke via adb (smoke_test_real_android now in the engine artifact) + flutter integration_test on the emulator for the Dart FFI path; (3) the arm64 .so is device-ready but UNTESTED on real hardware — a device/smoke pass would harden it; (4) engine artifact retention 90d — re-tagged into the release so it persists.

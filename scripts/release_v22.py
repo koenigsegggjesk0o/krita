@@ -19,6 +19,7 @@ BUILD_REPO = 'koenigsegggjesk0o/feather-krita-build'
 TAG = 'v0.22-real-engine-android'
 HEAD = 'https://api.github.com'
 APP_RUN_ID = int(os.environ.get('APP_RUN_ID', '0'))  # green build-app run
+APP_SHA = '5c0e0a4'           # matching app-repo tree (loop-36 final)
 ARTIFACT = 'feather-krita-android-real-engine'
 
 BODY = """## Highlights — the REAL Krita brush engine ships on ANDROID
@@ -136,7 +137,7 @@ def main():
     print('downloaded', a['name'], os.path.getsize(dst), 'bytes')
 
     # 3. Create the release.
-    body = BODY.format(run=APP_RUN_ID)
+    body = BODY.format(run=APP_RUN_ID, app=APP_SHA)
     payload = json.dumps({
         'tag_name': TAG,
         'target_commitish': 'feather-krita-flutter',
