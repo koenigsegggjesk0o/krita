@@ -1429,3 +1429,19 @@ Work Log:
 Stage Summary:
 - Flow ABI proven end-to-end on real engine (both OSes): per-dab alpha = pressure x flow exact. Hardness ABI: round-trips proven; material-change gate now the portable contract. Engine behavior byte-consistent across platforms (66/255 identical) — strong evidence the real engine is deterministic and untouched.
 - NEXT: poll run 35497236465 (~20-30 min) -> on green dispatch build-app.yml (Dart FFI gates vs NEW engine) -> on green release v0.25-flow-hardness-abi via scripts/release_v25.py (APP_RUN_ID explicit) -> final beacon.
+
+---
+Task ID: 5-loop-39 (beacon 3 — FINAL: flow/hardness ABI campaign CLOSED, v0.25 released)
+Agent: Z.ai Code (main, autonomous loop)
+Task: milestone lock — flow + hardness through the real engine
+
+Work Log:
+- ENGINE CHAIN GREEN END-TO-END: krita-build run 35497236465 @ 045b78c — ALL FOUR jobs SUCCESS (linux, windows, android x86_64, android arm64-v8a) with the contract-based smoke: flow alpha full=255/half=128 exact, get_flow/get_hardness round-trips, hardness material-change gate (>=1% alpha bytes differ between hardness 1.0 and 0.0 dabs), centers opaque in both regimes. Then build-app dispatch 35498539302 — ALL FIVE jobs SUCCESS (build-windows, build-windows-real-engine, build-android, build-android-real-engine, build-linux-real-engine): the Dart FFI flow/hardness gates passed through the app's own bindings on the linux + windows real-engine jobs against the NEW engine artifacts.
+- RELEASED v0.25-flow-hardness-abi (release id 392359766, tag on feather-krita-flutter via scripts/release_v25.py @ APP_RUN_ID 35498539302, APP_SHA 39d7ff5): 3 assets uploaded (201 x3) — linux real-engine zip 45.2MB, windows real-engine zip 38.3MB, android real-engine APK 109.7MB, all state=uploaded. Release scratch cleaned.
+- Note for template quality: release_v24.py carried a stale release NAME ("v0.23 — ...") — fixed in release_v25.py; release scripts v24+v25 now tracked in git.
+
+Stage Summary:
+- FLOW + HARDNESS ABI CAMPAIGN COMPLETE: the real Krita v6.0.4 engine now honors preset FlowValue and runtime settable hardness on ALL THREE platforms behind one stable C ABI (set_flow/get_flow/set_hardness), with both smoke layers (C++ engine smoke + Dart FFI smoke) gating every CI build. v0.25 published on top of a 4/4 engine + 5/5 app green chain.
+- Loop-39 session totals: 7 code files (+330 lines campaign impl) + 2 smoke fix iterations + 2 engine runs + 1 app run + 1 release; krita source byte-identical upstream throughout (the only fix was in the smoke tool, per directive).
+- Lesson institutionalized: never assert DIRECTIONAL falloff geometry against Krita's mask generators from outside — spikes=2 lens geometry narrows the diagonal, and the fade-zone interpretation is Krita's own. Contract-based gates (round-trip + material change + centers) are the portable ABI-level proof; profile shape belongs to Krita's own tests.
+- NEXT-LOOP NOTES: (1) UX wiring: canvas/editor flow slider seeded from BrushPreset.flowValue + hardness slider calling engine.hardness (ABI is live end-to-end now); (2) android emulator C++/Dart smoke (loop-36 note stands — the arm64 .so is device-ready, gates compiled but not executed on-device); (3) optional ABI nicety: krita_brush_get_flow default for presets WITHOUT FlowValue stays 1.0 — consider exposing paintop id so the UI can show which family a preset belongs to; (4) the 2 pre-existing flaky keyboard_shortcuts timeouts under suite parallelism still deserve a dedicated look.
