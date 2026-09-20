@@ -1273,3 +1273,16 @@ Work Log:
 Stage Summary:
 - ROADMAP (c) STATUS: x86_64 bring-up DONE end-to-end at the engine level (configure → 961 objects → merged single .so → export gates). arm64-v8a in flight. NEXT: app wiring job build-android-real-engine in build-app.yml (jniLibs bundling + APK) following the build-windows-real-engine template, then v0.22 release.
 - Iteration total: ~25 dispatched runs for the android campaign. Krita source byte-identical upstream throughout.
+---
+Task ID: 5-loop-36 (beacon 8 — BOTH android ABIs GREEN; app wiring job live; libc++ fetch added)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (c) — arm64 green + app wiring
+
+Work Log:
+- GREEN RUN 35477268427 (8f999e2): build-android-engine (arm64-v8a) SUCCESS + (x86_64) SUCCESS — 21 krita_* ABI symbols exported per ABI (krita_brush_init 170B / load_preset 5412B / generate_dab 1844B ...), krita source untouched.
+- App wiring job build-android-real-engine ADDED to builder build-app.yml (e2de1e5): Java17 + Flutter 3.35.3, downloads krita-brush-engine-android-arm64-v8a from latest green engine run, bundles jniLibs/arm64-v8a (engine .so + Qt5/KF5/icu runtime, x86_64 strays excluded), DT_NEEDED audit (hard gate incl. libc++_shared.so), flutter build apk --release, APK content verification (engine + Qt present), artifact feather-krita-android-real-engine. First dispatch failed as EXPECTED (arm64 artifact didn't exist at its download time — the app run raced the engine run).
+- Gap found + fixed: the runner's pruned NDK r29 ships libc++_shared.so ONLY for riscv64 — Qt/KF5 need it in the APK at load. Fix (d2ca881, in flight): deps step now downloads NDK r27c from dl.google.com and selectively unzips just sysroot libc++_shared.so for aarch64-linux-android + x86_64-linux-android into /opt/android_deps/libcxx/; bundle step copies the REAL per-ABI file into artifact/android/<abi>/.
+
+Stage Summary:
+- Roadmap (c): engine layer DONE for both ABIs. In flight: engine re-run bundling real libc++_shared; then app wiring re-dispatch → APK artifact feather-krita-android-real-engine → v0.22 release (scripts/release_v22.py next).
+- Loop-36 iteration count so far: ~28 dispatched runs. All fixes workflow/toolchain-level; krita byte-identical.
