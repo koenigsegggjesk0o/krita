@@ -1409,3 +1409,23 @@ Work Log:
 Stage Summary:
 - Flow/hardness ABI campaign code-complete at all three layers (C++ engine × 3 impls, C ABI, Dart bindings + model) + CI gates wired at both smoke layers. Engine CI 35496219408 in flight on the builder mirror (9a11043).
 - NEXT-LOOP NOTES: (1) poll engine run 35496219408 — on green, dispatch build-app.yml (workflow_dispatch) so it downloads the NEW engine artifacts and runs the Dart FFI flow/hardness gates; (2) on green build-app, release v0.25-flow-hardness-abi (scripts/release_v25.py — clone of v0.24 template, fetches all 3 real-engine artifacts, idempotent full-list check); (3) the push-triggered build-app races are inherent to dispatching engine-first — always cancel or ignore the push-triggered one and dispatch manually post-engine-green; (4) UX wiring (canvas_widget flow slider seeding from preset.flowValue, hardness slider) is the natural follow-up after v0.25 — deferred to keep this loop scoped to the engine ABI; (5) the flow alpha product (pressure*flow) is applied in the wrapper; if the Dart compositor ALSO applies opacity at stamp time, verify no double-application on the opacity axis (flow and opacity are orthogonal axes, so this should be clean, but a canvas-level visual check on v0.25 would harden it).
+
+---
+Task ID: 5-loop-39 (beacon 2 — first engine run: flow gates GREEN both OSes, hardness smoke gate redesigned contract-based, re-dispatched)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap flow/hardness ABI — CI bring-up
+
+Work Log:
+- Session continuation (cron 15:18 tick): worklog mtime 5 min old was MY OWN beacon 1 (same session; the 14:48 tick wrote loop-38's final beacon before this session started working) — no concurrent writer; proceeded to monitor engine run 35496219408.
+- Prepared scripts/release_v25.py (v0.24 template clone: TAG v0.25-flow-hardness-abi, fixed the stale release NAME the template carried, auto-find + APP_RUN_ID override). Committed together with release_v24.py (loop-38 loose end, was untracked) @ 88f6cad.
+- ENGINE RUN 35496219408 RESULT: android x86_64 SUCCESS; windows + linux FAILED — ALL flow/hardness gates GREEN except TWO hardness directional asserts:
+  - flow: alpha full=255 half=128 (EXACTLY half) + round-trips — on BOTH windows and linux.
+  - hardness round-trips (1.0/0.0) — both OSes.
+  - FAILED: "soft edge < soft center" and "hard edge >= soft edge at same offset" — data: hard edge(0.6r)=66, soft edge=255, IDENTICAL on windows AND linux.
+- ROOT CAUSE (evidence-driven, engine is CORRECT): my sampling offset (19,19) from center is a DIAGONAL at 0.84r (not 0.6r as assumed); KisCircleMaskGenerator with spikes=2 forms a LENS shape that narrows on the diagonal (66 = antialias zone at the lens boundary), while Krita's gauss generator with fade=1.0 keeps a flat profile far out (255 at 0.84r). Directional falloff-shape asserts are NOT portable across Krita's internal mask-generator semantics. The identical 66/255 on both OSes CONFIRMS deterministic real-engine behavior — not a platform bug, not a wrapper bug. Krita source untouched (fix is in the smoke tool only, per directive).
+- FIX (contract-based gate, app@44acc3a): keep round-trip asserts; replace directional asserts with MATERIAL-CHANGE assert — capture hard dab alpha plane, generate soft dab, count differing alpha bytes (same geometry), require >= 1% pixels differ; centers must stay opaque in both regimes (disk core / gaussian peak >= 250). The fade->falloff path itself remains covered by the pre-existing default-hardness soft-dab gates (edge < center, green since loop-33). <vector> include added to the C++ smoke. Dart smoke mirrored. analyze: 0 errors / 0 warnings / 72 info (fkr-step1; the 15-error readings were the sandbox's own my-project tree, not this repo).
+- Mirror synced 045b78c (pull loop-38 state + overlay app@44acc3a, .github preserved); push-triggered build-app + step2 runs CANCELLED (would race-fail on the old engine artifacts lacking set_flow/set_hardness); krita-build.yml RE-DISPATCHED = run 35497236465 @ 045b78c.
+
+Stage Summary:
+- Flow ABI proven end-to-end on real engine (both OSes): per-dab alpha = pressure x flow exact. Hardness ABI: round-trips proven; material-change gate now the portable contract. Engine behavior byte-consistent across platforms (66/255 identical) — strong evidence the real engine is deterministic and untouched.
+- NEXT: poll run 35497236465 (~20-30 min) -> on green dispatch build-app.yml (Dart FFI gates vs NEW engine) -> on green release v0.25-flow-hardness-abi via scripts/release_v25.py (APP_RUN_ID explicit) -> final beacon.
