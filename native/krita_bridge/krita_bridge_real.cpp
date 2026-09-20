@@ -491,7 +491,7 @@ int32_t krita_brush_load_preset(KritaBrushContext* handle, const char* path) {
         }
         return QString();
     };
-    auto toDouble = [](const QString& s, double* ok) -> double {
+    auto toDouble = [](const QString& s, bool* ok) -> double {
         const double v = s.toDouble(ok);
         return *ok ? v : 0.0;
     };
