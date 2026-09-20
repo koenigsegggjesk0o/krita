@@ -190,7 +190,12 @@ QByteArray pngExtractPresetXml(const QByteArray& png) {
     const uint8_t* base = reinterpret_cast<const uint8_t*>(png.constData());
     qint64 pos = 8;
     while (pos + 8 <= png.size()) {
-        const uint32_t len = rd32(base + pos);
+        // PNG chunk lengths are BIG-endian (unlike the PKZIP fields above,
+        // which are little-endian — hence rd32 there, be32 here).
+        const uint32_t len = (uint32_t(base[pos]) << 24) |
+                             (uint32_t(base[pos + 1]) << 16) |
+                             (uint32_t(base[pos + 2]) << 8) |
+                             uint32_t(base[pos + 3]);
         const char* type = reinterpret_cast<const char*>(base + pos + 4);
         if (len > (uint32_t)(png.size() - pos - 12)) break; // corrupt
         const uint8_t* data = base + pos + 8;
