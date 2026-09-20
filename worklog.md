@@ -1328,3 +1328,19 @@ Work Log:
 Stage Summary:
 - Roadmap (f) code-complete at all three layers (C++ engine, C ABI, Dart model/bindings) + CI gates wired. Engine CI in flight — NEXT: on green engine run → dispatch build-app.yml → Dart preset gates on linux+windows → tag v0.23-preset-loading (all three real-engine artifacts, scripts/release_v23.py) → final beacon.
 - NEXT-LOOP NOTES: (1) UX wiring: canvas_widget could auto-switch to BrushType.eraser when engine.isEraserPreset after loadBrushPreset (left out — tool state lives in the widget layer); (2) flow (FlowValue) has no ABI getter — candidate for a future get_flow; (3) android real-engine Dart-side smoke still pending emulator work (loop-36 note stands).
+---
+Task ID: 5-loop-37 (beacon 2 — engine chain GREEN with preset gates, app run in flight)
+Agent: Z.ai Code (main, autonomous loop)
+Task: roadmap (f) CI bring-up
+
+Work Log:
+- Engine fix chain (3 dispatched runs):
+  - Run 1 (35486386205): FAILED all 3 platform jobs — toDouble lambda param typed double*, QString::toDouble takes bool* (g++ + MSVC agreed, same root cause). Fix 96fa184.
+  - Run 2 (35487347562): android x86_64 GREEN (wrapper compiles under NDK, engine artifact built); linux FAILED at the NEW smoke gate — PNG extraction returned empty. REPRODUCED LOCALLY with a standalone harness (scripts/png_extract_repro.cpp): PNG chunk lengths are BIG-endian; I had reused the ZIP-oriented little-endian rd32 → IHDR len read as 0x0D000000 → "corrupt" break. Python/Dart extractors used BE correctly; only the C++ was wrong. Fix cc5c823 (be32 in pngExtractPresetXml, harness-verified on both fixtures: 14185B + 8151B XML extracted). Windows job additionally FAILED with "preset file does not exist: /tmp/fkr-app/..." — MSVC exes don't get MSYS POSIX-path translation; fixed via cygpath -w in the windows smoke invocation (builder commit d9235e9).
+  - Run 3 (35488324214 @ d9235e9): **ALL FOUR JOBS SUCCESS** — linux engine (preset gates passed in-job), windows engine (cygpath'd fixture paths, gates passed), android x86_64 + arm64-v8a (wrapper compiled into merged .so both ABIs).
+- The C++ smoke now proves on CI, per engine build: real stock PNG presets load through the unmodified engine, paintop-settings params land on the ABI getters (size 40/50 = MaskGenerator diameter, opacity 1.0 = Krita/opacity 100, spacing 0.1, hardness 0.0/0.13 = 1-hfade), eraser preset flagged via settings-level CompositeOp=erase (krita_brush_get_eraser), and dabs generate on preset-loaded contexts.
+- build-app.yml dispatched (all 5 jobs): Dart FFI preset gates will run through the app's own bindings on the linux + windows real-engine jobs.
+- scripts/release_v23.py committed: fetches ALL THREE real-engine artifacts from the green app run, idempotent full-list check, 5x retry uploads.
+
+Stage Summary:
+- Engine layer: roadmap (f) GREEN on all platforms. App layer in flight → then v0.23-preset-loading release → FINAL beacon.
