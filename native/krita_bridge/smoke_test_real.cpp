@@ -10,12 +10,20 @@
 //   - exact color passthrough (straight-alpha RGBA output)
 //   - pressure->alpha and pressure->size ABI scaling
 //   - eraser mode (black-alpha mask output)
+//   - paintop-settings-level preset loading (roadmap (f)): real Krita
+//     stock .kpp fixtures (PNG preset containers) passed as argv; checks
+//     that the settings-level params (Krita/opacity, brush_definition,
+//     CompositeOp, MaskGenerator diameter/hfade, spacing) land on the ABI
+//     getters and that an eraser preset paints a black mask WITHOUT the
+//     eraser input flag.
 
 #include "krita_bridge.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 static int g_failures = 0;
 
@@ -29,7 +37,7 @@ static int g_failures = 0;
         }                                                                 \
     } while (0)
 
-int main() {
+int main(int argc, char** argv) {
     std::printf("version: %s\n", krita_brush_version());
     KritaBrushContext* b = krita_brush_init();
     CHECK(b != nullptr, "init returns handle");
@@ -114,6 +122,89 @@ int main() {
         krita_brush_release_dab(b, &erase);
     } else {
         CHECK(false, "eraser dab generated");
+    }
+
+    // ------------------------------------------------------------------
+    // Paintop-settings-level preset gates (roadmap (f)).
+    //
+    // Real Krita stock presets (PNG preset containers, <Preset> XML with
+    // settings-level params) are passed as argv fixtures. With no argv the
+    // section is skipped (the android engine job builds the smoke exe but
+    // does not run it; linux+windows engine jobs and the Dart smoke wire
+    // fixtures explicitly). Failures here are FATAL: the fixtures exist in
+    // the app repo the CI clone already fetched.
+    // ------------------------------------------------------------------
+    for (int a = 1; a < argc; ++a) {
+        const char* fixture = argv[a];
+        const std::string fixtureName(fixture);
+        std::printf("preset fixture: %s\n", fixture);
+        KritaBrushContext* p = krita_brush_init();
+        CHECK(p != nullptr, "preset context init");
+        if (!p) continue;
+
+        const int rc = krita_brush_load_preset(p, fixture);
+        CHECK(rc == 0, "load_preset returns 0 (container + XML + settings parsed)");
+        if (rc != 0) {
+            std::printf("  last_error: %s\n", krita_brush_last_error(p));
+            krita_brush_destroy(p);
+            continue;
+        }
+
+        const std::string pname = krita_brush_get_preset_name(p);
+        CHECK(!pname.empty(), "preset name populated");
+        const double sz = krita_brush_get_size(p);
+        const double op = krita_brush_get_opacity(p);
+        const double sp = krita_brush_get_spacing(p);
+        const double hd = krita_brush_get_hardness(p);
+        std::printf("  size=%.4f opacity=%.4f spacing=%.4f hardness=%.4f name=%s\n",
+                    sz, op, sp, hd, pname.c_str());
+        CHECK(sz >= 4.0, "paintop size from tip >= 4px");
+        CHECK(op > 0.0 && op <= 1.0, "opacity in (0,1]");
+        CHECK(sp > 0.0, "spacing positive");
+        CHECK(hd >= 0.0 && hd <= 1.0, "hardness in [0,1]");
+
+        // Dab generation must work on the preset-loaded context.
+        BrushInput pin;
+        std::memset(&pin, 0, sizeof(pin));
+        pin.pressure = 1.0;
+        BrushDab pd;
+        std::memset(&pd, 0, sizeof(pd));
+        if (krita_brush_generate_dab(p, &pin, &pd)) {
+            const uint8_t* c = pd.pixels + (pd.height / 2) * pd.stride + (pd.width / 2) * 4;
+            std::printf("  preset dab center RGBA: %u %u %u %u (w=%d)\n",
+                        c[0], c[1], c[2], c[3], pd.width);
+            CHECK(pd.width >= 4, "preset dab has extent");
+
+            // Fixture-specific paintop-settings expectations (values from
+            // the stock presets' own XML — see test/fixtures/README.md).
+            if (fixtureName.find("stock_basic_5_size") != std::string::npos) {
+                CHECK(sz == 40.0, "basic-5 size == 40 (MaskGenerator diameter)");
+                CHECK(op == 1.0, "basic-5 opacity == 1.0 (Krita/opacity = 100)");
+                CHECK(std::fabs(sp - 0.1) < 1e-9, "basic-5 spacing == 0.1 (Brush spacing)");
+                CHECK(hd == 0.0, "basic-5 hardness == 0 (hfade = 1)");
+                CHECK(!krita_brush_get_eraser(p), "basic-5 NOT flagged eraser");
+                CHECK(c[0] == 0 && c[1] == 0 && c[2] == 0,
+                      "basic-5 dab sanity (default color is black)");
+            } else if (fixtureName.find("stock_eraser_circle") != std::string::npos) {
+                CHECK(sz == 50.0, "eraser size == 50 (MaskGenerator diameter)");
+                CHECK(op == 1.0, "eraser opacity == 1.0 (Krita/opacity = 100)");
+                CHECK(std::fabs(hd - 0.13) < 1e-9,
+                      "eraser hardness == 0.13 (hfade = 0.87)");
+                // THE eraser gate: the preset's settings-level CompositeOp
+                // =erase must flag the context as eraser (the app switches
+                // its stroke compositing to destination-out accordingly).
+                CHECK(krita_brush_get_eraser(p),
+                      "eraser preset flagged via settings (CompositeOp=erase)");
+                // The dab path also honors it: black mask WITHOUT the
+                // eraser input flag (mask color forcing).
+                CHECK(c[0] == 0 && c[1] == 0 && c[2] == 0,
+                      "eraser preset dab is black mask WITHOUT eraser flag");
+            }
+            krita_brush_release_dab(p, &pd);
+        } else {
+            CHECK(false, "preset dab generated");
+        }
+        krita_brush_destroy(p);
     }
 
     krita_brush_destroy(b);

@@ -25,8 +25,13 @@
 //   2. reorders Krita's native byte layout to the ABI's R,G,B,A layout and
 //      applies the ABI's documented pressure->alpha scaling (desktop Krita
 //      performs the same scaling in KisPainter at composite time),
-//   3. unzips .kpp preset containers (PKZIP entry extraction only — the
-//      parsed XML is handed to Krita's own KisBrush::fromXML).
+//   3. unpacks .kpp preset containers (PKZIP entry extraction, and the
+//      legacy PNG preset format: PNG files carrying the preset XML in a
+//      compressed zTXt chunk keyed "preset" — the format Krita itself
+//      ships its stock presets in). The parsed XML is handed to Krita's
+//      own KisBrush::fromXML, and the paintop-settings-level <param> map
+//      (Krita/opacity, brush_definition, CompositeOp, ...) is applied to
+//      the ABI getters.
 //
 // No painting math is re-implemented. The Krita source tree is used
 // UNMODIFIED, per project directive.
@@ -54,8 +59,10 @@
 #include <QDomElement>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 #include <cmath>
 #include <cstdint>
@@ -82,11 +89,13 @@ inline uint32_t rd32(const uint8_t* p) {
            (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
 }
 
-// Inflate raw DEFLATE data using the system zlib.
-QByteArray inflateRaw(const char* data, size_t n) {
+// Inflate DEFLATE data using the system zlib. [windowBits] selects the
+// container format: -15 = raw DEFLATE (PKZIP entries), +15 = zlib-wrapped
+// (PNG zTXt chunks).
+QByteArray inflateBytes(const char* data, size_t n, int windowBits) {
     z_stream zs;
     std::memset(&zs, 0, sizeof(zs));
-    if (inflateInit2(&zs, -15) != Z_OK) return QByteArray();
+    if (inflateInit2(&zs, windowBits) != Z_OK) return QByteArray();
     zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data));
     zs.avail_in = uint(n);
     QByteArray out;
@@ -103,9 +112,14 @@ QByteArray inflateRaw(const char* data, size_t n) {
         }
         const size_t produced = sizeof(buf) - zs.avail_out;
         if (produced > 0) out.append(reinterpret_cast<const char*>(buf), produced);
+        if (zs.avail_in == 0 && produced == 0) break; // truncated stream
     } while (ret != Z_STREAM_END && zs.avail_out == 0);
     inflateEnd(&zs);
     return out;
+}
+
+QByteArray inflateRaw(const char* data, size_t n) {
+    return inflateBytes(data, n, -15);
 }
 
 qint64 findEocd(const QByteArray& data) {
@@ -156,6 +170,58 @@ QByteArray zipExtractFile(const QByteArray& zipData, const QString& name) {
             return inflateRaw(reinterpret_cast<const char*>(data), compSize);
         }
         return QByteArray();
+    }
+    return QByteArray();
+}
+
+// ---------------------------------------------------------------------------
+// Legacy PNG preset container: Krita's stock presets are PNG thumbnails
+// whose preset XML lives in a compressed zTXt chunk with the keyword
+// "preset" (format version "2.2" in the tEXt chunk). Extraction only —
+// the XML is parsed by Krita's own code and the generic param mapper
+// below.
+// ---------------------------------------------------------------------------
+
+QByteArray pngExtractPresetXml(const QByteArray& png) {
+    const uint8_t sig[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (png.size() < 8 || std::memcmp(png.constData(), sig, 8) != 0) {
+        return QByteArray();
+    }
+    const uint8_t* base = reinterpret_cast<const uint8_t*>(png.constData());
+    qint64 pos = 8;
+    while (pos + 8 <= png.size()) {
+        const uint32_t len = rd32(base + pos);
+        const char* type = reinterpret_cast<const char*>(base + pos + 4);
+        if (len > (uint32_t)(png.size() - pos - 12)) break; // corrupt
+        const uint8_t* data = base + pos + 8;
+        const bool isZtxt = std::memcmp(type, "zTXt", 4) == 0;
+        const bool isText = std::memcmp(type, "tEXt", 4) == 0;
+        if (isZtxt || isText) {
+            // chunk = keyword \0 [method \0] payload
+            const uint8_t* nul =
+                static_cast<const uint8_t*>(std::memchr(data, 0, len));
+            if (nul) {
+                const qint64 kwLen = nul - data;
+                const QByteArray keyword(reinterpret_cast<const char*>(data), kwLen);
+                if (keyword.compare("preset", Qt::CaseInsensitive) == 0) {
+                    const uint8_t* payload = nul + 1;
+                    const qint64 payloadLen = len - kwLen - 1;
+                    if (isText) {
+                        return QByteArray(reinterpret_cast<const char*>(data) + kwLen + 1,
+                                          payloadLen);
+                    }
+                    // zTXt: one compression-method byte (0 = zlib) then the
+                    // zlib-wrapped DEFLATE stream.
+                    if (payloadLen > 1 && payload[0] == 0) {
+                        return inflateBytes(
+                            reinterpret_cast<const char*>(payload + 1),
+                            size_t(payloadLen - 1), 15);
+                    }
+                }
+            }
+        }
+        if (std::memcmp(type, "IEND", 4) == 0) break;
+        pos += 12 + len; // length + type + data + crc
     }
     return QByteArray();
 }
@@ -350,14 +416,26 @@ int32_t krita_brush_load_preset(KritaBrushContext* handle, const char* path) {
     const QByteArray container = f.readAll();
     f.close();
 
-    // Extract the preset XML (a .kpp is a PKZIP archive whose XML entry is
-    // named after the preset; a bare XML preset is also accepted).
+    // Extract the preset XML. Supported containers:
+    //   1. PKZIP archive (.kpp saved by Krita's KoStore zip backend) — the
+    //      XML entry is named after the preset.
+    //   2. Legacy PNG preset (Krita's own stock presets): a PNG thumbnail
+    //      carrying the preset XML in a zTXt chunk keyed "preset".
+    //   3. Bare XML file (unpacked presets, synthetic test shapes).
+    const uint8_t* cdata = reinterpret_cast<const uint8_t*>(container.constData());
+    static const uint8_t pngSig[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
     QByteArray xml;
-    if (container.size() >= 4 && rd32(reinterpret_cast<const uint8_t*>(container.constData())) == 0x04034b50UL) {
+    if (container.size() >= 4 && rd32(cdata) == 0x04034b50UL) {
         const QList<QByteArray> entries = zipListXmlEntries(container);
         for (const QByteArray& entryName : entries) {
             const QByteArray candidate = zipExtractFile(container, QString::fromUtf8(entryName));
             if (!candidate.isEmpty()) { xml = candidate; break; }
+        }
+    } else if (container.size() >= 8 && std::memcmp(cdata, pngSig, 8) == 0) {
+        xml = pngExtractPresetXml(container);
+        if (xml.isEmpty()) {
+            handle->setError("PNG preset container has no 'preset' zTXt/tEXt chunk");
+            return 6;
         }
     } else if (!container.isEmpty()) {
         xml = container;
@@ -373,23 +451,85 @@ int32_t krita_brush_load_preset(KritaBrushContext* handle, const char* path) {
         return 5;
     }
 
-    // REAL path: hand the <brush> definition to Krita's own loader.
+    // ------------------------------------------------------------------
+    // Paintop-settings-level parameter map (roadmap (f)).
+    //
+    // Real Krita presets store every paintop setting as a flat <param>
+    // entry at the settings level, e.g.:
+    //
+    //   <Preset name="..." paintopid="paintbrush">
+    //     <param name="Krita/opacity" type="string"><![CDATA[100]]></param>
+    //     <param name="CompositeOp" type="string"><![CDATA[erase]]></param>
+    //     <param name="brush_definition" ...><![CDATA[<Brush ...>...</Brush>]]></param>
+    //   </Preset>
+    //
+    // while legacy/synthetic shapes use <param id="brush_size" value="77"/>
+    // or <param name="opacity" value="0.42"/>. Collect ALL <param>
+    // descendants (every depth), accepting both the name= and id= spellings
+    // and both a value= attribute and text/CDATA content.
+    // ------------------------------------------------------------------
+    QHash<QString, QString> params;
+    {
+        const QDomNodeList all = doc.elementsByTagName("param");
+        for (int i = 0; i < all.size(); ++i) {
+            const QDomElement p = all.at(i).toElement();
+            if (p.isNull()) continue;
+            QString key = p.attribute("name");
+            if (key.isEmpty()) key = p.attribute("id");
+            if (key.isEmpty()) continue;
+            QString value = p.attribute("value");
+            if (value.isEmpty()) value = p.text().trimmed();
+            if (!value.isEmpty()) params.insert(key, value);
+        }
+    }
+
+    // Helper lambdas over the map.
+    auto lookup = [&params](const QStringList& keys) -> QString {
+        for (const QString& k : keys) {
+            const auto it = params.constFind(k);
+            if (it != params.constEnd()) return it.value();
+        }
+        return QString();
+    };
+    auto toDouble = [](const QString& s, double* ok) -> double {
+        const double v = s.toDouble(ok);
+        return *ok ? v : 0.0;
+    };
+
+    // --- Brush tip (real engine part, parsed by Krita's own fromXML) ------
+    // The <Brush> element can appear as a real XML descendant (ZIP shapes)
+    // or as the "brush_definition" settings value (stock PNG presets).
     QDomElement root = doc.documentElement();
     QDomElement brushEl = firstDescendant(root, "brush");
+    if (brushEl.isNull()) brushEl = firstDescendant(root, "Brush");
+    const QString brushDefinition = lookup(QStringList() << "brush_definition");
+    if (brushEl.isNull() && brushDefinition.startsWith("<")) {
+        QDomDocument frag;
+        if (frag.setContent(brushDefinition)) {
+            brushEl = frag.documentElement();
+        }
+    }
+    bool fadeFromBrush = false;
+    bool spacingFromBrush = false;
     if (!brushEl.isNull()) {
+        // REAL path: hand the <Brush> definition to Krita's own loader.
         KisBrushSP realBrush =
             KisBrush::fromXML(brushEl, KisGlobalResourcesInterface::instance());
         if (realBrush && realBrush->valid()) {
             handle->brush = realBrush;
             handle->brushFromPreset = true;
         }
-        // Real spacing attribute on the brush element.
+        // Real spacing attribute on the brush element (fixed spacing; the
+        // useAutoSpacing/autoSpacingCoeff attrs are applied by Krita's own
+        // paintop spacing logic).
         if (brushEl.hasAttribute("spacing")) {
             bool ok = false;
             const double s = brushEl.attribute("spacing").toDouble(&ok);
-            if (ok && s > 0.0) handle->spacing = s;
+            if (ok && s > 0.0) { handle->spacing = s; spacingFromBrush = true; }
         }
-        // Real tip diameter from the MaskGenerator element.
+        // Real tip diameter + softness from the MaskGenerator element. In
+        // stock presets (BrushVersion 2) softness is hfade/vfade; older
+        // shapes use a single fade attribute. hardness = 1 - fade.
         QDomElement mg = brushEl.firstChildElement("MaskGenerator");
         if (!mg.isNull()) {
             QString diamAttr = mg.hasAttribute("diameter")
@@ -397,25 +537,84 @@ int32_t krita_brush_load_preset(KritaBrushContext* handle, const char* path) {
             bool ok = false;
             const double d = diamAttr.toDouble(&ok);
             if (ok && d >= 1.0) handle->size = d;
+            const QString fadeAttr = mg.hasAttribute("hfade")
+                ? mg.attribute("hfade")
+                : (mg.hasAttribute("vfade") ? mg.attribute("vfade")
+                                             : mg.attribute("fade"));
+            if (!fadeAttr.isEmpty()) {
+                const double fade = fadeAttr.toDouble(&ok);
+                if (ok && fade >= 0.0 && fade <= 1.0) {
+                    handle->hardness = 1.0 - fade;
+                    fadeFromBrush = true;
+                }
+            }
         }
     }
 
-    // Best-effort preset-level parameters (size/opacity/hardness live in the
-    // paintop settings section, which belongs to kritaui; the brush tip and
-    // spacing above are the real engine parts).
-    QDomElement param = firstDescendant(root, "param");
-    while (!param.isNull()) {
-        const QString key = param.attribute("name");
+    // --- Paintop-settings-level params (the user-facing values) -----------
+
+    // Opacity. "Krita/opacity" is the master 0-100 slider value written by
+    // Krita's paintop settings; "OpacityValue" is the sensor base (0-1);
+    // legacy shapes use flat "opacity" / "brush_opacity".
+    {
         bool ok = false;
-        const double v = param.attribute("value").toDouble(&ok);
-        if (ok) {
-            if (key == "opacity" || key == "brush_opacity") {
-                if (v > 0.0) handle->opacity = v;
-            } else if (key == "hardness" || key == "softness") {
-                handle->hardness = (key == "softness") ? (1.0 - v) : v;
-            }
+        const QString master = lookup(QStringList() << "Krita/opacity");
+        double v = master.toDouble(&ok);
+        if (ok && v >= 0.0 && v <= 100.0) {
+            handle->opacity = v / 100.0;
+        } else {
+            v = toDouble(lookup(QStringList() << "OpacityValue"
+                                              << "opacity"
+                                              << "brush_opacity"), &ok);
+            if (ok && v > 0.0 && v <= 1.0) handle->opacity = v;
         }
-        param = param.nextSiblingElement("param");
+    }
+
+    // Hardness fallbacks for tips without a MaskGenerator fade (image and
+    // pipe brushes). "Softness" in Krita is the complement of hardness;
+    // the sensor base "SoftnessValue" mirrors the same scale.
+    if (!fadeFromBrush) {
+        bool ok = false;
+        const QString h = lookup(QStringList() << "hardness");
+        double v = h.toDouble(&ok);
+        if (ok && v >= 0.0 && v <= 1.0) {
+            handle->hardness = v;
+        } else {
+            v = toDouble(lookup(QStringList() << "SoftnessValue" << "softness"), &ok);
+            if (ok && v >= 0.0 && v <= 1.0) handle->hardness = 1.0 - v;
+        }
+    }
+
+    // Spacing fallback for brush elements without a spacing attribute.
+    if (!spacingFromBrush) {
+        bool ok = false;
+        const double v = toDouble(lookup(QStringList() << "brush_spacing"), &ok);
+        if (ok && v > 0.0 && v <= 5.0) handle->spacing = v;
+    }
+
+    // Smudge rate: only the smudge-bearing paintops write it (colorsmudge
+    // family, "SmudgeRate*" settings namespace); leave 0 otherwise.
+    {
+        bool ok = false;
+        const double v = toDouble(lookup(QStringList() << "SmudgeRateValue"
+                                                      << "smudge_rate"
+                                                      << "smudge"), &ok);
+        if (ok && v >= 0.0 && v <= 1.0) handle->smudge = v;
+    }
+
+    // Eraser mode. Krita marks eraser presets in three ways (stock files
+    // use CompositeOp=erase; the settings checkbox writes Krita/erase or
+    // EraserMode; legacy shapes use a flat eraser param).
+    {
+        const QString eraseFlag = lookup(QStringList() << "Krita/erase"
+                                                       << "EraserMode"
+                                                       << "eraser");
+        const QString composite = lookup(QStringList() << "CompositeOp");
+        const bool truthy = eraseFlag.compare("true", Qt::CaseInsensitive) == 0 ||
+                            eraseFlag == "1" || eraseFlag == "1.0";
+        if (truthy || composite.compare("erase", Qt::CaseInsensitive) == 0) {
+            handle->eraser = true;
+        }
     }
 
     return 0;
@@ -474,6 +673,10 @@ double krita_brush_get_hardness(KritaBrushContext* handle) {
 
 double krita_brush_get_smudge(KritaBrushContext* handle) {
     return handle ? handle->smudge : 0.0;
+}
+
+bool krita_brush_get_eraser(KritaBrushContext* handle) {
+    return handle ? handle->eraser : false;
 }
 
 const char* krita_brush_get_preset_name(KritaBrushContext* handle) {
