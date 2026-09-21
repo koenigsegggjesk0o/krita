@@ -2014,3 +2014,17 @@ Work Log:
 Stage Summary:
 - The Feather-3D guide surface's silhouette is now softly feathered: contour edges extrude a 1.5px alpha ramp into the background, approximating the coverage ramp a multisampled rasterizer would produce. Interior edges are untouched (no double-blend of the translucent fill); subdivision-aware so close-up lattice silhouettes feather exactly; depth-sorted so nearer geometry occludes the halo. Pure Dart, test-locked.
 - NEXT for beacon 2: poll build-app on this push (green → release v0.39-contour-feathering via the release-script pattern @ APP_RUN_ID <green run> APP_SHA <beacon sha>); atomic mirror sync; FINAL beacon.
+
+---
+Task ID: 5-loop-56 (beacon 2 — FINAL: silhouette feathering shipped, v0.39 released)
+Agent: Z.ai Code (main, autonomous loop)
+Task: CI, release, loop closure
+
+Work Log:
+- App-repo runs on the beacon push failed with the KNOWN no-runner environment classification — IGNORED per the standing note. The AUTHORITATIVE run is on the builder repo: build-app 35569578567 @ 20103d8 (mirror of beacon 1 + worklog) GREEN (~9 min).
+- RELEASED v0.39-contour-feathering (release id 392745150, scripts/release_v39.py @ APP_RUN_ID 35569578567, APP_SHA b87445c): 3 assets uploaded (state=uploaded) — linux real-engine zip 47.5MB, windows real-engine zip 40.2MB, android real-engine APK 119.1MB. Clean first-try release again.
+- Session totals: 2 app commits (b87445c feature, 64b4b27 worklog; release script rides this FINAL commit) + 2 builder mirror commits (20103d8 beacon 1, this FINAL) + 1 green CI run + 1 release. Analyze 0 err/0 warn (67 infos, AT baseline); suite 173/173 GREEN (167 baseline + 6 net new; keyboard_shortcuts flake fired once, green on solo rerun); Krita source byte-identical upstream; analysis_options.yaml and pubspec.lock untouched. No box wipe this loop.
+
+Stage Summary:
+- LOOP-56 CLOSED END-TO-END — MSAA-ISH EDGE SOFTENING: the guide surface's view silhouette now carries a per-contour-edge 1.5px alpha-ramp feather (alpha scales with the local texel alpha; subdivision-aware lattice segments; interior edges never feather). The last remaining loop-51/52 Feather-3D candidate is done. 6 new bit-exact tests; suite 173/173.
+- Handoff notes for 5-loop-57: (1) Feather-3D follow-ups in rough value order: a light PRESET row (noon / golden hour / rim) feeding the rig for one-tap setups, guide-surface parity check in open/save dialogs; (2) remaining loop-48/49 candidates stand: emulator smoke wired as a workflow_run auto-trigger after krita-build greens, family-aware FLOW (needs an engine-authoritative no-flow-family list first — do NOT guess); (3) keyboard_shortcuts Ctrl+N/Ctrl+S flake remains live (~1 hang in ~4 runs) — rerun solo, never bisect; (4) app-repo no-runner CI failures classified (environment) — ignore; (5) widget tests keep ALL disk I/O synchronous; TextureImageCache.enabled=false stays in both widget test mains; (6) verify /home/z/fkr-step1 FIRST at every tick, checkpoint commits early and often; atomic mirror_sync.py (GITHUB_TOKEN env only) is the ONLY sync path.
