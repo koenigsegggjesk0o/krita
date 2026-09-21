@@ -2335,3 +2335,24 @@ Work Log:
 
 Stage Summary:
 - 5-loop-62 support scope COMPLETE: chain fully green end-to-end (engine 35634412173 -> build-app 35642242528 5/5 -> smoke 35645019041), resolution hardened (builder d94bbd6), release verified complete. Roadmap for next ticks: (f) preset-loading upgrade (paintop-settings params wrapper->Dart) is the top substantive item; then (e) diagnostic cleanup; optional trigger-YAML repair (`branches: ain]` dead push triggers) and corrected-approach-A objcopy hardening in pocket.
+
+---
+Task ID: 5-loop-63 (tick cron-agent-loop-202609220418 — roadmap (f): paintop-settings param map ABI, wrapper+Dart+smoke)
+Agent: Z.ai Code (main, autonomous cron loop)
+Task: Implement the preset-loading upgrade — expose the paintop-settings-level <param> map (already parsed internally since the preset campaign) through the C ABI to Dart, with smoke coverage; workspace re-provision after box wipe.
+
+Work Log:
+- Entry state: /home/z/fkr-step1 WIPED again (7th+ box reset) — re-cloned app repo (feather-krita-flutter @ 85888a8) + builder-ws (main @ d94bbd6). CI all green; disk 7.5G free. Flutter SDK also wiped -> re-provisioned via scripts/flutter_install.sh (3.35.3 tarball from storage.googleapis.com; NOTE: background nohup downloads get killed when the tool shell exits — download must run in the foreground).
+- SCOPED (f): the wrapper's load_preset already builds the full settings param QHash (Krita/opacity, CompositeOp, FlowValue, brush_definition, ...); the missing piece was ABI exposure + Dart consumption. Prior-art checks: krita-build.yml export gate is count-based (>=5 krita_*), no whitelist to extend; parity_test compares dab pixels not symbols; fallback+portable bridges export the same symbol set as Dart bindings may touch -> all three need the new exports.
+- IMPLEMENTED (commit 35620ef, 6 files, +214):
+  * krita_bridge.h: krita_brush_preset_param_count / _param_name(i) / _param_value(i) declared with full docs (document order; last-dup-wins; pointer lifetime per-buffer; fallback reports empty map by design).
+  * krita_bridge_real.cpp: KritaBrushContext gains presetParams (ordered vector<pair<string,string>>) + paramNameBuffer/paramValueBuffer scratch slots; load_preset clears + upsert-syncs the ordered projection alongside the QHash (identical last-duplicate-wins semantics); 3 exports implemented after get_paintop_id.
+  * krita_bridge.cpp (fallback) + krita_bridge_portable.cpp (portable): benign exports (count 0 / NULL) — raw map enumeration is a real-engine capability; curated scalar getters remain the fallback surface.
+  * lib/ffi/krita_bindings.dart: typedefs + lazy lookups + presetParamCount / presetParamNameAt / presetParamValueAt / presetParams() (insertion-ordered Map<String,String>) with _checkAlive guards and null-safe pointer reads.
+  * tool/ffi_real_smoke.dart: param-map gates inside the existing fixture branch — basic-5: count>=3, map length==count, map[Krita/opacity]=='100', master-opacity derives currentOpacity (100/100==1.0), out-of-range and negative index return nulls; eraser: map[CompositeOp]=='erase'. Smoke prints the first 8 keys for CI-side diagnostics.
+- LOCAL VALIDATION: g++ -fsyntax-only (-Wall -Wextra) on a stub-TU reproducing every added C++ fragment (param capture + 3 exports + benign variants) -> clean (scripts/param_abi_syntax_check.cpp); flutter analyze --no-fatal-infos --no-fatal-warnings: 0 errors, 0 warnings, exit 0 (67 pre-existing deprecation infos untouched).
+- CI CHAIN FIRED: engine rebuild dispatched (run 35651091002 @ d94bbd6, clones app wrapper @ 35620ef, ETA ~21:15Z). DELIBERATE SEQUENCE: mirror sync is WITHHELD until the engine run is green — mirroring now would fire build-app against the OLD engine artifact and dlsym-fail the new smoke gates (the 35642242528 lesson).
+
+Stage Summary:
+- Roadmap (f) surface complete end-to-end (C ABI x3 bridges, Dart bindings, smoke gates), locally validated, engine rebuild in flight. Krita source untouched.
+- NEXT (5-loop-64 / next tick): (1) poll engine 35651091002 — if a leg fails, pull logs and fix (wrapper compile error unlikely: syntax-validated; vcpkg 504s are the historical flake); (2) on GREEN: GITHUB_TOKEN=... python3 scripts/mirror_sync.py 'sync 5-loop-63 param-map ABI' (fires build-app + auto smoke on the mirror — new engine + new Dart + new gates together); (3) smoke green -> release v0.44 (preset-params milestone) via release_v43.py convention (bump tag/assets: android APK, linux zip, windows real-engine zip); (4) then (e) diagnostic cleanup or a UI panel consuming presetParams() as the next substantive item.
