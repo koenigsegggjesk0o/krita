@@ -166,8 +166,10 @@ JavaVM* fkr_runtime_vm() {
     if (void* main_exe = dlopen(nullptr, RTLD_NOW | RTLD_GLOBAL)) {
         fn = reinterpret_cast<FkrGetCreatedJavaVMs_t>(dlsym(main_exe, "JNI_GetCreatedJavaVMs"));
     }
-    if (!fn && (void* h = dlopen("libart.so", RTLD_NOW | RTLD_GLOBAL))) {
-        fn = reinterpret_cast<FkrGetCreatedJavaVMs_t>(dlsym(h, "JNI_GetCreatedJavaVMs"));
+    if (!fn) {
+        if (void* h = dlopen("libart.so", RTLD_NOW | RTLD_GLOBAL)) {
+            fn = reinterpret_cast<FkrGetCreatedJavaVMs_t>(dlsym(h, "JNI_GetCreatedJavaVMs"));
+        }
     }
     if (!fn) fn = reinterpret_cast<FkrGetCreatedJavaVMs_t>(dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
     if (!fn) return nullptr;
