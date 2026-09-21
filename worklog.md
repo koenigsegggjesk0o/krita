@@ -2046,3 +2046,17 @@ Work Log:
 Stage Summary:
 - The Light tool now has one-tap lighting: three curated sun setups render as glass chips above the power dial and drive the rig through its own canonical setters, so presets, orbit drag, power dial, HUD readouts and .feather persistence all share one state path. Taps are gesture-isolated (camera bit-identical across taps) and every value is test-locked.
 - NEXT for beacon 2: poll build-app on this push (green → release v0.40-light-preset-row via the release-script pattern @ APP_RUN_ID <green run> APP_SHA <beacon sha>); atomic mirror sync; FINAL beacon.
+
+---
+Task ID: 5-loop-57 (beacon 2 — FINAL: light preset row shipped, v0.40 released)
+Agent: Z.ai Code (main, autonomous loop)
+Task: CI, release, loop closure
+
+Work Log:
+- App-repo runs on the beacon push failed with the KNOWN no-runner environment classification — IGNORED per the standing note. The AUTHORITATIVE run is on the builder repo: build-app 35571150688 @ 32f714d (mirror of beacon 1 + worklog) GREEN (~9.5 min).
+- RELEASED v0.40-light-preset-row (release id 392757042, scripts/release_v40.py @ APP_RUN_ID 35571150688, APP_SHA 4b3537d): 3 assets uploaded (state=uploaded) — linux real-engine zip 47.5MB, windows real-engine zip 40.2MB, android real-engine APK 119.1MB. Release NOTE: the first publish went out with a mis-derived tag (v0.40-contour-feathering, a leftover from the v0.39 string replace); caught immediately, release + dangling tag deleted via API, script TAG corrected to v0.40-light-preset-row, re-published clean. The release-script derivation pattern should replace ALL version-specific strings, not just the vNN prefix — check the tag suffix too.
+- Session totals: 2 app commits (4b3537d feature, b120d36 worklog; release script rides this FINAL commit) + 2 builder mirror commits (32f714d beacon 1, this FINAL) + 1 green CI run + 1 release. Analyze 0 err/0 warn (67 infos, AT baseline); suite 178/178 GREEN (173 baseline + 5 net new); Krita source byte-identical upstream; analysis_options.yaml and pubspec.lock untouched. No box wipe this loop.
+
+Stage Summary:
+- LOOP-57 CLOSED END-TO-END — ONE-TAP LIGHTING: the Light tool's glass preset row (Noon / Golden hour / Rim) drives the rig through its canonical setters, so curated looks, free orbiting, the power dial, the HUD and .feather persistence all share one state path. 5 new tests; suite 178/178.
+- Handoff notes for 5-loop-58: (1) Feather-3D follow-up remaining from the handoff list: guide-surface parity check in open/save dialogs; (2) remaining loop-48/49 candidates stand: emulator smoke wired as a workflow_run auto-trigger after krita-build greens, family-aware FLOW (needs an engine-authoritative no-flow-family list first — do NOT guess); (3) keyboard_shortcuts Ctrl+N/Ctrl+S flake remains live (~1 hang in ~4 runs) — rerun solo, never bisect; (4) app-repo no-runner CI failures classified (environment) — ignore; (5) widget tests keep ALL disk I/O synchronous; TextureImageCache.enabled=false stays in both widget test mains; (6) verify /home/z/fkr-step1 FIRST at every tick, checkpoint commits early and often; atomic mirror_sync.py (GITHUB_TOKEN env only) is the ONLY sync path.
