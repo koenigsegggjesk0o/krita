@@ -114,6 +114,13 @@
 // serve it; written by the host-init constructor below.
 static jobject g_fkr_asset_mgr = nullptr;
 
+// JavaVM captured by JNI_OnLoad (when the .so is loaded via Kotlin
+// System.loadLibrary). Flutter FFI's DynamicLibrary.open does NOT call
+// JNI_OnLoad, so the Kotlin side must load us first. This VM is injected
+// into Qt's internal g_javaVm slot so every QJNIEnvironmentPrivate path
+// (and thus every Qt/KF5 JNI call) works at runtime.
+static JavaVM* g_fkr_jni_vm = nullptr;
+
 extern "C" {
 
 // --- proven interposes (verbatim semantics from loop-43 smoke_jni.cpp) ----
@@ -166,6 +173,9 @@ typedef jint (*FkrGetCreatedJavaVMs_t)(JavaVM**, jsize, jsize*);
 // whose DT_NEEDED closure contains libart — namespace-safe), then fall
 // back to the direct libart dlopen and a global-scope dlsym.
 JavaVM* fkr_runtime_vm() {
+    // Fast path: if JNI_OnLoad already captured the VM (Kotlin side
+    // called System.loadLibrary before FFI's DynamicLibrary.open), use it.
+    if (g_fkr_jni_vm != nullptr) return g_fkr_jni_vm;
     const auto log = [](const char* msg) {
         __android_log_print(ANDROID_LOG_INFO, "krita_bridge", "host-init: %s", msg);
     };
@@ -270,6 +280,53 @@ struct FkrQtHostInit {
 const FkrQtHostInit fkr_qt_host_init_instance;
 
 } // namespace
+
+// ---------------------------------------------------------------------------
+// JNI_OnLoad — the clean fix for the Android boot wall (loop-61 beacon 5).
+// When the Kotlin side calls System.loadLibrary("krita_bridge") (MainActivity
+// companion init), Android's ART calls this function with the process's
+// JavaVM. We capture it and inject it straight into Qt's internal g_javaVm
+// slot so every QJNIEnvironmentPrivate path works at runtime.
+//
+// DIAGNOSTIC VERSION (beacon 5 iteration 2): the previous beacon 5 build
+// (builder commit 1755c04) failed smoke with "JNI_ERR returned from
+// JNI_OnLoad" — ART's signal handler caught a SIGSEGV in JNI_OnLoad and
+// returned JNI_ERR (no tombstone because ART catches the signal). This
+// version adds granular step-by-step logging to pinpoint the crash, and
+// skips the AssetManager creation (eliminates that variable). If the last
+// log line is "step 2", the crash is in fkr_qt_g_java_vm_slot(); if "step 3",
+// the crash is in the slot write (read-only memory or bad address).
+// ---------------------------------------------------------------------------
+extern "C" __attribute__((visibility("default")))
+jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
+    __android_log_print(ANDROID_LOG_INFO, "krita_bridge",
+                        "JNI_OnLoad: step 1 - JavaVM captured %p", vm);
+    g_fkr_jni_vm = vm;
+
+    void* slot = fkr_qt_g_java_vm_slot();
+    __android_log_print(ANDROID_LOG_INFO, "krita_bridge",
+                        "JNI_OnLoad: step 2 - slot found at %p", slot);
+
+    if (slot != nullptr) {
+        // Probe: read the current value before writing (a bad slot address
+        // would crash on the read, pinpointing the issue).
+        JavaVM* old = *static_cast<JavaVM* volatile*>(slot);
+        __android_log_print(ANDROID_LOG_INFO, "krita_bridge",
+                            "JNI_OnLoad: step 3a - slot read OK, old value %p", old);
+
+        *static_cast<JavaVM* volatile*>(slot) = vm;
+        __android_log_print(ANDROID_LOG_INFO, "krita_bridge",
+                            "JNI_OnLoad: step 3b - VM written to slot");
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, "krita_bridge",
+                            "JNI_OnLoad: slot is null — vminject deferred");
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, "krita_bridge",
+                        "JNI_OnLoad: step 4 - returning JNI_VERSION_1_6");
+    return JNI_VERSION_1_6;
+}
+
 #endif // __ANDROID__
 
 // ---------------------------------------------------------------------------
