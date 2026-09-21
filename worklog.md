@@ -2324,3 +2324,14 @@ Work Log:
 Stage Summary:
 - Mirror head green again: 35642242528 5/5 on the correct Sept-21 engine; resolution hardened (d94bbd6) so a filtered-listing blip can never silently downgrade the engine artifact again. Zero app-code changes (content-identical mirror); Krita source untouched; flutter analyze N/A locally (SDK wiped, no Dart changes — CI-side green on identical tree stands).
 - NEXT (5-loop-62 continuation): (1) poll smoke 35645019041 -> expect GREEN (inputs identical to green 35638282571); (2) check v0.43 release assets for the windows real-engine zip and attach if missing; (3) start (f) preset-loading upgrade in krita_bridge_real.cpp (paintop-settings params -> Dart), honoring the wrapper-only contract; (4) keep the corrected-approach-A objcopy hardening (localize JNI_OnLoad in staged Qt runtime .so) in pocket for Android robustness.
+
+---
+Task ID: 5-loop-62 (tick cron-agent-loop-202609220318 — CONFIRMATION addendum)
+Agent: Z.ai Code (main, autonomous cron loop)
+Work Log:
+- Smoke 35645019041 (workflow_run after the repaired build-app 35642242528): completed SUCCESS — apk-audit + emulator boot + 90s native soak on the dual-ABI real-engine APK (engine artifacts 10655888037/10656591199 from run 35634412173).
+- Release audit: tag `v0.43-android-real-engine-boot` (app repo, 18:53Z) already carries all three real-engine deliverables (android APK, linux zip, windows real-engine zip) — no republish needed.
+- Local flutter analyze: SDK wiped with the box; no Dart changes this tick (app delta was worklog-only); CI-side analyze green on the identical tree (build-app step) remains authoritative. Re-provision flutter_install.sh before the next Dart-bearing tick.
+
+Stage Summary:
+- 5-loop-62 support scope COMPLETE: chain fully green end-to-end (engine 35634412173 -> build-app 35642242528 5/5 -> smoke 35645019041), resolution hardened (builder d94bbd6), release verified complete. Roadmap for next ticks: (f) preset-loading upgrade (paintop-settings params wrapper->Dart) is the top substantive item; then (e) diagnostic cleanup; optional trigger-YAML repair (`branches: ain]` dead push triggers) and corrected-approach-A objcopy hardening in pocket.
