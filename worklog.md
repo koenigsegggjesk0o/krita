@@ -2972,3 +2972,18 @@ Stage Summary:
 - LINK SURFACE FULLY PROVEN on all platforms (Android x2 SUCCESS x2 runs; Linux bridge+smoke link clean with 166 plugin objects; Windows lld-link 0.4s).
 - REMAINING UNKNOWN: the session-gate runtime (Linux segfault evidence from iter 6 — backtrace pending; run 10's gdb wrapper will capture it) and the Windows static-init hang class (watchdog will bound it).
 - NEXT: run 10 outcomes -> backtrace-driven engine-side fix if the segfault persists -> full green -> build-app -> emulator smoke -> v0.50.
+
+---
+Task ID: 5-loop-86 (addendum 3 — run 10 DEFINITIVE DIAGNOSIS: gdb backtrace + vtable root cause)
+Agent: Z.ai Code (main, continuous session)
+
+Work Log:
+- RUN 10 (35791731483, repaired smoke block — the smoke finally RAN under gdb): Android x2 SUCCESS (3rd consecutive). Linux: gate (a) PASSED ("stroke-session registry families: 15"), then krita_stroke_begin -> loadSessionPreset -> engine PNG path -> **SIGSEGV with the definitive backtrace**: #0 KisSimplePaintOpFactory<KisBrushOp,...>::createConfigWidget(QWidget*,...) <- #1 KisPaintOpRegistry::createSettings(KoID,...) <- #2 KisPaintOpPreset::fromXML <- #3 loadFromDevice <- #4 krita_stroke_begin. MEANING: the virtual call createSettings DISPATCHED TO THE WRONG VTABLE SLOT (createConfigWidget) -> constructed a QWidget headless (the QGuiApplication::font() warnings explained!) -> SIGSEGV.
+- ROOT CAUSE (verified in the unmodified source): kis_threaded_text_rendering_workaround.h defines HAVE_THREADED_TEXT_RENDERING_WORKAROUND from HAVE_X11; kis_paintop_factory.h has `#ifdef HAVE_THREADED_TEXT_RENDERING_WORKAROUND virtual void preinitializePaintOpIfNeeded(...)` — THE FIRST VIRTUAL SLOT. The ENGINE (libkritaimage, Linux CI with X11) has the slot; the bridge TU compiled WITHOUT it emits a factory vtable shifted by one -> every virtual call after the ctor mis-dispatches. LINUX-ONLY bug (Windows/Android have no X11 — consistent with both Android legs green and Windows linking/running cleanly).
+- FIX (L8, a64ff6d): extract the engine's OWN HAVE_* defines from its compile commands (ninja -t commands kritalibbrush | grep -DHAVE_*) and pass them to the bridge TU compile ($KRITAHAVES) — the feature-macro state now matches the engine by construction.
+- Windows run 10: the W9 static-audit fixed the ldd hang (all F1 phase markers printed: TU compiled -> lld-link DONE -> runtime ready -> run smoke) but the smoke failed rc=127 — MY watchdog bug: `wait $PID; RC=$?` under set -e fired errexit AT the wait (before RC capture), aborting the step and hiding the exe's actual load error. ALSO: the Windows smoke region had the SAME duplicated-fixture-arg corruption as Linux (the patcher's W5/W9 self-overlap disease — now fully understood).
+- FIX (W10, a64ff6d + scripts/f1_iter11_patch.py): surgical whole-region replacement of the Windows smoke invocation (clean watchdog with set +e/-e bracket). The one-shot script also hard-verifies: no duplicated arg tails anywhere, YAML valid, KRITAHAVES present.
+
+Stage Summary:
+- Run 11 (35797460479) in flight with the complete fix set. The vtable fix is THE deepest engine-ABI lesson of the campaign: a bridge TU instantiating engine templates MUST replicate the engine's feature-macro state — encoded for the future in this worklog (candidate HANDOVER §6.7).
+- Android x2 green x3 runs. Linux: registry gate proven (15 families, headless). Remaining: the actual stroke gates (b)-(e) once the vtable is aligned; Windows smoke load path.
