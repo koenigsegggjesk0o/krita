@@ -74,6 +74,27 @@ so the app degrades gracefully.
 **No pending CI.** The roadmap item "(f) Preset loading upgrade (paintop-settings
 level params)" is complete and shipped.
 
+**UPDATE 2026-09-22 ~10:40 UTC (5-loop-78) — v0.47-curve-editing RELEASED;
+roadmap milestone (i) CLOSED.** Sensor-curve editors shipped end-to-end:
+`krita_brush_get_curve`/`set_curve` ABI (5-loop-76 @ ee0eaec) + smoke
+fixture-model fix and the full Dart side — getCurve/setCurve bindings,
+EditorState plumbing, sensor-curves section + curve editor dialog
+(5-loop-77 @ b564a12; fixture lesson encoded as §6.6). Chain: krita-build
+**35712006206** 4/4 SUCCESS (~27 min; SMOKE OK on both fixtures, all curve
+gates green incl. the eraser EMPTY-form set_curve rejection), build-app
+**35715078040** SUCCESS (~7 min), emulator smoke **35715701916** SUCCESS.
+Release **v0.47-curve-editing** = release id **393638347** (3/3 assets
+uploaded: linux zip 47,510,096 B / windows zip 40,232,626 B / android apk
+191,962,550 B). App HEAD at release: `42e5179` (+ the 5-loop-78 worklog
+commit). Builder mirror current @ `432175c` (blob-SHA verified 6/6 vs app
+HEAD). Release script convention: `/home/z/my-project/scripts/release_v47.py`.
+Dart gate: 0 errors / 0 warnings / 75 pre-existing infos. NEXT candidates
+(5-loop-79): honesty-gap backlog (active-engine badge via
+`krita_brush_version()` — currently unused from lib/, Linux bundle runtime
+closure, Linux portable fallback) or a fresh §5 feature survey; the CI
+re-point offer (krita-build.yml → upstream KDE clone) remains PENDING USER
+DECISION.
+
 ---
 
 ## 4. The autonomous loop convention (resume this if you re-enable the cron)
