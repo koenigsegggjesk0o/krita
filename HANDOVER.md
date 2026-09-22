@@ -217,6 +217,30 @@ for the next release.
   this; report both facts: source = v6.0.4 (proven), runtime string =
   upstream behavior.
 
+### 6.6 Projected sensor-curve entries come in TWO forms (5-loop-77 — CI-proven)
+
+- The engine's projected param map carries `"<CurveOption>Sensor"` keys
+  in **two shapes**: a REAL curve
+  (`<!DOCTYPE params> <params id="pressure"> <curve>0,0;…;1,1;</curve>
+  </params>`) and the **EMPTY params form**
+  (`<!DOCTYPE params> <params id="pressure"/> ` — NO `<curve>` child).
+- Fixture ground truth (raw preset XML, CDATA + attribute order verified
+  byte-level): basic-5 `FlowSensor` = real curve + `FlowUseCurve=true`;
+  `OpacityUseCurve=false`; stock_eraser_circle `FlowSensor` = EMPTY form
+  + `FlowUseCurve=false`. The 5-loop-76 note "eraser ships ZERO curve
+  params" was a regex artifact (the eraser XML writes
+  `<param type="string" name="FlowSensor">` — type-before-name — which
+  beat a name-first probe regex; CDATA broke a second naive pattern).
+- Consequences: (a) `get_curve` on the eraser returns NON-NULL (the
+  empty form) — never pin sensor ABSENCE without a byte-level fixture
+  probe; (b) the empty form is NOT `set_curve`-writable by contract
+  (the validator requires a `<curve>` child with >= 2 points) — the
+  smoke's honest gate for it is the -1 rejection; (c) probe scripts
+  must be CDATA-aware and attribute-order-agnostic (protocol 6.4:
+  verify bytes, not patterns).
+- The Dart curve editor handles both forms (empty form → default linear
+  curve seeded for editing, original `id` preserved).
+
 ---
 
 ## 7. Quick verification commands (sanity check on resume)
