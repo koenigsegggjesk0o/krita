@@ -206,6 +206,17 @@ The current release script is `/home/z/my-project/scripts/release_v46.py`
 (builder mirror `01b2711`) — it encodes all of the above. Follow its convention
 for the next release.
 
+### 6.5 Engine runtime version string reports 5.3.4 (source is v6.0.4 — verified)
+
+- `KritaVersionWrapper::versionString()` in the built engine reports
+  **5.3.4**, not 6.0.4. This is UPSTREAM's own CMakeLists.txt logic at tag
+  `v6.0.4` (two `set(KRITA_VERSION_STRING ...)` blocks — lines ~134/140 —
+  the later 5.3.x block wins in this build configuration). The mirror
+  `krita-source/` is byte-identical to upstream `v6.0.4` (12,325 blobs,
+  tree-diff via git blob SHAs, 5-loop-74 audit) — do NOT "fix" or relabel
+  this; report both facts: source = v6.0.4 (proven), runtime string =
+  upstream behavior.
+
 ---
 
 ## 7. Quick verification commands (sanity check on resume)
@@ -253,5 +264,12 @@ new agent has done since this handover.
 - **Never modify Krita source.** Wrapper / smoke / Dart / workflow / apt only.
 - **Never give up** — fix and retry until SUCCESS.
 - **User timezone:** `Asia/Jakarta`. Interpret relative dates/times in this TZ.
+- **Trust policy (5-loop-74 user directive):** the user does NOT trust prior
+  agents on faith. Verify claims with PRIMARY evidence (CI job logs, release
+  asset bytes, git blob SHAs, `od -c`/codepoint dumps), never from worklog
+  narrative alone. A full no-gimmick audit of every non-Krita surface
+  (bridge, Feather-3D engine, CI system, released bundles) was executed at
+  **5-loop-74** — all seven audit areas PASSED (see that worklog entry for
+  the evidence trail). Re-audit any surface you touch.
 - The user expects long autonomous runs; keep the worklog self-contained so any
   tick can resume from it alone.
