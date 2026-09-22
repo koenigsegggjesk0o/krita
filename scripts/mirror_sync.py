@@ -37,6 +37,17 @@ APP_DIR = '/home/z/fkr-step1'
 API = f'https://api.github.com/repos/{BUILDER_REPO}'
 
 
+class ApiError(Exception):
+    """HTTP error with the response body surfaced (5-loop-82: 422
+    push-protection reasons live ONLY in the body). Subclasses Exception
+    so the contents-probe path's `except Exception` still treats 404 as
+    'new file'."""
+
+    def __init__(self, code, url, body):
+        super().__init__(f'HTTP {code} on {url}\n{body}')
+        self.code = code
+
+
 def api(url, method='GET', payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -46,10 +57,8 @@ def api(url, method='GET', payload=None):
         with urllib.request.urlopen(req) as r:
             body = r.read()
     except urllib.error.HTTPError as e:
-        # Surface the response body — 422 push-protection / validation
-        # errors carry their real reason ONLY in the body (5-loop-82).
         detail = e.read().decode(errors='replace')[:600]
-        raise SystemExit(f'HTTP {e.code} on {method} {url}\n{detail}')
+        raise ApiError(e.code, f'{method} {url}', detail) from None
     return json.loads(body) if body else {}
 
 
