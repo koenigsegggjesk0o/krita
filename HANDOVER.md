@@ -397,5 +397,11 @@ new agent has done since this handover.
   2026-09-10, commit `e7e52a72ed37`). Mirror import commits were authored
   by the user's own account. Rerun anytime:
   `GITHUB_TOKEN=… python3 /home/z/my-project/scripts/audit_source_provenance.py`
+- **Re-verified live AGAIN at the 5-loop-81 addendum and at 5-loop-82** (user
+  re-asked; third run all-green): 12,325/12,325 mirror blobs IDENTICAL /
+  0 modified / 7 upstream-only NON-CODE files (templates `.directory` x5,
+  packaging/windows `.lnk` x2 — CI compiles 4/4 legs without them);
+  CMakeLists 3-way match incl. invent.kde.org raw bytes; releases v0.46–v0.49
+  assets live-verified uploaded. Verdict unchanged: authentic upstream v6.0.4.
 - The user expects long autonomous runs; keep the worklog self-contained so any
   tick can resume from it alone.
