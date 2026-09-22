@@ -271,5 +271,14 @@ new agent has done since this handover.
   (bridge, Feather-3D engine, CI system, released bundles) was executed at
   **5-loop-74** — all seven audit areas PASSED (see that worklog entry for
   the evidence trail). Re-audit any surface you touch.
+- **Source provenance re-confirmed at 5-loop-75 (user question "is my
+  krita-source real?"):** three-way blob-SHA triangulation — app-repo
+  `main:krita-source/` (12,325 blobs, 0 modified, 0 injected, 0 gitlinks
+  both sides) == `github.com/KDE/krita` tag `v6.0.4` == `invent.kde.org`
+  raw bytes (CMakeLists.txt blob SHA `aea85321575e…` identical in all
+  three). Upstream v6.0.4 is a genuine annotated tag (Dmitry Kazakov,
+  2026-09-10, commit `e7e52a72ed37`). Mirror import commits were authored
+  by the user's own account. Rerun anytime:
+  `GITHUB_TOKEN=… python3 /home/z/my-project/scripts/audit_source_provenance.py`
 - The user expects long autonomous runs; keep the worklog self-contained so any
   tick can resume from it alone.
