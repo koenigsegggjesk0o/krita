@@ -2492,3 +2492,16 @@ Work Log:
 Stage Summary:
 - Roadmap (f) LIVE-EDITING increment implemented end to end: the ACTIVE preset's raw paintop-settings surface is now EDITABLE from the settings panel, with engine-authoritative application, slider re-sync, and graceful degradation on every artifact vintage (old engine = "not supported", fallback = section hidden). Chain in flight: app push -> krita-build dispatch (compiles the new wrapper into the real engine + runs the new smoke gates, ~60 min) -> mirror sync (fires build-app on the OLD engine, which the compat gate keeps green) -> NEXT tick dispatches build-app to stage the NEW engine.
 - NEXT (5-loop-70): (1) poll krita-build run — expect GREEN with the set_param smoke block passing on the fixture presets; on red, pull logs (likely C++ compile slip or a fixture-specific alias expectation); (2) on green, workflow_dispatch build-app (NOT mirror sync — no file delta) to stage the new engine + run the full chain incl. emulator smoke; (3) then release v0.46 (live param editing + 5-loop-68 inspector entry); (4) UI follow-ups remain: thumbnail caching if picker scroll perf regresses.
+
+---
+Task ID: 5-loop-69 (addendum — app chain fully green on the new code; krita-build engine rebuild in flight)
+Agent: Z.ai Code (main, autonomous cron loop)
+
+Work Log:
+- App chain completed THIS tick on the compat-gated code (old staged engine): build-app 35672680373 @ d5addc3 = 5/5 SUCCESS (flutter analyze + flutter test legs green — the setParam ArgumentError compat gate held: no crash on the pre-set_param engine, degraded-path tests pass) -> emulator smoke 35673128247 auto-fired and PASSED (boot + 90s soak carrying the Engine params section). Exactly one build-app run, no twins.
+- BONUS VALIDATION: the two legacy bring-up pipelines (Android Bridge .so 35672680348, Step 2 Qt Bridge 35672630) ALSO fired on the native/** mirror match and both completed SUCCESS — two extra toolchains compiled the new wrapper without complaint.
+- STILL IN FLIGHT: krita-build 35672627874 (workflow_dispatch) — the REAL validation of krita_brush_set_param: compiles the wrapper into the real engine and runs the new smoke gates (opacity/flow/hardness live application, map-of-record update, unknown-key recording, argument rejection) against the stock fixtures. ~60 min job.
+
+Stage Summary:
+- Code fully shipped and green end to end on current artifacts; the engine rebuild is the only open item. No release cut this tick.
+- NEXT (5-loop-70): (1) poll krita-build 35672627874 — expect GREEN with the set_param smoke block passing; on red, curl -sL the compile/smoke step log for ##[error] (candidates: a C++ slip in set_param, or the count+1 assertion on a fixture whose map already carries ColorSource/Type); (2) on green, workflow_dispatch build-app (no mirror push — no file delta) to stage the NEW engine and re-run the full chain + smoke; (3) then release v0.46 (live param editing + inspector entry); (4) remember legacy pipelines fire on native/** mirrors — informational only, do not gate on them.
