@@ -130,6 +130,43 @@ NEXT (5-loop-81): Linux portable fallback survey (likely honest
 descope), Feather-3D, or fresh feature survey; CI re-point offer STILL
 PENDING USER DECISION.
 
+**UPDATE 2026-09-22 ~12:35 UTC (5-loop-81) — Linux portable fallback
+DESCOPED (honest close, evidence-based); honesty-gap backlog fully
+closed.** Survey findings (all primary evidence): (1) released bundles
+ship ONLY the real bridge under the single well-known name — builder
+build-app.yml renames `libkrita_bridge_real.so` -> `libkrita_bridge.so`
+(Linux L238), `krita_bridge_real.dll` -> `krita_bridge.dll` (Windows
+L153), real `.so` into the APK (Android L410); krita-build.yml has ZERO
+portable references (engine CI never builds it). (2) The Dart loader
+opens one name with no runtime cascade (krita_bindings.dart L408-456).
+(3) The portable bridge's load-bearing role is dev/test-time: the
+flutter-test VM loads it (5-loop-79 lesson, 223/223 tests through its
+capability stubs) and the app repo's linux/CMakeLists.txt bundles the
+Qt-free dev .so from assets/native/linux/. (4) The failure class a
+fallback would mitigate is CI-proven absent since v0.49 (clean-host
+docker gate, run 35724581275: dlopen+init+preset-load PASS on a
+Qt/KF5-less host). (5) Residual Linux failure modes (musl, ancient
+glibc, corrupted zip) equally affect the Flutter runner itself — a
+bridge-level fallback cannot rescue them. (6) The app ALREADY degrades
+gracefully with no bridge at all: `_tryLoadBrushEngine` catches ->
+null engine -> pure-Dart synthetic dab + Dart XML preset parse +
+v0.48's honest FALLBACK badge. Verdict: close as descope; keep the
+portable bridge as dev/test artifact (untouched). ABI-width survey:
+all 37 wrapper exports are Dart-bound and state/UI-surfaced
+(lastError -> inspector, scannedPresets -> picker, paintopId ->
+state+inspector, version -> badge) — the "expose an unexposed
+curated-ABI capability" family is exhausted at current ABI width;
+future feature work = NEW wrapper surface (brush-tips mode, pigment/
+color-mixing — each needs krita-build + smoke + release) or Feather-3D.
+No code delta this tick (survey + docs only); analyze 0/0/75 exact;
+guard superseded with evidence (same continuous session's own
+5-loop-80 write at 12:19:37Z as this 12:17:58Z tick fired, tree clean
+b7aaec8==origin, CI idle, mirror 2cf90c2 current). NEXT (5-loop-82):
+Feather-3D scoping survey (largest remaining roadmap item) OR new
+wrapper-surface feature (pick one: brush-tips mode / pigment API);
+thumbnail caching only on picker perf regression; CI re-point offer
+STILL PENDING USER DECISION.
+
 ---
 
 ## 4. The autonomous loop convention (resume this if you re-enable the cron)
