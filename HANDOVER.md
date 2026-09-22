@@ -38,7 +38,7 @@ so the app degrades gracefully.
 | `koenigsegggjesk0o/krita` | **App repo** (Flutter source, wrapper, smoke, workflows that consume the engine) | `feather-krita-flutter` |
 | `koenigsegggjesk0o/feather-krita-build` | **Builder repo** (CI that compiles the real Krita engine + smoke; mirror of `native/**` + `worklog.md`) | `main` |
 
-- **GitHub token:** `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` (used by the loop; treat as a secret).
+- **GitHub token:** `[REDACTED:github_token]` (used by the loop; treat as a secret).
 - **Local app checkout:** `/home/z/fkr-step1` (on branch `feather-krita-flutter`).
 - **Flutter SDK:** `/home/z/flutter/bin/flutter`.
 - **Builder repo is NOT cloned locally** — interact with it via the GitHub Contents API (the loop mirrors `native/**` files into it and syncs `worklog.md`). Do NOT clone `krita-source/` locally (disk is ~8GB free; the source tree is huge and lives only in CI).
@@ -181,7 +181,7 @@ Every tick the agent:
    agent — there's precedent (5-loop-65/69/71/72 all superseded).
 2. **Check CI on the builder repo:**
    ```bash
-   curl -s -H 'Authorization: token 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' \
+   curl -s -H 'Authorization: token [REDACTED:github_token]' \
      'https://api.github.com/repos/koenigsegggjesk0o/feather-krita-build/actions/runs?per_page=5' \
    | python3 -c 'import sys,json;[print(r["id"],r["name"][:35],r["status"],r.get("conclusion"),r["head_sha"][:7]) for r in json.load(sys.stdin)["workflow_runs"]]'
    ```
@@ -343,12 +343,12 @@ for the next release.
 cd /home/z/fkr-step1 && git log --oneline -3 && git status --short
 
 # Latest builder CI
-curl -s -H 'Authorization: token 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' \
+curl -s -H 'Authorization: token [REDACTED:github_token]' \
   'https://api.github.com/repos/koenigsegggjesk0o/feather-krita-build/actions/runs?per_page=5' \
 | python3 -c 'import sys,json;[print(r["id"],r["name"][:35],r["status"],r.get("conclusion"),r["head_sha"][:7]) for r in json.load(sys.stdin)["workflow_runs"]]'
 
 # v0.46 release assets (should be 3, all state=uploaded)
-curl -s -H 'Authorization: token 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' \
+curl -s -H 'Authorization: token [REDACTED:github_token]' \
   'https://api.github.com/repos/koenigsegggjesk0o/krita/releases/393430486/assets' \
 | python3 -c 'import sys,json;[print(a["name"],a["state"],a["size"]) for a in json.load(sys.stdin)]'
 

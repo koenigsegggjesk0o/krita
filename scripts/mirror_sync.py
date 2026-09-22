@@ -42,8 +42,14 @@ def api(url, method='GET', payload=None):
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header('Authorization', f'token {TOKEN}')
     req.add_header('Accept', 'application/vnd.github+json')
-    with urllib.request.urlopen(req) as r:
-        body = r.read()
+    try:
+        with urllib.request.urlopen(req) as r:
+            body = r.read()
+    except urllib.error.HTTPError as e:
+        # Surface the response body — 422 push-protection / validation
+        # errors carry their real reason ONLY in the body (5-loop-82).
+        detail = e.read().decode(errors='replace')[:600]
+        raise SystemExit(f'HTTP {e.code} on {method} {url}\n{detail}')
     return json.loads(body) if body else {}
 
 
