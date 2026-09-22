@@ -177,6 +177,27 @@ resume (5-loop-84): Feather-3D scoping survey OR new wrapper-surface feature
 DECISION. Resume = recreate the cron job per §8 with an updated CURRENT STATE
 one-liner.
 
+**UPDATE 2026-09-22 ~16:45 UTC (5-loop-86) — Feather-3D PHASE F1 IN FLIGHT
+(stroke-session ABI).** Per docs/FEATHER_3D_SCOPE.md §9: `krita_bridge.h`
+gained 8 additive session exports (`krita_stroke_begin/upload/move/dirty_
+rect/readback/end/engine_id/registry_count`); the real bridge registers the
+15 built-in non-mypaint paintop factories headless (verbatim plugin-ctor
+args) and runs REAL strokes: engine-loaded preset (loadFromDevice /
+fromXML) → KisPainter + registry-dispatched op → KisPaintDevice texture
+round-trip; portable/fallback bridges return capability probes. Smoke
+gates (a)-(e): registry==15, spray≠paintbrush pixels, colorsmudge modifies
+an UPLOADED texture, param surface unchanged, eraser erases via engine
+CompositeOp=erase. New fixtures: stock_spray_pointillism.kpp +
+stock_smear_blender.kpp (KDE/krita master bundle, byte-identical,
+provenance in test/fixtures/README.md). Builder krita-build.yml patched
+(commit 6a06792): all legs build+link kritaui/kritaimpex/kritalibpaintop +
+14 paintop plugin targets; Windows EMPTY_EXPORTS extended; NEXP gate
+counts krita_stroke_*. Chain: app 6ab4cfd → mirror sync (8 files) →
+krita-build run **35754582229** (4 legs, first kritaui build — expect
+iterations). On green: build-app → emulator smoke → release
+**v0.50-stroke-session-abi** → F2 (Dart session bindings). Patcher
+scripts: scripts/f1_workflow_patch.py + f1_mirror_sync.py (session-local).
+
 ---
 
 ## 4. The autonomous loop convention (resume this if you re-enable the cron)
