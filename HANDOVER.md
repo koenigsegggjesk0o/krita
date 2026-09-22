@@ -189,6 +189,19 @@ wrapper changed, then `build-app`, then emulator smoke, then tag a release.
 - **api() must tolerate 404** on the release-tag pre-lookup (tag may not exist
   yet on first run).
 
+### 6.4 Agent toolchain display sanitizer (5-loop-73 — verify bytes, not text)
+
+- The agent toolchain's rendered output STRIPS the two-char sequence `[m`
+  from displayed text. YAML `branches: [main]` displays as `branches: ain]`;
+  `[main, feather-krita-flutter]` displays as `ain, feather-krita-flutter]`.
+  The 5-resume "corrupted push branch filter" finding was this artifact —
+  byte-level verification (Contents-API base64 codepoint dumps, `od -c` on
+  raw.githubusercontent.com bytes) proved ALL builder branch filters were
+  healthy. Do NOT "fix" phantom `[m`-loss corruption anywhere.
+- Protocol: before patching any "weird" text found in tool output, dump
+  codepoints programmatically (`[hex(ord(ch)) for ch in line]`) or `od -c`
+  the raw bytes. Text rendering is NOT ground truth in this environment.
+
 The current release script is `/home/z/my-project/scripts/release_v46.py`
 (builder mirror `01b2711`) — it encodes all of the above. Follow its convention
 for the next release.
