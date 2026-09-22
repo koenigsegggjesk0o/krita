@@ -1,0 +1,244 @@
+# HANDOVER — Feather-Krita
+
+> **STOP NOTICE (2026-09-22 ~11:30 Asia/Jakarta):** The autonomous cron loop
+> (`cron-agent-loop-*`, job id `395817`, every 30 min) has been **DELETED** by the
+> user so they can switch agents. Everything below is the full context a new agent
+> needs to pick up where the previous one stopped. To resume the loop, recreate the
+> cron job — full payload + schedule are captured in §8 below.
+
+This file is the single source of truth for a new agent taking over Feather-Krita.
+Read it top to bottom before doing anything.
+
+---
+
+## 1. What this project is
+
+**Feather-Krita** = a Flutter host app that drives the **real Krita v6.0.4 brush
+engine** via an FFI bridge. The headline rule:
+
+> **Krita source is NEVER modified.** Only these surfaces may change:
+> - builder CI workflow (`krita-build.yml`, `build-app.yml`)
+> - the thin C ABI wrapper `native/krita_bridge/krita_bridge_real.cpp`
+> - the Dart smoke tool / app code
+> - apt / package lists in the builder
+>
+> Everything else (krita source tree, third-party deps) is treated as read-only.
+
+The wrapper exposes a tiny C ABI (`krita_brush_*`, `krita_preset_*`, …) that the
+Flutter app calls through `dart:ffi`. A fallback bridge (`krita_bridge_portable.cpp`)
+reimplements the same ABI for engines/platforms where the real one isn't built yet,
+so the app degrades gracefully.
+
+---
+
+## 2. Repos & access
+
+| Repo | Role | Default branch |
+|------|------|----------------|
+| `koenigsegggjesk0o/krita` | **App repo** (Flutter source, wrapper, smoke, workflows that consume the engine) | `feather-krita-flutter` |
+| `koenigsegggjesk0o/feather-krita-build` | **Builder repo** (CI that compiles the real Krita engine + smoke; mirror of `native/**` + `worklog.md`) | `main` |
+
+- **GitHub token:** `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` (used by the loop; treat as a secret).
+- **Local app checkout:** `/home/z/fkr-step1` (on branch `feather-krita-flutter`).
+- **Flutter SDK:** `/home/z/flutter/bin/flutter`.
+- **Builder repo is NOT cloned locally** — interact with it via the GitHub Contents API (the loop mirrors `native/**` files into it and syncs `worklog.md`). Do NOT clone `krita-source/` locally (disk is ~8GB free; the source tree is huge and lives only in CI).
+
+---
+
+## 3. Current state (as of handover)
+
+**DONE — full chain green and released:**
+
+- `set_param` C ABI contract is **CI-proven on real Krita v6.0.4 engines**:
+  - **rebuild #3** = `krita-build` run **35678879422**, all 4 legs (Linux, Windows,
+    android-x86_64, android-arm64) **SUCCESS**, smoke log: *"SMOKE OK — real Krita
+    bridge end-to-end"* on both fixtures.
+  - Proven semantics: self-configuring replace-arm (map entry 0 edited in place,
+    count flat, read-back), live opacity/flow/hardness effects, unknown-key append
+    == +1 with read-back, argument rejections.
+- `build-app` run **35680866715** — 5/5 **SUCCESS** (~9 min); the NEW engine (with
+  `set_param`) was staged into all three bundles. App HEAD at the time = `19b2244`.
+- **Emulator smoke** (`35681273110` family) **PASSED** (boot + 90s soak on the
+  `set_param` APK).
+- **Release `v0.46-live-param-editing`** published on the app repo (release id
+  `393430486`, target `feather-krita-flutter`). Three assets, all
+  `state=uploaded` & verified:
+  - `feather-krita-linux-real-engine.zip`
+  - `feather-krita-windows-real-engine.zip`
+  - `feather-krita-android-real-engine.apk` (~183 MB)
+- App repo HEAD at handover: `f0af225` ("5-loop-72 addendum — FULL CHAIN GREEN,
+  v0.46-live-param-editing RELEASED").
+- Dart gate: `flutter analyze` = 0 errors / 0 warnings / 75 pre-existing infos.
+- **Krita source untouched throughout** — wrapper + smoke + Dart + workflow surfaces only.
+
+**No pending CI.** The roadmap item "(f) Preset loading upgrade (paintop-settings
+level params)" is complete and shipped.
+
+---
+
+## 4. The autonomous loop convention (resume this if you re-enable the cron)
+
+Every tick the agent:
+
+1. **Read** `/home/z/fkr-step1/worklog.md` (tail ~150 lines) for the handoff.
+   Next Task ID = `5-loop-N` (increment N from the last entry).
+   **25-min mtime guard:** if the worklog was written < 25 min ago, skip (another
+   loop is in progress). This guard may be **superseded** with evidence: same
+   continuous session (context-continuation handoff), tree clean, no concurrent
+   agent — there's precedent (5-loop-65/69/71/72 all superseded).
+2. **Check CI on the builder repo:**
+   ```bash
+   curl -s -H 'Authorization: token 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' \
+     'https://api.github.com/repos/koenigsegggjesk0o/feather-krita-build/actions/runs?per_page=5' \
+   | python3 -c 'import sys,json;[print(r["id"],r["name"][:35],r["status"],r.get("conclusion"),r["head_sha"][:7]) for r in json.load(sys.stdin)["workflow_runs"]]'
+   ```
+3. **Branch on status:**
+   - `IN_PROGRESS` → skip + brief worklog note.
+   - `FAILURE` → `curl -sL` the failing job's logs URL, find `##[error]`, fix the
+     allowed surface (workflow / wrapper / smoke / apt — **never Krita source**),
+     commit to the app repo, re-dispatch `krita-build`.
+   - `SUCCESS` → advance the roadmap.
+4. **Roadmap** (priority order — items a–f are DONE; what remains is in §5):
+   - (a) ✅ v0.20 real-engine Linux tag
+   - (b) ✅ Windows real engine (MSVC build, .dll bundle)
+   - (c) ✅ Android real engine (NDK cross-build per ABI)
+   - (d) ✅ Self-contained Linux bundle (`patchelf --set-rpath $ORIGIN`)
+   - (e) ✅ build-app diagnostic cleanup
+   - (f) ✅ Preset loading upgrade — paintop-settings-level params + live editing
+5. **`flutter analyze`** gate (deprecation infos OK; fix only ERRORS):
+   ```bash
+   cd /home/z/fkr-step1 && /home/z/flutter/bin/flutter analyze --no-fatal-infos --no-fatal-warnings
+   ```
+6. **Append worklog entry:** `---` separator, `Task ID: 5-loop-N`, `Agent:`, `Task:`,
+   `Work Log:` (concrete steps), `Stage Summary:` (results + NEXT for the next tick).
+7. **Commit + push app repo:**
+   ```bash
+   cd /home/z/fkr-step1 && git add -A && \
+     git -c user.name='Feather-Krita Bot' -c user.email='bot@feather-krita.local' \
+     commit -m 'autonomous loop: <desc>' && git push origin feather-krita-flutter
+   ```
+8. **Sync builder repo** via GitHub Contents API for any `native/**` files that
+   changed (code mirrors trigger `build-app`; worklog-only syncs are silent).
+   Legacy pipelines firing on `native/**` matches are informational.
+
+**Don't give up.** Fix and retry until SUCCESS — that's the standing directive.
+
+---
+
+## 5. Next milestones (candidates, in rough priority order)
+
+- **Krita menu / tab feature surface survey** — which curated-ABI capabilities
+  remain unexposed? Candidates: color/pigment API, brush-tips mode, opacity/flow
+  curve editors. Pick one, expose it through the wrapper + Dart FFI + a panel UI.
+- **Thumbnail caching** for the preset picker — only if scroll perf regresses;
+  currently the picker loads presets lazily and there's no on-disk cache.
+- **Feather-3D engine** — a separate goal on the original list; not started.
+- **Mirror-sync double-dispatch hygiene** — `native/**` mirrors currently fire
+  `build-app` plus the legacy pipelines; the informational-only stance works but
+  could be tightened to avoid duplicate runs.
+
+When you pick one, follow the loop convention: dispatch `krita-build` if the
+wrapper changed, then `build-app`, then emulator smoke, then tag a release.
+
+---
+
+## 6. Hard-won lessons (read these — they cost real CI time)
+
+### 6.1 `krita_brush_set_param` ABI semantics (empirically proven on real engine)
+
+- `set_param(key, value)` is **replace-or-append** on the param map of record
+  (preserves document order) AND applies a live engine effect for consumed keys.
+- **`Krita/opacity` is NOT a pre-existing entry of the projected `<param>` map**
+  — `loadPreset` reads it from XML settings, not the projection. So an opacity
+  edit **APPENDS** to the map (count += 1), even though the live effect applies.
+  Do NOT write a smoke assertion that pins opacity-edit count as flat.
+- `FlowValue` and `hardness` are **fixture-dependent** — they may or may not
+  pre-exist in a fixture's map. Any count assertion must use a **probe-local
+  baseline** (capture `before` immediately before the probe, not before the whole
+  edit block).
+- The **replace arm** is best tested self-configuring: pick map entry 0 at runtime
+  (guaranteed to exist), edit it to `"<v0>-edited"`, assert count flat + read-back.
+- The smoke's unknown-key probe must use a key **guaranteed absent** from both
+  fixtures — `FeatherKrita/Probe` is namespaced outside anything Krita writes.
+  (Earlier probe used `ColorSource/Type`, which basic-5's map already carries →
+  replace arm → +1 assertion failed.)
+
+### 6.2 C++ wrapper gotcha
+
+- Don't shadow a name in the same scope. The `set_param` function had
+  `const std::string v = value;` (map-of-record capture) AND `double v = 0.0;`
+  (numeric parse) in the same scope — GCC/MSVC/NDK clang all rejected it
+  ("conflicting declaration" / "redefinition"). Rename one (`v` → `recorded`).
+  The build-app / legacy pipelines never compile the `_real_` bridge, so this
+  only surfaces in `krita-build` — a green build-app does NOT prove the real
+  bridge compiles.
+
+### 6.3 GitHub API traps (for release scripts)
+
+- **`urllib` artifact download 403s** — GitHub redirects to Azure storage and
+  `urllib` FORWARDS the `Authorization` header into the signed redirect URL → 403.
+  Use `curl -sL` (drops auth cross-host) + `size` verification + retries.
+- **Asset upload 404 right after release creation** — the new release tag
+  materializes asynchronously; uploads to `uploads.github.com` / `.../assets`
+  404 for a beat. Make the release script **idempotent** and re-runnable; it
+  must tolerate a 404 on the tag pre-lookup and skip already-uploaded assets.
+- **`curl` without `--fail`/`-f` swallows HTTP errors** — always use `-f` so a
+  failed upload propagates instead of printing "COMPLETE" on a 404 body.
+- **Artifact zips may contain a nested payload** (`.zip` inside `.zip`, or
+  `.apk` inside a zip) — unpack before uploading.
+- **api() must tolerate 404** on the release-tag pre-lookup (tag may not exist
+  yet on first run).
+
+The current release script is `/home/z/my-project/scripts/release_v46.py`
+(builder mirror `01b2711`) — it encodes all of the above. Follow its convention
+for the next release.
+
+---
+
+## 7. Quick verification commands (sanity check on resume)
+
+```bash
+# App repo state
+cd /home/z/fkr-step1 && git log --oneline -3 && git status --short
+
+# Latest builder CI
+curl -s -H 'Authorization: token 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' \
+  'https://api.github.com/repos/koenigsegggjesk0o/feather-krita-build/actions/runs?per_page=5' \
+| python3 -c 'import sys,json;[print(r["id"],r["name"][:35],r["status"],r.get("conclusion"),r["head_sha"][:7]) for r in json.load(sys.stdin)["workflow_runs"]]'
+
+# v0.46 release assets (should be 3, all state=uploaded)
+curl -s -H 'Authorization: token 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' \
+  'https://api.github.com/repos/koenigsegggjesk0o/krita/releases/393430486/assets' \
+| python3 -c 'import sys,json;[print(a["name"],a["state"],a["size"]) for a in json.load(sys.stdin)]'
+
+# Dart gate
+cd /home/z/fkr-step1 && /home/z/flutter/bin/flutter analyze --no-fatal-infos --no-fatal-warnings
+```
+
+---
+
+## 8. How to re-enable the autonomous cron loop
+
+The deleted job was `395817`, name **"Feather-Krita autonomous build loop (every 30 min)"**.
+To recreate it (via the `cron` tool, `action=create`):
+
+- **name:** `Feather-Krita autonomous build loop (every 30 min)`
+- **schedule:** `kind=fixed_rate`, `expr=1800` (seconds), `tz=Asia/Jakarta`
+- **payload:** `kind=agentTurn`, **message** = the full loop task book (the
+  DO-THIS-EVERY-RUN list from §4, prefixed with the project dir / repos / token /
+  Flutter SDK / current-state one-liner). The previous payload is preserved in
+  the conversation history if you need it verbatim; the §4 list above is the
+  canonical content.
+
+When recreating, update the "CURRENT STATE" one-liner to reflect whatever the
+new agent has done since this handover.
+
+---
+
+## 9. Standing user directives (do not violate)
+
+- **Never modify Krita source.** Wrapper / smoke / Dart / workflow / apt only.
+- **Never give up** — fix and retry until SUCCESS.
+- **User timezone:** `Asia/Jakarta`. Interpret relative dates/times in this TZ.
+- The user expects long autonomous runs; keep the worklog self-contained so any
+  tick can resume from it alone.
