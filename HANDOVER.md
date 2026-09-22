@@ -167,6 +167,16 @@ wrapper-surface feature (pick one: brush-tips mode / pigment API);
 thumbnail caching only on picker perf regression; CI re-point offer
 STILL PENDING USER DECISION.
 
+**UPDATE 2026-09-22 ~13:20 UTC (5-loop-83) — LOOP PAUSED AT USER REQUEST
+("kamu stop dulu").** Cron job 405072 deleted after a clean close: builder CI
+idle (smoke 35725242447 + build-app 35724581275 both SUCCESS, nothing in
+progress), app tree clean, releases intact (latest v0.49-linux-bundle-closure
+= 393705140, 3/3 assets), analyze 0/0/75. No in-flight chains. NEXT on
+resume (5-loop-84): Feather-3D scoping survey OR new wrapper-surface feature
+(brush-tips mode / pigment API); CI re-point offer STILL PENDING USER
+DECISION. Resume = recreate the cron job per §8 with an updated CURRENT STATE
+one-liner.
+
 ---
 
 ## 4. The autonomous loop convention (resume this if you re-enable the cron)
@@ -373,6 +383,11 @@ To recreate it (via the `cron` tool, `action=create`):
 
 When recreating, update the "CURRENT STATE" one-liner to reflect whatever the
 new agent has done since this handover.
+
+> **2026-09-22 ~13:20 UTC (5-loop-83):** the recreated job (id `405072`,
+> same name/schedule) was **DELETED at the user's request** ("kamu stop
+> dulu") for an indefinite pause. To resume, recreate it with the §4 task
+> book + the CURRENT STATE one-liner from the §3 5-loop-83 pause update.
 
 ---
 
