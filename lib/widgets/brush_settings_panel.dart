@@ -38,6 +38,12 @@
 //     sibling "<Id>UseCurve" flag written through set_param. The section
 //     hides itself on fallback/stripped/pre-ABI builds (get_curve
 //     collapses to null there), mirroring the Engine-params behaviour
+//   - Engine version badge (5-loop-79): a compact always-on row above
+//     the engine sections showing the loaded bridge's OWN
+//     krita_brush_version string with an honest provenance chip
+//     (REAL / PORTABLE / FALLBACK) — closing the honesty gap that the
+//     export existed in all three bridges but was unreachable from the
+//     UI. Hides itself when no engine version is available.
 //
 // Every control is wired directly to [EditorState] setters which, in turn,
 // sync to the native Krita brush engine.
@@ -224,6 +230,13 @@ class BrushSettingsPanel extends StatelessWidget {
 
                       // Mirror.
                       _MirrorRow(state: state),
+                      const SizedBox(height: 16),
+
+                      // Active-engine version badge (5-loop-79): WHICH
+                      // bridge is backing the engine sections below,
+                      // verbatim from krita_brush_version. Hides itself
+                      // when no engine version is available.
+                      _EngineVersionBadge(state: state),
                       const SizedBox(height: 16),
 
                       // Live engine params (roadmap (f), 5-loop-69): the
@@ -711,6 +724,105 @@ class _MirrorToggle extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Active-engine version badge (5-loop-79). Shows the loaded bridge's
+/// own krita_brush_version string with an honest provenance chip: REAL
+/// for the real Krita bridge, PORTABLE / FALLBACK for the soft-round
+/// fallbacks. Collapses to nothing when no engine version is available
+/// (no engine / pre-symbol artifact) — the same degrade contract as the
+/// engine sections below it.
+class _EngineVersionBadge extends StatelessWidget {
+  const _EngineVersionBadge({required this.state});
+
+  final EditorState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = state.activeEngineVersion;
+    if (v == null) return const SizedBox.shrink();
+    final String chip;
+    final Color chipColor;
+    if (v.startsWith('FeatherBridge-Krita/')) {
+      chip = 'REAL';
+      chipColor = const Color(0xFF3FB26F);
+    } else if (v.startsWith('FeatherBridge-Portable/')) {
+      chip = 'PORTABLE';
+      chipColor = const Color(0xFFC9A227);
+    } else if (v.startsWith('FeatherBridge-Qt/')) {
+      chip = 'FALLBACK';
+      chipColor = const Color(0xFFC9A227);
+    } else {
+      chip = 'ENGINE';
+      chipColor = AppTheme.textTertiary;
+    }
+    // HANDOVER 6.5 honesty note: the upstream v6.0.4 sources' own
+    // CMakeLists carries two KRITA_VERSION_STRING blocks and the Qt5
+    // build configuration picks the later 5.3.x one — so the real
+    // bridge self-reports 5.3.x while the sources are byte-identical
+    // v6.0.4 (blob-SHA proven). Surface that fact exactly once, and
+    // only while it actually applies.
+    final showSourceNote =
+        v.contains('real engine') && !v.contains('6.0.4');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.verified_outlined,
+                size: 14, color: AppTheme.textTertiary),
+            const SizedBox(width: 6),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: chipColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+              ),
+              child: Text(
+                chip,
+                style: TextStyle(
+                  color: chipColor,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                v,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (showSourceNote) ...[
+          const SizedBox(height: 2),
+          const Padding(
+            padding: EdgeInsets.only(left: 26),
+            child: Text(
+              'engine self-report · built from upstream Krita v6.0.4 '
+              'sources (the upstream Qt5 build configuration reports '
+              '5.3.x)',
+              style: TextStyle(
+                color: AppTheme.textTertiary,
+                fontSize: 9.5,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

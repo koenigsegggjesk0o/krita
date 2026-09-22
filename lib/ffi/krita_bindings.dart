@@ -340,6 +340,9 @@ typedef _KritaBrushGetCurveNative = Pointer<Utf8> Function(
     Pointer<Void> handle, Pointer<Utf8> key);
 typedef _KritaBrushGetCurveDart = Pointer<Utf8> Function(
     Pointer<Void> handle, Pointer<Utf8> key);
+typedef _KritaBrushVersionNative = Pointer<Utf8> Function();
+typedef _KritaBrushVersionDart = Pointer<Utf8> Function();
+
 typedef _KritaBrushSetCurveNative = Int32 Function(
     Pointer<Void> handle, Pointer<Utf8> key, Pointer<Utf8> curveXml);
 typedef _KritaBrushSetCurveDart = int Function(
@@ -613,6 +616,9 @@ class KritaBrushEngine {
   late final _KritaBrushGetSmudgeDart _getSmudge = _lib
       .lookupFunction<_KritaBrushGetSmudgeNative, _KritaBrushGetSmudgeDart>(
           'krita_brush_get_smudge');
+  late final _KritaBrushVersionDart _version = _lib
+      .lookupFunction<_KritaBrushVersionNative, _KritaBrushVersionDart>(
+          'krita_brush_version');
 
   /// The brush diameter currently set on the native engine.
   double get currentSize {
@@ -847,6 +853,32 @@ class KritaBrushEngine {
     } finally {
       calloc.free(keyPtr);
       calloc.free(xmlPtr);
+    }
+  }
+
+  /// The loaded bridge's self-identification string, verbatim from
+  /// krita_brush_version — e.g. "FeatherBridge-Krita/2.0 (real engine
+  /// 5.3.4)" on the real bridge (the runtime version inside the
+  /// parens is the engine's own self-report; the upstream v6.0.4
+  /// sources' Qt5 build configuration reports 5.3.x), or the
+  /// portable/fallback builds' own honest labels. The C pointer is
+  /// static for the library's lifetime (krita_bridge.h), so the
+  /// returned Dart string is stable across calls.
+  ///
+  /// Returns null when the loaded engine artifact predates the export
+  /// (symbol lookup throws [ArgumentError]) or the bridge reports a
+  /// null/empty string.
+  String? engineVersion() {
+    _checkAlive();
+    try {
+      final ptr = _version();
+      if (ptr == nullptr) return null;
+      final s = ptr.toDartString();
+      return s.isEmpty ? null : s;
+    } on ArgumentError {
+      // Engine artifact predates krita_brush_version — the badge
+      // collapses to nothing on this build.
+      return null;
     }
   }
 

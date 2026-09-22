@@ -616,6 +616,23 @@ class EditorState extends ChangeNotifier {
     return status;
   }
 
+  /// The loaded engine's self-identification string (5-loop-79 honesty
+  /// badge) — verbatim from the bridge's krita_brush_version, e.g.
+  /// "FeatherBridge-Krita/2.0 (real engine 5.3.4)" on the real bridge
+  /// or the portable/fallback builds' own honest labels. Null when no
+  /// engine exists or the loaded artifact predates the symbol — the
+  /// settings panel hides its badge then (same degrade contract as the
+  /// engine param/curve sections).
+  String? get activeEngineVersion {
+    final e = _brushEngine;
+    if (e == null) return null;
+    try {
+      return e.engineVersion();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Sets the brush-smoothing (stabilizer) strength in [0, 1]. Loop-25.
   /// 0 disables smoothing (raw stroke path); 1 applies the maximum
   /// symmetric moving-average window. The value is read by
