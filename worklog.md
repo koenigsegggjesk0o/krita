@@ -2940,3 +2940,19 @@ Stage Summary:
 - F1 CODE COMPLETE; CI CHAIN IN FLIGHT: krita-build 35754582229 (4 legs: Linux/Windows/Android x86_64/arm64) building kritaui+impex+libpaintop+14 plugins for the first time — expect first-run iterations (new link surface: kritaui closure on Win/Android merges, plugin MODULE targets, NDK cross-compile of kritaui).
 - Gates riding the run: smoke session gates (a)-(e) on Linux+Windows legs; Android export gate (krita_stroke_* in NEXP).
 - NEXT (on green): dispatch build-app (new engine artifact into all 3 bundles) → emulator smoke → release v0.50-stroke-session-abi → F2 (Dart session bindings + stroke adapter). On failure: pull job logs, fix the allowed surface, re-dispatch.
+
+---
+Task ID: 5-loop-86 (addendum — F1 CI iterations 1-4, runs 35754582229 / 35758901828 / 35763705608 / 35768291913)
+Agent: Z.ai Code (main, continuous session)
+
+Work Log:
+- ITER 1 (run 35754582229, 3 legs failed): (a) curve-vs-sketch STRUCT collision KisLineWidthOptionData (upstream never one-TU) -> local tag-rename macro around sketch's header chain (layout untouched; ctor symbols unmarked by member tags); (b) QSharedPointer raw-pointer ctor is EXPLICIT -> direct-init in loadSessionPreset; (c) Windows GEND find capped at 80 generated-header dirs cut libpaintop's build dir ("kritapaintop_export.h not found") -> head-400 + explicit build dirs; (d) bonus hardening: per-stroke KisStrokeRandomSource seeding in the session (mirrors KisPainter::paintPolyline; the accessors lazy-create+warn otherwise).
+- ITER 2 (run 35758901828, 3 legs failed on ONE identical error): sketch ALSO redefines the KisLineWidthOption ALIAS -> second rename macro (app 42c472c).
+- ITER 3 (run 35763705608 — COMPILE PASSED ALL LEGS; failures moved to LINK): (a) Linux: plugin MODULE .so files land in build/bin WITHOUT the lib- prefix (Qt plugin naming) -> -lkrita*paintop unresolvable; (b) Windows: LNK1170 — clang-cl's internal linker response file cannot carry ~2900 objects (a line exceeds MSVC's 131071-char limit; v0.49's ~1100 objects were under it); (c) Android: ld.lld duplicate symbols — qt_plugin_query_metadata/qt_plugin_instance (K_PLUGIN_FACTORY per plugin) + KisPaintOpPluginUtils::effectiveSpacing/effectiveTiming (HEADER-defined without inline — verified kis_paintop_plugin_utils.h; upstream ships one copy per plugin .so, merged = identical duplicates).
+- ITER 4 (run 35768291913 @ df6cb8a): Linux collects plugin modules under lib-prefixed names + patchelf SONAME stamps (modules carry none; GNU ld would embed the artifact PATH as DT_NEEDED); Windows restructured to clang-cl /c + DIRECT lld-link @rsp (no driver response file, no line limit) + /FORCE:MULTIPLE + the 4 new empty-export macros on the bridge TU; Android + -Wl,--allow-multiple-definition. RESULTS: Android x86_64 SUCCESS + arm64 SUCCESS (merge, export gates incl. krita_stroke_*, closure staging all green). Linux missed 2 modules (glob krita*paintop.so doesn't match kritadefaultpaintops.so "paintops" / kritafilterop.so "filterop") -> glob fix pushed (eda17b3, run 5 = 35772795760 queued). Windows merge still linking at last poll.
+- Patch engineering: scripts/f1_workflow_patch.py is now a fully idempotent 17-patch set (patch(): old in content -> apply; new in content -> skip; else hard-fail) — re-runnable against any drift.
+
+Stage Summary:
+- 2/4 legs GREEN (both Android ABIs) — the merged-image model with plugin objects + allow-multiple-definition is PROVEN; krita_stroke_* exports verified in the .so export table.
+- Remaining: Linux run 5 (glob fix — then the FIRST-EVER session smoke gates run), Windows (lld-link result pending; then its smoke).
+- NEXT: run 4 Windows + run 5 outcomes -> fix if needed -> full-green krita-build -> build-app -> emulator smoke -> v0.50 release.
