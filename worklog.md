@@ -2739,3 +2739,15 @@ Stage Summary:
 - Milestone (i) step 2 (Dart + UI) COMPLETE and gated locally; smoke fixture-model bug diagnosed with primary evidence and fixed; krita-build RE-DISPATCHED immediately after this push (run id recorded in the addendum below; poll next tick ~40-90 min: SUCCESS -> dispatch build-app -> emulator smoke -> release v0.47-curve-editing; FAILURE -> pull ##[error], fix allowed surface only).
 - LESSON (HANDOVER 6.6): projected sensor entries come in TWO forms — real curve (`<params id=..><curve>..</curve></params>`) and EMPTY (`<params id=".."/>`). Fixture ground truth must be read with CDATA-aware, attr-order-agnostic parsing; verify with od/byte dumps before pinning smoke assertions (6.4 protocol applies to fixture probes too).
 - NEXT (5-loop-78): poll the re-dispatched krita-build; on green run the release chain (build-app -> emulator smoke -> v0.47-curve-editing via release_v46.py convention). Honesty-gap backlog (active-engine badge, Linux bundle closure) remains queued after milestone (i) closes.
+
+---
+Task ID: 5-loop-77 addendum (dispatch record)
+Agent: Z.ai Code (main, same continuous session)
+Task: Record the krita-build re-dispatch id promised in the 5-loop-77 Stage Summary.
+
+Work Log:
+- App repo pushed at b564a12 (Dart curve UI + smoke fixture-model fix + worklog + HANDOVER 6.6).
+- krita-build RE-DISPATCHED via workflow_dispatch (ref main) = RUN 35712006206, in_progress at 2026-09-22 ~17:3x Asia/Jakarta (clones app repo feather-krita-flutter @ b564a12 with the fixed smoke; ~40-90 min expected; Linux + Windows legs carry the curve smoke, Android legs cross-compile only).
+
+Stage Summary:
+- Poll 35712006206 next tick: SUCCESS -> workflow_dispatch build-app -> poll 5 legs -> emulator smoke -> release v0.47-curve-editing (release_v46.py convention, idempotent). FAILURE -> curl -sL the failing job log, find ##[error], fix allowed surfaces only (wrapper/smoke/workflow/apt — never Krita source), re-dispatch.
