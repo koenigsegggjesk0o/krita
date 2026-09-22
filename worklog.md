@@ -2956,3 +2956,19 @@ Stage Summary:
 - 2/4 legs GREEN (both Android ABIs) — the merged-image model with plugin objects + allow-multiple-definition is PROVEN; krita_stroke_* exports verified in the .so export table.
 - Remaining: Linux run 5 (glob fix — then the FIRST-EVER session smoke gates run), Windows (lld-link result pending; then its smoke).
 - NEXT: run 4 Windows + run 5 outcomes -> fix if needed -> full-green krita-build -> build-app -> emulator smoke -> v0.50 release.
+
+---
+Task ID: 5-loop-86 (addendum 2 — F1 iterations 5-8 + the corrupted-block repair)
+Agent: Z.ai Code (main, continuous session)
+
+Work Log:
+- ITER 5 (run 35772795760, cancelled after Linux fail): Linux LINK now resolves 12/14 plugins — the L5 glob missed kritadefaultpaintops.so ("paintops" not "paintop") + kritafilterop.so ("filterop") -> glob fix (eda17b3). Android x2 SUCCESS (2nd consecutive).
+- ITER 6 (run 35782502710, cancelled): Linux plugin MODULE .so's are compiled with HIDDEN visibility (KDE plugin default) — linking them resolves NOTHING (undefined refs to every op ctor). Fix: merge the plugin OBJECTS into the bridge on Linux too (the Windows/Android model; 166 objects, libpaintop's excluded for ODR) + -Wl,--allow-multiple-definition (ca405e6). Windows hang ROOT-CAUSED via the W8 phase markers: lld-link finished in 0.4s — MSYS ldd LOADS the image and RUNS its static initializers, which hang headless (22+ min until cancel). Fix: static llvm-readobj import audit + 10-min smoke watchdog (f5405a6). Run 7 evidence ALSO proved: ALL v1 gates pass on all 4 fixtures; the headless registry initializes (15 factory i18n banners); then SIGSEGV inside the session gates.
+- ITER 7 (run 35787036082): instrumentation shipped (unbuffered smoke stdout + stderr stage markers in the bridge session path) + gdb -batch smoke wrapper. RESULT: **the Linux bridge+smoke LINKED CLEAN with the plugin object-merge ("plugin objects merged: 166")** — but the smoke never ran: bash SYNTAX ERROR from a corrupted workflow block. The patcher's historical L4/L7 interaction had left `fi \ + duplicated fixture tails` (spray/smudge x6) in the Linux smoke step — a latent corruption present since ~push 3 that only became fatal once the step actually executed.
+- REPAIR: scripts/f1_smoke_block_repair.py — one-shot canonical replacement of the whole gdb smoke block (YAML-validated, no dangling fi, single gdb block; 4ab41d7). Patcher hardened: global corruption guard (refuses to run on a corrupt block), L4/L7 purged into assertions, W7/W4/A2/L3 converted to verifiers (17-patch set is now mostly assert-only — the file state is stable).
+- Run 9 (35787646843) cancelled by a racing cancel; run 10 = 35791731483 (the repair) pending/in-flight with the COMPLETE fix set: Linux object-merge + repaired gdb smoke, Windows lld-link + static audit + watchdog, Android proven-green path.
+
+Stage Summary:
+- LINK SURFACE FULLY PROVEN on all platforms (Android x2 SUCCESS x2 runs; Linux bridge+smoke link clean with 166 plugin objects; Windows lld-link 0.4s).
+- REMAINING UNKNOWN: the session-gate runtime (Linux segfault evidence from iter 6 — backtrace pending; run 10's gdb wrapper will capture it) and the Windows static-init hang class (watchdog will bound it).
+- NEXT: run 10 outcomes -> backtrace-driven engine-side fix if the segfault persists -> full green -> build-app -> emulator smoke -> v0.50.
