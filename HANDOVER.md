@@ -112,6 +112,24 @@ NEXT (5-loop-80): Linux bundle runtime closure (bundle Qt5/KF5 into the
 Linux zip + clean-host dlopen CI gate — biggest remaining gap) or Linux
 portable fallback; CI re-point offer STILL PENDING USER DECISION.
 
+**UPDATE 2026-09-22 ~12:15 UTC (5-loop-80) — v0.49-linux-bundle-closure
+RELEASED (release id 393705140); honesty-gap backlog item #2 CLOSED.**
+The Linux zip is now SELF-CONTAINED: build-app.yml ships the ldd
+dependency closure minus the base desktop stack (Qt5/KF5/icu/exiv2/
+quazip/gsl/lcms2/openexr/unibreak/md4c/... — 87 bundle .so, was 53;
+every lib $ORIGIN-rpath'd), and a NEW clean-host docker gate (ubuntu
+24.04 with ONLY desktop-stack libs — NO Qt/KF5/Krita runtime) proves
+it: container ldd "(none)" unresolved, bridge dlopens, version reads,
+a REAL preset loads ("CLEAN-HOST CLOSURE GATE: PASS", run
+**35724581275**, 5/5 legs). Emulator smoke **35725242447** SUCCESS.
+Assets 3/3 (linux 75,603,311 B [+28.1 MB], windows/android unchanged).
+Gate helper: builder `.github/scripts/fkr_closure_gate.py`. See worklog
+for the 4-iteration evidence arc (glob over-match libmd4c, repo-bound
+GITHUB_TOKEN, wayland-linked-by-Qt5Gui) — lessons destined for §6.7.
+NEXT (5-loop-81): Linux portable fallback survey (likely honest
+descope), Feather-3D, or fresh feature survey; CI re-point offer STILL
+PENDING USER DECISION.
+
 ---
 
 ## 4. The autonomous loop convention (resume this if you re-enable the cron)
