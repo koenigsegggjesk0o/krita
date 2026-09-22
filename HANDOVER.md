@@ -95,6 +95,23 @@ closure, Linux portable fallback) or a fresh §5 feature survey; the CI
 re-point offer (krita-build.yml → upstream KDE clone) remains PENDING USER
 DECISION.
 
+**UPDATE 2026-09-22 ~11:20 UTC (5-loop-79) — v0.48-engine-badge RELEASED
+(release id 393663671); honesty-gap backlog item #1 CLOSED.** The
+settings panel now shows an active-engine badge: the loaded bridge's own
+`krita_brush_version` string verbatim + provenance chip (REAL /
+PORTABLE / FALLBACK / ENGINE) + the §6.5 source-vs-runtime note when it
+applies. Dart-only delta (binding `engineVersion()` +
+`EditorState.activeEngineVersion` + widget; commit `dcf6210`) — no
+krita-build needed. Chain: build-app **35718991761** SUCCESS (~7 min) ->
+emulator smoke **35719660445** SUCCESS. 3/3 assets uploaded
+(linux 47,510,096 / windows 40,232,625 / android 191,962,550 B).
+Test lesson: the plain flutter-test VM LOADS THE PORTABLE BRIDGE —
+"no engine" tests pass via its capability stubs; the badge tests assert
+the full FFI path against it (suite 223/223, analyze 0/0/75 exact).
+NEXT (5-loop-80): Linux bundle runtime closure (bundle Qt5/KF5 into the
+Linux zip + clean-host dlopen CI gate — biggest remaining gap) or Linux
+portable fallback; CI re-point offer STILL PENDING USER DECISION.
+
 ---
 
 ## 4. The autonomous loop convention (resume this if you re-enable the cron)
