@@ -2987,3 +2987,18 @@ Work Log:
 Stage Summary:
 - Run 11 (35797460479) in flight with the complete fix set. The vtable fix is THE deepest engine-ABI lesson of the campaign: a bridge TU instantiating engine templates MUST replicate the engine's feature-macro state — encoded for the future in this worklog (candidate HANDOVER §6.7).
 - Android x2 green x3 runs. Linux: registry gate proven (15 families, headless). Remaining: the actual stroke gates (b)-(e) once the vtable is aligned; Windows smoke load path.
+
+---
+Task ID: 5-loop-86 (addendum 4 — run 11: VTABLE FIX PROVEN; next headless landmine = QCoreApplication)
+Agent: Z.ai Code (main, continuous session)
+
+Work Log:
+- RUN 11 (35797460479): the L8 HAVE_* extraction WORKS ("engine HAVE_* defines: -DHAVE_X11") and the vtable fix is PROVEN — the markers advanced past the run-10 crash: registry 15 ok -> loadSessionPreset engine PNG path OK (loadFromDevice now dispatches correctly!) -> "preset ok (family paintbrush), building session" -> device ok. NEW, DEEPER fault (gdb): #0 QObject::thread() <- #1 KisMemoryStatisticsServer::ctor <- #2 KisMemoryStatisticsServer::instance() <- #4 KisImage::KisImage <- krita_stroke_begin, preceded by "QCoreApplication::arguments: Please instantiate the QApplication object first" x5. The engine's QObject-based singletons REQUIRE a QCoreApplication; a Flutter host never creates one.
+- FIX (app 32f4715): bridge-owned ensureQtApp() — lazily-constructed QCoreApplication on the first session, deliberately LEAKED (must outlive engine statics; Qt guidance for library-owned apps; QCoreApplication = headless, no platform plugin, Android-safe). Wired into krita_stroke_begin before session construction.
+- Windows run 11: the W10 wrapper worked (rc captured: 127) but MSYS bash `wait` on a backgrounded NATIVE exe returns 127 — the PID is not a shell child. FIX (85bbf19 + scripts/f1_iter12_patch.py): the smoke now spawns via a native PowerShell helper (Start-Process + WaitForExit(600s) + real exit code + the static-init-hang guard).
+- Run 12 (35799983851, the pwsh fix) in flight — its Linux leg cloned BEFORE the Qt-app mirror sync (race, clone 00:06 < sync 00:13) so its Linux repeats the KisImage fault (known); its WINDOWS leg carries the pwsh smoke = the last unknown Windows behavior. Run 13 (to dispatch on run 12's completion) carries the QCoreApplication fix on all legs.
+
+Stage Summary:
+- F1 Linux has advanced past: registry init, engine preset loading, vtable dispatch — each fault root-caused from gdb backtraces and fixed surgically. The remaining chain to green: Qt app (fix in flight) -> the actual stroke gates (b)-(e).
+- Windows: lld-link + static audit + markers all proven; the pwsh smoke spawn is the final step being validated by run 12.
+- Android: green x3 runs (proven).
