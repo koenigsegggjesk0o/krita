@@ -3002,3 +3002,24 @@ Stage Summary:
 - F1 Linux has advanced past: registry init, engine preset loading, vtable dispatch — each fault root-caused from gdb backtraces and fixed surgically. The remaining chain to green: Qt app (fix in flight) -> the actual stroke gates (b)-(e).
 - Windows: lld-link + static audit + markers all proven; the pwsh smoke spawn is the final step being validated by run 12.
 - Android: green x3 runs (proven).
+
+---
+Task ID: 7-full-krita
+Agent: Z.ai Code (main, interactive session — user directive "full aplikasi krita… kamu tinggal tambah feather 3d nya")
+Task: v0.50 FULL-KRITA milestone — bundle the COMPLETE official Krita 6.0.4 (krita.org) unmodified + real boot sequence + 3D floating brush gallery + hang-proof engine probe.
+
+Work Log:
+- User directive: the FULL official Krita application (downloaded from krita.org), 100% unmodified, with Feather 3D ADDED on top. Downloaded krita-x64-6.0.4.zip (245,876,734 bytes, SHA256 7150fba732a8ccacee8b2c5ce2bf20eeb9b53d24dda751597b8ec3285a1b5b54) from download.kde.org/stable/krita/6.0.4/; verified structure (5,175 files: bin/krita.exe + share/krita with the 4 default resource bundles); proved all 4 bundles byte-identical to the krita-source v6.0.4 tree (the CI payload source).
+- assets/krita-data.zip NEW: the complete krita/data resource tree (727 entries, 80MB, stored zip, byte-identical files, unmodified) — first-run import payload.
+- lib/io/krita_resources.dart NEW: first-run import service — extracts the payload 1:1 into feather_resources/ on a background isolate (TransferableTypedData zero-copy hand-off, live progress stream, version marker, traversal-path guard, crash-safe marker-last).
+- lib/io/engine_probe.dart NEW: hang-proof pre-flight — DynamicLibrary.open of the same candidates inside a throwaway isolate with 12s timeout (kills the stuck-at-100% freeze class: a wedged DLL load now downgrades the session to the honest synthetic fallback instead of freezing the UI).
+- lib/io/krita_launcher.dart NEW: locates krita/bin/krita.exe from the bundled FULL official install next to the exe; launch() detaches the real krita.exe (the 100% original application).
+- lib/main.dart REWRITTEN: BootScreen with a REAL staged loader — phase 1 engine probe (0-16%), phase 2 first-run resource import (16-92%, live file counts), phase 3 preset scan, phase 4 enter (100% = actually ready). Honest badges: REAL KRITA ENGINE / SYNTHETIC FALLBACK / FULL KRITA 6.0.4 BUNDLED. Version label from kAppVersionLabel (fixes stale v0.12 string).
+- lib/screens/brush_picker_screen.dart REWRITTEN: the Feather 3D experience — presets float as cards on a projected 3D carousel ring in a starfield (hand-projected pinhole math: depth scale, arc fade, rotateY facing, alternating float offset; drag to fly with inertia, vertical tilt, recentre button), search + category chips + Name/Family sort (Family clusters the ring + legend chips with per-family counts), real Krita thumbnails, long-press preset inspector, "Open full Krita" header button.
+- lib/state/editor_state.dart: tryEngine param (probe-gated engine load — EditorState can no longer freeze on a blocking DynamicLibrary.open).
+- lib/screens/main_screen.dart: enableEngine param passes the probe result; preset scan prefers the imported real Krita library (feather_resources/paintoppresets), falls back to the legacy seeded folder.
+- Version 0.50.0+1 (pubspec + app_version.dart). Krita source untouched (0 bytes changed upstream); all resources byte-identical.
+- Validation (local Flutter 3.35.3): flutter analyze 0 errors / 0 warnings / 64 infos (all pre-existing-class, CI gate is --no-fatal-infos); flutter test --concurrency=1 = 223/223 PASS (incl. 4 new 3D-ring picker tests: badges, ring order, family clustering + legend, tap-to-pick).
+
+Stage Summary:
+- v0.50 code complete and green locally. NEXT: mirror to feather-krita-build (incl. 80MB payload), patch build-app.yml to download + SHA256-verify + bundle the full official Krita 6.0.4 zip into the Windows real-engine package, dispatch CI, release v0.50-full-krita.

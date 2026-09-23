@@ -64,6 +64,7 @@ class EditorState extends ChangeNotifier {
     List<BrushPreset>? presets,
     this.isPro = false,
     this.fileName = 'Untitled.feather',
+    this.tryEngine = true,
   })  : _strokes = strokes ?? StrokeManager(),
         _camera = camera ?? CameraController(),
         texture = texture ?? TexturePainter(),
@@ -93,6 +94,13 @@ class EditorState extends ChangeNotifier {
   final SceneLightRig lightRig = SceneLightRig();
 
   KritaBrushEngine? _brushEngine;
+
+  /// Whether the constructor may try to load the native Krita bridge.
+  /// Set to `false` by the boot screen when the pre-flight probe
+  /// ([probeKritaEngine]) reports the library absent or wedged — the
+  /// editor then runs on the honest synthetic-dab fallback instead of
+  /// risking a frozen `DynamicLibrary.open` on the UI isolate.
+  final bool tryEngine;
 
   // ----- Unified undo journal (loop-20) -----------------------------------
 
@@ -276,6 +284,14 @@ class EditorState extends ChangeNotifier {
   // ----- Brush engine lifecycle -----------------------------------------
 
   void _tryLoadBrushEngine() {
+    // The boot screen pre-probes the native bridge on a throwaway
+    // isolate (engine_probe.dart); when the probe reports the library
+    // unavailable or wedged we skip the load entirely so the UI can
+    // never freeze on a blocking DynamicLibrary.open.
+    if (!tryEngine) {
+      _brushEngine = null;
+      return;
+    }
     try {
       _brushEngine = KritaBrushEngine();
     } catch (_) {
