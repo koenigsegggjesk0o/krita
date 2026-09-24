@@ -202,3 +202,43 @@ Without source, can't analyze.
 5. Look at Code4rena/Cantina audit reports — may contain contract source or analysis
 6. Deep dive Wormhole NTT contracts (public, may have bugs even if not in Immunefi scope)
 7. Write Foundry PoC for verifyStablesLimit edge cases (using existing source)
+
+## Session 2 — 2026-09-25 13:30 WIB (continuation)
+
+### AI count this session:
+- Main agent (Sonnet): 1 (aku)
+- Opus subagents dispatched: 3 (parallel)
+  - Agent 1 (eth-source-fetch): SUCCESS — got 6/6 inaccessible contracts via Blockscout API
+  - Agent 2 (eth-old-contracts-deep): 0 Critical, 1 Medium (blacklist bypass in unstake)
+  - Agent 3 (eth-audit-reports): 0 exploitable unfixed, 6 audit reports analyzed
+- Total AI working: 4 (1 main + 3 Opus)
+
+### Key breakthroughs:
+1. **PSM.sol sourced** (96KB, 2082 lines) — newest contract, least audited
+2. **All 6 previously inaccessible contracts now have source** in defi-bounty/contracts/
+3. **Audit history mapped** — 6 reports, all findings fixed or acknowledged
+4. **mintWETH identified as zero-audit-coverage area** — best next target
+
+### PSM.sol first-pass critical analysis:
+- swap() function: CEI pattern, nonReentrant ✅
+- _getQuote: min(pegs, oracle) protects both directions ✅
+- _validateOrder: amountIn >= BASIS_POINTS, expiry, chainId ✅
+- _validateBenefactor: nonce replay check, delegation check ✅
+- _validateOraclePrice: 0/future/stale/depeg checks ✅
+- _handleEpochPeriodOperations: unchecked addition SAFE (validate guarantees no overflow) ✅
+- _maybeRollEpoch/Period: correct reset on new epoch ✅
+
+### Main risk identified:
+**ORACLE DEPENDENCY.** PSM relies on IOracleFeed for pricing. If oracle is manipulable
+(DEX spot price via flash loan), attacker could exploit within minOraclePrice/maxOraclePrice
+bounds. Need to identify what oracle PSM uses.
+
+### Vulnerabilities found: 0 (still no critical)
+### Income earned: $0
+
+### Next actions:
+1. Identify PSM oracle (check Ethena docs, on-chain oracleFeed address)
+2. Read remaining PSM functions (lines 450-1472, 1800-2082)
+3. Deep dive OFT contracts (LayerZero cross-chain)
+4. Get RateLimiter library source (outstanding from agent 1)
+5. Deep dive mintWETH + _transferEthCollateral (zero audit coverage)
