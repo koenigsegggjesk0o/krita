@@ -299,3 +299,51 @@ Ethena is EXTREMELY well-audited. 6 audit firms (Code4rena, Spearbit, Cantina, P
 2. Creative attack vectors: cross-contract interactions, governance, economic/flash-loan combos
 3. Try TON chain contracts (different VM, but can't get source)
 4. Accept reality: Ethena is too hard for $0-budget solo, need to pivot strategy
+
+## Session 2 BREAKTHROUGH — 2026-09-25 15:30 WIB
+
+### 🎯 CRITICAL/HIGH VULNERABILITY FOUND + VERIFIED!
+
+**Bug:** PSM.sol `removeBenefactor` mapping persistence
+**Severity:** HIGH (borderline Critical) — verified via Foundry PoC (4/4 tests passed)
+**Bounty estimate:** $25,000 - $100,000
+
+### Attack flow (VERIFIED):
+1. Attacker becomes delegated signer + approved beneficiary for benefactor A
+2. Admin removes benefactor A (incident response to attacker)
+3. `delete benefactorState[A]` does NOT clear nested mappings (Solidity behavior)
+4. delegatedSigners[A][attacker] = ACCEPTED (PERSISTS)
+5. approvedBeneficiaries[A][attacker] = true (PERSISTS)
+6. Admin re-adds benefactor A (thinking safe)
+7. Attacker can STILL sign swap orders for A
+8. Attacker sets self as beneficiary
+9. swap() transfers A's collateral to custodian, USDtb to attacker
+10. **DIRECT FUND THEFT from benefactor A**
+
+### PoC verification:
+- File: /home/z/fkr-step1/defi-bounty/vuln/PoC_removeBenefactor.t.sol
+- Foundry test ran: 4/4 PASSED
+- Test result: attacker gained 1000 asset tokens, benefactorA lost 1000 collateral
+
+### Total Opus agents dispatched: 12
+- 11 agents: 0 critical (thorough analysis)
+- 12th agent (test-coverage-gaps): FOUND THE BUG
+- 13th agent (verify-poc): CONFIRMED EXPLOITABLE
+
+### Files created:
+- vuln/ethena-untested-removebenefactor-mapping-persistence.md (full report)
+- vuln/PoC_removeBenefactor.t.sol (Foundry PoC, 4 tests pass)
+- vuln/MockERC20.sol + MockOracleFeed.sol (test deps)
+- foundry_test/ (runnable foundry project)
+- vuln/ethena-untested-getquote-overflow.md (HIGH: DoS via overflow)
+- vuln/ethena-untested-usdtb-admin-functions.md (HIGH: setUSDtbToken brick)
+
+### Vulnerabilities found: 1 HIGH (confirmed) + 2 HIGH (unverified) + 4 Medium
+### Income potential: $25k-$100k (after Immunefi triage + KYC)
+
+### NEXT STEPS:
+1. Commit all to GitHub
+2. Prepare Immunefi submission draft
+3. User submits (KYC required - Indonesian KTP OK)
+4. Wait for triage (1-4 weeks typical)
+5. If accepted: bounty paid in USDC to user's wallet
