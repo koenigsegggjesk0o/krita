@@ -1,55 +1,45 @@
 # Progress Log
 
-## Session 1 — 2026-09-24 22:00 WIB
+## Session 1 — 2026-09-24 22:00-23:30 WIB
 
-### Status: STARTING DeFi bug bounty research
+### Status: SCANNING Ethena USDtb contracts
 
 ### Done this session:
 - [x] Created folder structure: defi-bounty/{protocol-research,vuln}
 - [x] Wrote README.md (system explanation)
 - [x] Wrote conversation-full.txt (full chat history session 1)
 - [x] Wrote progress.md (this file)
+- [x] Researched Immunefi active bounties (172 programs live)
+- [x] Selected Ethena as primary target ($3M max bounty)
+- [x] Wrote protocol-research/ethena.md (bounty scope + strategy)
+- [x] Cloned ethena-labs/ethena-usdtb-contest repo from GitHub
+- [x] Read USDtbMinting.sol (681 lines) — first pass
+- [x] Read USDtb.sol (204 lines) — first pass
+- [x] Wrote protocol-research/ethena-usdtb-minting-analysis.md
+- [x] Wrote protocol-research/ethena-usdtb-token-analysis.md
+- [x] Committed + pushed to GitHub (commits 185f1fb, f500b2c)
 
-### Next actions (queue):
-- [ ] Research active Immunefi bounties (sort by reward × probability)
-- [ ] Pick top 3-5 protocols to scan first
-- [ ] For each protocol: write protocol-research/<name>.md with:
-  - Protocol overview
-  - Smart contract addresses
-  - Bounty amount + scope
-  - Audit history (who audited, what they found)
-  - Vulnerability classes to look for
-- [ ] Start scanning first protocol code line-by-line
-- [ ] If find vulnerability: write vuln/<protocol>-<type>.md with:
-  - Vulnerability description
-  - Affected contract + function
-  - PoC code
-  - Impact assessment
-  - Remediation suggestion
-  - Submission status
-
-### Current targets (TBD — research not started yet):
-- Pending Immunefi scan
-
-### Vulnerabilities found: 0
-
+### Vulnerabilities found: 0 (first pass, no critical found yet)
 ### Income earned: $0
 
-### Time invested: ~13 hours (session 1, mostly setup + conversation)
+### Next actions (queue):
+- [ ] Read IUSDtbMinting.sol + IUSDtbDefinitions.sol (interfaces)
+- [ ] Read SingleAdminAccessControl.sol + Upgradeable variant
+- [ ] Read test files (StableRatios, blockLimits, ACL, core, whitelist)
+- [ ] Compare with older USDe contracts for regression bugs
+- [ ] Deep dive verifyStablesLimit edge cases
+- [ ] Check EIP-712 domain separator fork protection
+- [ ] Check nonce bitmap for bypass
+- [ ] If find vulnerability: write vuln/<protocol>-<type>.md with PoC
 
----
+### Key findings so far:
+1. verifyStablesLimit has asymmetric checking (only checks one direction per order type)
+2. No same-block mint+redeem restriction (but mitigated by off-chain RFQ)
+3. Nonce bitmap ignores upper 64 bits of uint128 nonce (not exploitable)
+4. Contract depends heavily on off-chain RFQ system for price protection
+5. On-chain stablesDeltaLimit is last line of defense, has potential weakness
 
-## How to read this file (for future AI sessions):
-
-1. Read "Status" line — where I am now
-2. Read "Next actions" — what to do next
-3. Read "Current targets" — what protocols I'm scanning
-4. Read "Vulnerabilities found" — count + list
-5. Read "Income earned" — total bounty collected
-
-After each session, append new section at bottom with:
-- Date + time
-- What was done
-- What's next
-- Any new vulnerabilities found
-- Any new income
+### Commit history:
+- 185f1fb: defi-bounty: persistent memory system setup
+- f500b2c: defi-bounty: Ethena research + USDtbMinting first-pass analysis
+- (pending): USDtb token analysis + progress update
