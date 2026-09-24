@@ -114,3 +114,44 @@ This is expected — Ethena is audited by multiple top firms. Finding a critical
 - Approach: read every line of every in-scope contract + tests + audit reports
 - Look for: logic bugs, edge cases, cross-contract interaction bugs
 - Be patient: 1 critical bug = $100k-$3M. Worth weeks of focus.
+
+## Session 1 Deep Dive — 2026-09-25 00:30 WIB
+
+### Additional work done:
+- [x] Cloned ethena-labs/bbp-public-assets (USDe contracts, older version)
+- [x] Read ENA.sol (55 lines) — governance token
+- [x] Read StakedUSDeV2.sol (131 lines, partial) — staking with cooldown
+- [x] Compared EthenaMinting.sol (old) vs USDtbMinting.sol (new)
+- [x] Wrote protocol-research/ethena-old-vs-new-regression.md
+- [x] Analyzed 7 key differences between old and new contracts
+- [x] Analyzed EIP-1271 callback reentrancy vector
+- [x] Analyzed delegate signer bypass vector
+- [x] Analyzed uint128 downgrade overflow risk
+
+### Key findings from regression analysis:
+1. **uint128 downgrade** in _transferCollateral — DoS only, not realistic
+2. **Block limits** (new feature) — correctly implemented
+3. **Stables limit** (new feature) — asymmetric but intentional
+4. **Delegate signer** (new feature) — correctly implemented, no bypass
+5. **EIP-1271** (new feature) — nonReentrant protects, no reentrancy bypass
+6. **removeSupportedAsset** (new feature) — admin only, out of scope
+
+### No critical regression bug found.
+
+### Vulnerabilities found: 0
+### Income earned: $0
+
+### Next session priorities (STILL ETHENA ONLY):
+1. Get StakedENA.sol source (try alternative explorers, check other repos)
+2. Analyze OFT contracts (LayerZero cross-chain — most complex, most likely to have bugs)
+3. Read remaining test files (ACL, Delegate, SmartContractSigning, Whitelist)
+4. Check Code4rena/Cantina audit reports for Ethena
+5. Write Foundry PoC for verifyStablesLimit edge cases
+6. Check EIP-712 domain separator cross-chain replay protection
+7. Analyze StakedUSDeV2 unstake flow for reentrancy
+8. Check USDeSilo.sol withdrawal logic
+
+### Realistic assessment:
+- Ethena core contracts (USDtb + USDtbMinting): well-audited, low probability
+- Best remaining targets: OFT contracts (LayerZero), StakedENA (can't get source yet)
+- Strategy: keep deepening Ethena analysis, try to access unsourced contracts
