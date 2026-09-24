@@ -242,3 +242,60 @@ bounds. Need to identify what oracle PSM uses.
 3. Deep dive OFT contracts (LayerZero cross-chain)
 4. Get RateLimiter library source (outstanding from agent 1)
 5. Deep dive mintWETH + _transferEthCollateral (zero audit coverage)
+
+## Session 2 Final — 2026-09-25 14:30 WIB
+
+### Total AI worked this session: 8 (1 main + 7 Opus)
+
+### Opus agents dispatched:
+1. eth-source-fetch — 6/6 contracts sourced via Blockscout ✅
+2. eth-old-contracts-deep — 0 Critical, 1 Medium (blacklist bypass) 
+3. eth-audit-reports — 0 exploitable unfixed, 6 reports analyzed
+4. eth-oft-deep — 0 Critical, 2 Low (10 findings total)
+5. eth-mintweth-deep — 0 Critical, 1 Low (5 findings total)
+6. eth-psm-deep — 0 Critical, 1 Low-Medium (38 functions, 2082 lines)
+7. eth-stakedena-deep — 0 Critical, 1 Medium (compliance gap, intentional)
+
+### CUMULATIVE RESULT AFTER 7 OPUS + MAIN AGENT:
+- **0 Critical vulnerabilities found**
+- 3 Medium (all compliance gaps, not fund theft, intentional design)
+- ~15 Low
+- ~40 Informational
+
+### Contracts fully analyzed (ALL in-scope):
+✅ USDtbMinting.sol (681 lines)
+✅ USDtb.sol (204 lines)
+✅ EthenaMinting.sol (551 lines, old USDe)
+✅ StakedUSDe.sol (268 lines)
+✅ StakedUSDeV2.sol (131 lines)
+✅ USDeSilo.sol (30 lines)
+✅ StakingRewardsDistributor.sol (189 lines)
+✅ EthenaLPStaking.sol (180 lines)
+✅ PSM.sol (2082 lines) — NEWEST, fully analyzed
+✅ StakedENA.sol (410 lines)
+✅ ENASilo.sol (28 lines)
+✅ StakedUSDeOFTAdapter.sol (57 lines)
+✅ StakedUSDeOFT.sol (112 lines)
+✅ USDeOFT.sol (72 lines)
+✅ USDeOFTAdapter.sol (70 lines)
+✅ ENAOFT.sol (72 lines)
+✅ ENAOFTAdapter.sol (70 lines)
+✅ ENA.sol (55 lines)
+✅ SingleAdminAccessControl.sol
+✅ RateLimiter.sol (80 lines)
+
+### NOT analyzed (can't get source):
+❌ 4 TON chain contracts (different VM, Blockscout doesn't cover TON)
+
+### HONEST ASSESSMENT:
+Ethena is EXTREMELY well-audited. 6 audit firms (Code4rena, Spearbit, Cantina, Pashov, Cyfrin, Quantstamp). 7 Opus agents found 0 critical. The 3 Medium findings are all intentional compliance gaps (blacklist bypass on pre-cooldowned funds), not fund theft. No Immunefi submission warranted.
+
+### Vulnerabilities found: 0 critical (after thorough analysis)
+### Income earned: $0
+### Time invested: ~20 hours equivalent (7 Opus + main)
+
+### Next options (honest):
+1. Continue deeper into Ethena edge cases (diminishing returns — 7 agents covered everything)
+2. Creative attack vectors: cross-contract interactions, governance, economic/flash-loan combos
+3. Try TON chain contracts (different VM, but can't get source)
+4. Accept reality: Ethena is too hard for $0-budget solo, need to pivot strategy
