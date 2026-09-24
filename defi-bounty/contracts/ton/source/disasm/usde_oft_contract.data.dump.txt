@@ -1,0 +1,219 @@
+cell(bits=863/00457468656E614F465493FF2057B93FF4097B825FE6FFCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC21BE8A99D7DD0D1EC2375181A9526E3F6E620A72CA0AF065274EC4BEEBB677303EC4EF8794705B90372191453A8CADAC82D6F2D0174231178C804FC869E4F7F9_, refs=3) // .\x04.........@\x02\x05.......\x14..\x86..
+  ref[0]:
+    cell(bits=864/006F41707053746F7265815EE097B035EC0D7F8800D640393FF24FFD9BFF26FFD9BFFA6FFF5920FFFFFFFFFC7D89DF0F28E0B7206E43228A75195B5905ADE5A02E84622F19009F90D3C9EFF00000000000000000000000000000000000000000000000000000000000000003, refs=3) // \x04.\x04........... ..\x80.........
+      ref[0]:
+        cell(bits=0/, refs=0)
+      ref[1]:
+        cell(bits=257/9EC000000000000000000000000000000000000000000000000000000000000EC_, refs=2) // ........
+          ref[0]:
+            cell(bits=6/6E_, refs=2)
+              ref[0]:
+                cell(bits=6/66_, refs=2)
+                  ref[0]:
+                    cell(bits=4/5, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=5/F4_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+              ref[1]:
+                cell(bits=2/2_, refs=2)
+                  ref[0]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=4/4, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+          ref[1]:
+            cell(bits=6/62_, refs=2)
+              ref[0]:
+                cell(bits=2/2_, refs=2)
+                  ref[0]:
+                    cell(bits=4/4, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+              ref[1]:
+                cell(bits=2/2_, refs=2)
+                  ref[0]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=4/5, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+      ref[2]:
+        cell(bits=320/1EB2BBEA3D8C0D42FF7FD60F0264C866C934BBFF727526CA759E7374CAE0C16600007687000184AC, refs=4) // \x80......\x04.\x10
+          ref[0]:
+            cell(bits=225/9AC0000000000000000000000000000000000000000000000000000EC_, refs=2) // .......
+              ref[0]:
+                cell(bits=6/6E_, refs=2)
+                  ref[0]:
+                    cell(bits=6/66_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+              ref[1]:
+                cell(bits=6/62_, refs=2)
+                  ref[0]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+          ref[1]:
+            cell(bits=80/FF00F4A413F4BCF2C80B, refs=1) // .\x80
+              ref[0]:
+                cell(bits=6/62_, refs=2)
+                  ref[0]:
+                    cell(bits=8/C8, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+          ref[2]:
+            cell(bits=80/FF00F4A413F4BCF2C80B, refs=1) // .\x80
+              ref[0]:
+                cell(bits=6/62_, refs=2)
+                  ref[0]:
+                    cell(bits=8/C8, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+          ref[3]:
+            cell(bits=742/0000656E64706F696E7493FF1457B517EE4FFD319EE6FFC9BFF6069B9BFFA6FFF9FFF18A9BFFFFFFFFFFFFFC0001DA1C000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002_, refs=4) // ...\x82\x01...\x04..\x12...........
+              ref[0]:
+                cell(bits=608/006261736553746F7265815EC097B025FE4FFCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7ACAEFA8F630350BFDFF583C0993219B24D2EFFDC9D49B29D679CDD32B830598, refs=1) // \x04.\x04...........\x04....
+                  ref[0]:
+                    cell(bits=0/, refs=0)
+              ref[1]:
+                cell(bits=0/, refs=0)
+              ref[2]:
+                cell(bits=0/, refs=4)
+                  ref[0]:
+                    cell(bits=0/, refs=0)
+                  ref[1]:
+                    cell(bits=0/, refs=0)
+                  ref[2]:
+                    cell(bits=0/, refs=0)
+                  ref[3]:
+                    cell(bits=0/, refs=0)
+              ref[3]:
+                cell(bits=0/, refs=1)
+                  ref[0]:
+                    cell(bits=0/, refs=0)
+  ref[1]:
+    cell(bits=478/00476173417373657274515ED45FB519ED46FBFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0020AF3000249F00000612B000055732_, refs=0) // \x04@\x04\x02.........\x08.
+  ref[2]:
+    cell(bits=0/, refs=1)
+      ref[0]:
+        cell(bits=257/9EC000000000000000000000000000000000000000000000000000000000000EC_, refs=2) // ........
+          ref[0]:
+            cell(bits=6/6E_, refs=2)
+              ref[0]:
+                cell(bits=6/66_, refs=2)
+                  ref[0]:
+                    cell(bits=4/5, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=5/F4_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+              ref[1]:
+                cell(bits=2/2_, refs=2)
+                  ref[0]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=4/4, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+          ref[1]:
+            cell(bits=6/62_, refs=2)
+              ref[0]:
+                cell(bits=2/2_, refs=2)
+                  ref[0]:
+                    cell(bits=4/4, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+              ref[1]:
+                cell(bits=2/2_, refs=2)
+                  ref[0]:
+                    cell(bits=2/2_, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
+                  ref[1]:
+                    cell(bits=4/5, refs=2)
+                      ref[0]:
+                        ...(depth limit)
+                      ref[1]:
+                        ...(depth limit)
