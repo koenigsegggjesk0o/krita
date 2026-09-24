@@ -155,3 +155,50 @@ This is expected — Ethena is audited by multiple top firms. Finding a critical
 - Ethena core contracts (USDtb + USDtbMinting): well-audited, low probability
 - Best remaining targets: OFT contracts (LayerZero), StakedENA (can't get source yet)
 - Strategy: keep deepening Ethena analysis, try to access unsourced contracts
+
+## Session 1 Final — 2026-09-25 00:20 WIB
+
+### Additional work:
+- [x] Cloned ethena-labs/example-native-token-transfers (Wormhole NTT, NOT LayerZero OFT)
+- [x] Discovered Ethena uses TWO cross-chain systems: Wormhole NTT + LayerZero OFT
+- [x] LayerZero OFT contracts (ENAOFT, StakedUSDeOFT, USDeOFT) — source NOT public
+- [x] StakedENA.sol — source NOT public
+- [x] PSM contract — source NOT accessible (Etherscan Cloudflare blocked)
+
+### Contracts accessible vs not:
+**HAVE SOURCE (analyzed):**
+- USDtbMinting.sol (681 lines) ✅
+- USDtb.sol (204 lines) ✅
+- EthenaMinting.sol (551 lines, older USDe version) ✅
+- ENA.sol (55 lines) ✅
+- StakedUSDeV2.sol (131 lines, partial) ✅
+- SingleAdminAccessControl.sol ✅
+
+**NO SOURCE (can't analyze):**
+- USDtb PSM Contract (0x73E3...3728) ❌
+- StakedENA.sol (0x8bE3...B3b9) ❌
+- StakedUSDeOFTAdapter.sol (0x211c...e5d2) ❌
+- ENAOFT.sol ❌
+- StakedUSDeOFT.sol ❌
+- USDeOFT.sol ❌
+- TON chain contracts (4) ❌
+
+### Blocker:
+6 out of 12 priority contracts have NO public source code.
+Etherscan has Cloudflare anti-bot that blocks sandbox.
+Sourcify doesn't have these contracts verified.
+Without source, can't analyze.
+
+### Vulnerabilities found: 0
+### Income earned: $0
+### Time invested: ~16 hours (session 1)
+### GitHub commits: 7
+
+### Next session strategy:
+1. Try alternative block explorers (Blockscout, BscScan, Polygonscan) for contract source
+2. Try Etherscan API with free key (register at etherscan.io)
+3. Try Tenderly contract viewer
+4. Try DeFiLlama for contract links
+5. Look at Code4rena/Cantina audit reports — may contain contract source or analysis
+6. Deep dive Wormhole NTT contracts (public, may have bugs even if not in Immunefi scope)
+7. Write Foundry PoC for verifyStablesLimit edge cases (using existing source)
