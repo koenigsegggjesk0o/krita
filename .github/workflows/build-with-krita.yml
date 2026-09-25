@@ -108,6 +108,33 @@ jobs:
             Copy-Item $kritaShare -Destination $dataDst -Recurse -Force
           }
           
+          # Copy krita-data.zip from assets (727 brush presets)
+          if (Test-Path "assets\krita-data.zip") {
+            Copy-Item "assets\krita-data.zip" -Destination $buildDir -Force
+            Write-Host "Copied krita-data.zip"
+          }
+          
+          # Copy krita_bridge.dll if it was compiled
+          $bridgeDll = "krita_bridge.dll"
+          if (Test-Path $bridgeDll) {
+            Copy-Item $bridgeDll -Destination $buildDir -Force
+            Write-Host "Copied krita_bridge.dll"
+          } else {
+            # Try downloading from the compile-krita-bridge job artifact
+            Write-Host "krita_bridge.dll not found locally, app will use fallback engine"
+          }
+          
+          # Also copy zlib dll
+          $zlibDll = "C:\vcpkg\installed\x64-windows\bin\zlib1.dll"
+          if (Test-Path $zlibDll) {
+            Copy-Item $zlibDll -Destination $buildDir -Force
+            Write-Host "Copied zlib1.dll"
+          }
+          
+          # Calculate total size
+          $totalSize = (Get-ChildItem $buildDir -Recurse | Measure-Object -Property Length -Sum).Sum
+          Write-Host "=== Total build size: $([math]::Round($totalSize / 1MB, 1)) MB ==="
+          
           Write-Host "=== Build output ==="
           Get-ChildItem $buildDir | Format-Table Name, Length
           Write-Host "=== kritaplugins ==="
@@ -192,9 +219,11 @@ jobs:
 
       - name: Install Boost + Eigen via vcpkg (fast, pre-built)
         run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-          C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg install boost-system:x64-windows boost-headers:x64-windows boost-algorithm:x64-windows eigen3:x64-windows --x-install-root=C:\vcpkg\installed
+          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
+            git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+            C:\vcpkg\bootstrap-vcpkg.bat
+          }
+          C:\vcpkg\vcpkg install boost-system:x64-windows boost-headers:x64-windows boost-algorithm:x64-windows eigen3:x64-windows zlib:x64-windows --x-install-root=C:\vcpkg\installed
 
       - name: Install extra-cmake-modules
         run: |
@@ -208,13 +237,13 @@ jobs:
           $deps = "C:\krita-deps"
           New-Item -ItemType Directory -Force -Path $deps
           git clone --depth 1 https://github.com/arximboldi/immer.git C:\immer
-          cd C:\immer; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+          cd C:\immer; cmake -B C:\immer\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build C:\immer\build --target install --config Release
           git clone --depth 1 https://github.com/arximboldi/zug.git C:\zug
-          cd C:\zug; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+          cd C:\zug; cmake -B C:\zug\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build C:\zug\build --target install --config Release
           git clone --depth 1 https://github.com/arximboldi/lager.git C:\lager
-          cd C:\lager; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF -Dlager_EMBED_RESOURCES_PATH=OFF; cmake --build build --target install --config Release
+          cd C:\lager; cmake -B C:\lager\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF -Dlager_EMBED_RESOURCES_PATH=OFF; cmake --build C:\lager\build --target install --config Release
           git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git C:\xsimd
-          cd C:\xsimd; cmake -B build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build build --target install --config Release
+          cd C:\xsimd; cmake -B C:\xsimd\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build C:\xsimd\build --target install --config Release
 
       - name: Download Krita portable ZIP
         run: |
