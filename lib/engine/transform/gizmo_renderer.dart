@@ -8,7 +8,7 @@
 // (lines, triangles, circles) in *screen space* that the Flutter
 // CustomPainter (or any other backend) can render. It does NOT paint
 // pixels itself — keeping the geometry separate from the paint backend
-// matches the architecture of `lib/engine/scene_pipeline.dart` and lets
+// matches the architecture of `lib/core/scene/scene.dart` and lets
 // the gizmo be unit-tested without a Canvas.
 //
 // Visual design follows the Feather docs:

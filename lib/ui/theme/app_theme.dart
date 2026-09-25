@@ -3,11 +3,9 @@
 //
 // app_theme.dart — Theme data for the Feather-Krita UI package.
 //
-// This is the *new* ui/ package theme; it composes the values from
-// feather_colors, feather_typography and glassmorphism into a ThemeData
-// that downstream screens can pass to MaterialApp. The legacy
-// lib/theme/app_theme.dart still exists for the old editor — this file
-// is the canonical source for anything under lib/ui/.
+// This is the canonical Feather-Krita UI theme; it composes the values
+// from feather_colors, feather_typography and glassmorphism into a
+// ThemeData that downstream screens can pass to MaterialApp.
 
 import 'package:flutter/material.dart';
 

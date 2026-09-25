@@ -14,7 +14,7 @@
 //     depth-of-field toggle + focus distance, fog density.
 //
 // The lighting direction is the same sun-position parametrization used by
-// `lib/engine/light_rig.dart`; this struct is the serializable counterpart
+// `lib/engine/material/light_rig.dart`; this struct is the serializable counterpart
 // the scene graph persists.
 //
 // Depends on: lib/core/math/
@@ -51,7 +51,7 @@ class EnvironmentLight {
   Color color;
 
   /// World-space unit direction pointing FROM the light TOWARD the scene
-  /// (the convention `scene_pipeline.dart` uses).
+  /// (the convention `lib/core/scene/scene.dart` uses).
   Vector3 get direction {
     final az = azimuthDegrees * kDegToRad;
     final el = elevationDegrees * kDegToRad;

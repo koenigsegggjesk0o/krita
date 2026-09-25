@@ -12,7 +12,7 @@
 //     current color's saturation and brightness."
 //
 // This is the pure DATA model behind the wheel — no Flutter widget (the
-// widget lives in lib/widgets/glass_color_picker.dart). It owns the HSV
+// widget lives in lib/ui/widgets/color_wheel.dart). It owns the HSV
 // state, the wheel-angle ↔ hue mapping, the SV-square ↔ (S, V) mapping,
 // and the hex-code ↔ ARGB conversions. Real HSV↔RGB math (no Flutter
 // HSVColor dependency) so the model is unit-testable in isolation.

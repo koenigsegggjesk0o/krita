@@ -40,7 +40,7 @@ class DuplicateResult {
 }
 
 /// Configuration of the live mirror (re-declared here to avoid a
-/// dependency on `lib/engine/stroke_manager.dart`, which would create a
+/// dependency on `lib/models/stroke.dart`, which would create a
 /// cycle when that module imports this one).
 class MirrorAxes {
   const MirrorAxes({
