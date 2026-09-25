@@ -66,7 +66,6 @@ import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
-import 'package:feather_krita/engine/guide3d/guide3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
