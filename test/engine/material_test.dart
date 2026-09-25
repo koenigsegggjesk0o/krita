@@ -17,6 +17,16 @@ import 'package:feather_krita/engine/material/shaded_material.dart';
 import 'package:feather_krita/engine/material/shadeless_material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// Channel extractors using the non-deprecated [Color] API.
+///
+/// The int-returning `Color.red` / `.green` / `.blue` / `.alpha` getters are
+/// deprecated; the new `.r` / `.g` / `.b` / `.a` getters return doubles in
+/// 0..1. These helpers reproduce the old 0..255 int semantics for assertions.
+int _alphaOf(Color c) => (c.a * 255.0).round() & 0xff;
+int _redOf(Color c) => (c.r * 255.0).round() & 0xff;
+int _greenOf(Color c) => (c.g * 255.0).round() & 0xff;
+int _blueOf(Color c) => (c.b * 255.0).round() & 0xff;
+
 void main() {
   group('MaterialType rules', () {
     test('shadeless and shaded support patterns; glow and cutout do not', () {
@@ -60,10 +70,10 @@ void main() {
         opacity: 1.0,
       );
       final out = m.shade(const ShadeContext());
-      expect(out.alpha, 255);
-      expect(out.red, 200);
-      expect(out.green, 100);
-      expect(out.blue, 50);
+      expect(_alphaOf(out), 255);
+      expect(_redOf(out), 200);
+      expect(_greenOf(out), 100);
+      expect(_blueOf(out), 50);
     });
 
     test('opacity scales the alpha channel', () {
@@ -72,7 +82,7 @@ void main() {
         opacity: 0.5,
       );
       final out = m.shade(const ShadeContext());
-      expect(out.alpha, closeTo(128, 1));
+      expect(_alphaOf(out), closeTo(128, 1));
     });
 
     test('tint moves the base color toward the tint color', () {
@@ -83,9 +93,9 @@ void main() {
       );
       final out = m.shade(const ShadeContext());
       // 50% blend toward white -> gray ≈ 128.
-      expect(out.red, closeTo(128, 1));
-      expect(out.green, closeTo(128, 1));
-      expect(out.blue, closeTo(128, 1));
+      expect(_redOf(out), closeTo(128, 1));
+      expect(_greenOf(out), closeTo(128, 1));
+      expect(_blueOf(out), closeTo(128, 1));
     });
 
     test('ignores lighting context (no normal/viewDir needed)', () {
@@ -137,7 +147,7 @@ void main() {
         viewDir: const Vec3(0, 1, 0),
         lightRig: rig,
       ));
-      expect(bright.red, greaterThan(dark.red));
+      expect(_redOf(bright), greaterThan(_redOf(dark)));
     });
 
     test('without a rig the shade falls back to the base color', () {
@@ -145,9 +155,9 @@ void main() {
         baseColor: Color.fromARGB(255, 100, 150, 200),
       );
       final out = m.shade(const ShadeContext());
-      expect(out.red, 100);
-      expect(out.green, 150);
-      expect(out.blue, 200);
+      expect(_redOf(out), 100);
+      expect(_greenOf(out), 150);
+      expect(_blueOf(out), 200);
     });
 
     test('roughness maps to shininess (0→128, 1→4)', () {
@@ -217,7 +227,7 @@ void main() {
       );
       final out = m.shade(const ShadeContext());
       // 0.5 intensity maps to 0.5 brightness.
-      expect(out.red, closeTo(128, 1));
+      expect(_redOf(out), closeTo(128, 1));
     });
 
     test('isAdditive is true (additive blending)', () {
@@ -254,10 +264,10 @@ void main() {
         worldPos: const Vec3(1, 2, 3),
         backgroundSampler: (_) => 0xFFAABBCC, // packed ARGB
       ));
-      expect(out.alpha, 255);
-      expect(out.red, 0xAA);
-      expect(out.green, 0xBB);
-      expect(out.blue, 0xCC);
+      expect(_alphaOf(out), 255);
+      expect(_redOf(out), 0xAA);
+      expect(_greenOf(out), 0xBB);
+      expect(_blueOf(out), 0xCC);
     });
 
     test('falls back to the fallback color when no sampler is bound', () {
@@ -265,16 +275,16 @@ void main() {
         fallbackColor: Color.fromARGB(255, 10, 20, 30),
       );
       final out = m.shade(const ShadeContext());
-      expect(out.red, 10);
-      expect(out.green, 20);
-      expect(out.blue, 30);
+      expect(_redOf(out), 10);
+      expect(_greenOf(out), 20);
+      expect(_blueOf(out), 30);
     });
 
     test('solid factory packs the ARGB into the fallback color', () {
       final m = CutoutMaterial.solid(0xFF778899);
-      expect(m.fallbackColor.red, 0x77);
-      expect(m.fallbackColor.green, 0x88);
-      expect(m.fallbackColor.blue, 0x99);
+      expect(_redOf(m.fallbackColor), 0x77);
+      expect(_greenOf(m.fallbackColor), 0x88);
+      expect(_blueOf(m.fallbackColor), 0x99);
     });
 
     test('solidSampler ignores world position and returns the packed color', () {
@@ -289,7 +299,7 @@ void main() {
         fallbackColor: Color.fromARGB(255, 0, 0, 0),
       );
       final out = m.shade(const ShadeContext());
-      expect(out.alpha, closeTo(128, 1));
+      expect(_alphaOf(out), closeTo(128, 1));
     });
   });
 
