@@ -2,8 +2,8 @@ name: Build Feather-Krita App
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ feather-krita-flutter ]
+#   push:
+#     branches: [ feather-krita-flutter ]
 
 jobs:
   build-android:
