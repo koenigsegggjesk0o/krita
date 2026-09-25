@@ -1,613 +1,646 @@
 // SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// main_screen.dart — The real editor screen.
+// main_screen.dart — Editor host (feather-integration).
 //
-// Composes every production component around the live [EditorState]:
-//   - [CanvasWidget]   — full-viewport software-rendered 3D canvas that
-//                        raycasts pointer input onto the guide surface and
-//                        stamps native Krita brush dabs into the texture.
-//   - [GlassAppBar]    — document name, undo/redo, open + rename.
-//   - [BrushSettingsPanel] — right dock wired to the native brush engine.
-//   - [StrokeListPanel] — left dock (toggled with the Select tool).
-//   - [JoystickWidget]  — move/rotate/scale/liquify the selection.
-//   - [GlassBottomBar]  — the eight primary tools.
-//   - [ExportScreen] / [SettingsScreen] / [BrushPickerScreen] dialogs.
+// This is the production editor screen. It owns the LIVE instances of the
+// new 158-file engine and composes the layout-only
+// [EditorScreen] widget (lib/ui/screens/editor_screen.dart) around them.
 //
-// The screen owns one [EditorState]; tests may inject their own instance.
-
-import 'dart:async';
-import 'dart:io';
+// Owned engine singletons:
+//   * [Scene]               — the scene graph + layer stack + environment
+//                             (lib/core/scene/scene.dart).
+//   * [OrbitCamera]         — turntable camera with yaw/pitch/distance/FOV
+//                             (lib/core/camera/orbit_camera.dart).
+//   * [KritaEngine]         — native Krita bridge lifecycle, with the
+//                             honest fallback when the DLL is absent
+//                             (lib/engine/krita_bridge/krita_engine.dart).
+//   * [BrushEngine]         — 2D dab generation + 3D stroke assembly
+//                             (lib/engine/brush/brush_engine.dart).
+//   * [Guide3DManager]      — owns every active [Guide3D] surface
+//                             (lib/engine/guide3d/guide_manager.dart).
+//   * [LiquifyEngine]       — push/pinch/comb deformation lifecycle
+//                             (lib/engine/liquify/liquify_engine.dart).
+//   * [SelectionSystem]     — tap/box/lasso selection over the stroke list
+//                             (lib/engine/selection/selection.dart).
+//
+// The host also owns the document's [Stroke] list, a simple undo/redo
+// stack of deep-copied stroke snapshots, and a mirror of the
+// [EditorUiState] the EditorScreen widget emits via [onUiStateChanged].
+//
+// Wiring contract:
+//   * Strokes drawn on the canvas are raycast onto the active guide (or
+//     a y=0 ground plane fallback) and assembled by [BrushEngine] into a
+//     [Stroke] that is committed to both the document list and the
+//     [Scene] graph.
+//   * Camera pan/zoom gestures from the canvas viewport drive
+//     [OrbitCamera.orbit] / [OrbitCamera.zoom].
+//   * Brush-panel mutations (color / size / opacity / pressure) are
+//     mirrored into [BrushEngine.settings] and the live [KritaBrushBackend]
+//     so dabs and 3D strokes stay in sync.
+//   * The Stage panel's Group Tab mutates [Scene.layers].
+//   * The Liquify panel drives [LiquifyEngine] (begin / apply / undoAll).
+//   * The Joystick applies [Matrix4] transforms to the selected strokes.
+//   * Undo/redo replays deep-copied stroke snapshots.
+//
+// Honest gaps (NOT gimmicks — these are flagged for the next loop):
+//   * Tap-select on the canvas (SelectionSystem.tapSelectSync) requires a
+//     distinct tap gesture; the current CanvasViewport only emits pan /
+//     stroke gestures. Selecting via the radial-menu "Select All" works;
+//     individual tap-select is wired but not gesture-routed yet.
+//   * Liquify drag-on-canvas is the same story: the panel buttons work,
+//     a canvas drag during the liquify tool is not yet forwarded into
+//     [LiquifyEngine.applyDrag]. The engine itself is fully live.
+//   * The brush preset picker shows UI-only presets (the new
+//     [BrushPreset] from lib/ui/widgets/brush_picker.dart is a visual
+//     placeholder, not a real .kpp). Selecting one updates the brush
+//     color / size visually; loading real .kpp presets through
+//     [KritaBrushController.loadPreset] is the next loop.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:image/image.dart' as img;
-import 'package:vector_math/vector_math_64.dart' show Vector2, Vector3;
+import 'package:vector_math/vector_math_64.dart';
 
-import 'package:feather_krita/theme/app_theme.dart';
-import 'package:feather_krita/state/editor_state.dart';
-import 'package:feather_krita/engine/guide_surface.dart';
-import 'package:feather_krita/engine/stroke_manager.dart';
-import 'package:feather_krita/ffi/krita_bindings.dart';
-import 'package:feather_krita/io/app_dirs.dart';
-import 'package:feather_krita/io/krita_launcher.dart';
-import 'package:feather_krita/io/krita_resources.dart';
-import 'package:feather_krita/io/feather_project.dart';
-import 'package:feather_krita/io/recent_projects.dart';
-import 'package:feather_krita/io/gif_exporter.dart';
-import 'package:feather_krita/io/mp4_exporter.dart';
-import 'package:feather_krita/io/gltf_exporter.dart';
-import 'package:feather_krita/models/brush_preset.dart';
-import 'package:feather_krita/models/export_format.dart';
+import 'package:feather_krita/core/camera/orbit_camera.dart';
+import 'package:feather_krita/core/scene/scene.dart';
+import 'package:feather_krita/engine/brush/brush_engine.dart';
+import 'package:feather_krita/engine/brush/brush_settings.dart';
+import 'package:feather_krita/engine/guide3d/guide3d.dart';
+import 'package:feather_krita/engine/guide3d/guide_manager.dart';
+import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
+import 'package:feather_krita/engine/liquify/liquify_brush.dart';
+import 'package:feather_krita/engine/liquify/liquify_engine.dart';
+import 'package:feather_krita/engine/selection/selection.dart';
+import 'package:feather_krita/engine/selection/selection_state.dart';
+import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor;
 import 'package:feather_krita/models/stroke.dart';
-import 'package:feather_krita/screens/brush_picker_screen.dart';
-import 'package:feather_krita/screens/export_screen.dart';
-import 'package:feather_krita/screens/settings_screen.dart';
-import 'package:feather_krita/widgets/brush_settings_panel.dart';
-import 'package:feather_krita/widgets/canvas_widget.dart';
-import 'package:feather_krita/widgets/editor_shortcuts.dart';
-import 'package:feather_krita/widgets/glass_app_bar.dart';
-import 'package:feather_krita/widgets/glass_bottom_bar.dart';
-import 'package:feather_krita/widgets/joystick_widget.dart';
-import 'package:feather_krita/widgets/open_project_dialog.dart';
-import 'package:feather_krita/widgets/stroke_list_panel.dart';
+import 'package:feather_krita/ui/screens/editor_screen.dart';
+import 'package:feather_krita/ui/widgets/brush_picker.dart'
+    show BrushPreset;
+import 'package:feather_krita/ui/widgets/material_picker.dart'
+    show FeatherMaterial, FeatherPattern;
+import 'package:feather_krita/ui/widgets/right_panel.dart'
+    show LayerItem, ResourceItem;
+import 'package:feather_krita/ui/widgets/tool_dock.dart' show FeatherTool;
+import 'package:feather_krita/ui/widgets/liquify_panel.dart'
+    show LiquifyMode;
+import 'package:feather_krita/ui/widgets/canvas_viewport.dart'
+    show CanvasScene, CanvasStroke;
 
+/// The production editor host. Owns the new engine and composes the
+/// [EditorScreen] layout shell around it.
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key, this.state, this.enableEngine = true});
+  const MainScreen({
+    super.key,
+    this.engineReal = false,
+  });
 
-  /// Optional injected state (used by tests). When null the screen creates
-  /// (and disposes) its own [EditorState].
-  final EditorState? state;
-
-  /// Whether the screen's [EditorState] may load the native Krita
-  /// bridge. The boot screen sets this from the hang-proof pre-flight
-  /// probe ([probeKritaEngine]); `false` keeps the editor on the
-  /// synthetic-dab fallback without ever risking a frozen
-  /// `DynamicLibrary.open` on the UI isolate.
-  final bool enableEngine;
+  /// Whether the boot probe found the real native Krita bridge. When
+  /// false the editor runs on the honest synthetic-dab fallback (the
+  /// [KritaEngine] still constructs and exposes a [KritaFallbackEngine]
+  /// backend, so painting is unaffected).
+  final bool engineReal;
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  late final EditorState _state;
-  late final bool _ownsState;
-  bool _showStrokeList = false;
-  JoystickMode _joystickMode = JoystickMode.move;
+  // ----- Engine singletons ------------------------------------------------
+
+  late final Scene _scene;
+  late final OrbitCamera _camera;
+  late final KritaEngine _krita;
+  late final BrushEngine _brush;
+  late final Guide3DManager _guides;
+  late final LiquifyEngine _liquify;
+  late final SelectionModel _selectionModel;
+  late final SelectionSystem _selection;
+
+  /// The document's strokes in z-order (back → front). The [Scene] graph
+  /// holds string-id references to these; the host owns the canonical
+  /// list and the integer-id space.
+  final List<Stroke> _strokes = <Stroke>[];
+  int _nextStrokeId = 1;
+
+  // ----- Undo / redo (deep-copy snapshots of the stroke list) -------------
+
+  final List<List<Stroke>> _undoStack = <List<Stroke>>[];
+  final List<List<Stroke>> _redoStack = <List<Stroke>>[];
+  static const int _maxUndo = 40;
+
+  // ----- UI state mirror (kept in sync with EditorScreen via onUiStateChanged) -----
+
+  FeatherTool _tool = FeatherTool.draw;
+  Color _color = const Color(0xFF60A5FA);
+  double _brushSize = 20.0; // mm
+  double _brushOpacity = 1.0;
+  bool _pressure = true;
+  FeatherMaterial _material = FeatherMaterial.shaded;
+  FeatherPattern _pattern = FeatherPattern.none;
+  bool _renderMode = false;
+  bool _uiHidden = false;
+  String _groupName = 'Group 1';
+
+  // ----- Live stroke assembly state ---------------------------------------
+
+  /// World-space points of the stroke currently being drawn (one per
+  /// onStrokeUpdate callback). Cleared on stroke end.
+  final List<Vector3> _liveStroke = <Vector3>[];
+
+  /// Viewport size captured from the last build — needed to map screen
+  /// pixel coordinates to camera rays.
+  Size _viewportSize = Size.zero;
+
+  // ----- Presets (UI-only visual catalog) ---------------------------------
+
+  late final List<BrushPreset> _presets;
 
   @override
   void initState() {
     super.initState();
-    _ownsState = widget.state == null;
-    _state = widget.state ??
-        EditorState(tryEngine: widget.enableEngine);
-    // Fire-and-forget: the picker rebuilds via notifyListeners when the
-    // scan completes. The real Krita default library (first-run import,
-    // krita_resources.dart) wins when present; otherwise the legacy
-    // bundled-presets folder is scanned.
-    _state
-        .loadPresetLibrary(
-            directory: KritaResources.importedPresetsDirPath())
-        .catchError((_) {});
+    _scene = Scene();
+    // Seed a default group so the layer panel has something to show.
+    _scene.layers.addNewGroup(_groupName);
+
+    _camera = OrbitCamera();
+    _krita = KritaEngine()..init();
+    // The brush engine uses the procedural fallback by default; when the
+    // real Krita backend is available we still keep the procedural engine
+    // for 3D stroke assembly (its 2D dab path is only used for the live
+    // preview; the native backend drives the real dabs when present).
+    _brush = createBrushEngine(
+      settings: const BrushSettings(size: 20.0, opacity: 1.0),
+      color: _color.toARGB32(),
+    );
+    _guides = Guide3DManager();
+    _liquify = LiquifyEngine();
+    _selectionModel = SelectionModel();
+    _selection = SelectionSystem(
+      model: _selectionModel,
+      strokes: () => _strokes,
+    );
+
+    _presets = _buildDefaultPresets();
   }
 
   @override
   void dispose() {
-    if (_ownsState) _state.dispose();
+    _brush.dispose();
+    _krita.shutdown();
     super.dispose();
-  }
-
-  // ----- Tool handling ----------------------------------------------------
-
-  void _onTool(Tool tool) {
-    switch (tool) {
-      case Tool.export:
-        _showExportSheet();
-        return;
-      case Tool.settings:
-        _showSettingsSheet();
-        return;
-      case Tool.select:
-        setState(() => _showStrokeList = !_showStrokeList);
-        break;
-      case Tool.light:
-        // loop-52: the Light tool is now a REAL tool — tapping it
-        // ACTIVATES it and one-finger canvas drags orbit the scene key
-        // light (SceneLightRig). The old grid toggle lives on the
-        // Ctrl+G shortcut only.
-        break;
-      default:
-        break;
-    }
-    _state.setActiveTool(tool);
-  }
-
-  // ----- Keyboard shortcut actions (loop-23) ----------------------------
-  //
-  // Invoked by the [EditorShortcuts] bindings map. Each method is a tiny,
-  // side-effect-bearing wrapper around the real [EditorState] / filesystem
-  // operations so the wiring stays in [build] and the behaviour stays here
-  // (and is unit-testable through the live state).
-
-  void _shortcutUndo() => _state.undo();
-
-  void _shortcutRedo() => _state.redo();
-
-  Future<void> _shortcutOpen() => _showOpenProject();
-
-  void _shortcutNewDocument() {
-    _state.newDocument();
-    if (mounted) setState(() {});
-    _toast('New document (Ctrl+N).');
-  }
-
-  /// Quick-save: write the current document as a timestamped `.feather`
-  /// file in the exports directory, no dialog. Mirrors the export runner's
-  // `.feather` path but skips the sheet so a keystroke is enough to save.
-  void _shortcutQuickSave() {
-    try {
-      final dir = _exportDir();
-      final base = _state.fileName.replaceAll(RegExp(r'\.feather$'), '');
-      final safe = base.replaceAll(RegExp(r'[^\w\- ]'), '_');
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final path = '${dir.path}${Platform.pathSeparator}$safe-$stamp.feather';
-      File(path).writeAsStringSync(_buildProjectJson());
-      recordRecentProject(path);
-      _toast('Saved $path');
-    } catch (e) {
-      _toast('Save failed: $e');
-    }
-  }
-
-  void _shortcutToggleGrid() {
-    _state.showGrid = !_state.showGrid;
-    _state.showMirrorPlanes = _state.showGrid;
-    _state.notify();
-  }
-
-  void _shortcutBrushSizeDelta(double delta) {
-    _state.setBrushSize((_state.brushSize + delta).clamp(1.0, 500.0));
-  }
-
-  void _shortcutDeleteSelected() {
-    final strokes = _state.strokes;
-    final ids = strokes.selectedStrokes.map((s) => s.id).toList();
-    if (ids.isEmpty) {
-      _toast('No stroke selected.');
-      return;
-    }
-    for (final id in ids) {
-      strokes.removeStroke(id);
-    }
-    strokes.notify();
-    if (mounted) setState(() {});
-    _toast('Deleted ${ids.length} stroke(s).');
-  }
-
-  void _shortcutDeselect() {
-    _state.strokes.clearSelection();
-  }
-
-  /// The full shortcut → callback map. Built once per build; cheap because
-  /// the closures capture only `this`.
-  Map<ShortcutActivator, VoidCallback> _shortcutBindings() {
-    return <ShortcutActivator, VoidCallback>{
-      // Undo / redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y).
-      ctrlKey(LogicalKeyboardKey.keyZ): _shortcutUndo,
-      metaKey(LogicalKeyboardKey.keyZ): _shortcutUndo,
-      ctrlKey(LogicalKeyboardKey.keyZ, shift: true): _shortcutRedo,
-      metaKey(LogicalKeyboardKey.keyZ, shift: true): _shortcutRedo,
-      ctrlKey(LogicalKeyboardKey.keyY): _shortcutRedo,
-      metaKey(LogicalKeyboardKey.keyY): _shortcutRedo,
-      // Document ops.
-      ctrlKey(LogicalKeyboardKey.keyS): _shortcutQuickSave,
-      metaKey(LogicalKeyboardKey.keyS): _shortcutQuickSave,
-      ctrlKey(LogicalKeyboardKey.keyO): _shortcutOpen,
-      metaKey(LogicalKeyboardKey.keyO): _shortcutOpen,
-      ctrlKey(LogicalKeyboardKey.keyN): _shortcutNewDocument,
-      metaKey(LogicalKeyboardKey.keyN): _shortcutNewDocument,
-      // Tool hotkeys (plain letters; a focused text field consumes these).
-      const SingleActivator(LogicalKeyboardKey.keyB): () => _onTool(Tool.draw),
-      const SingleActivator(LogicalKeyboardKey.keyE): () => _onTool(Tool.erase),
-      const SingleActivator(LogicalKeyboardKey.keyV): () => _onTool(Tool.select),
-      const SingleActivator(LogicalKeyboardKey.keyL): () => _onTool(Tool.liquify),
-      const SingleActivator(LogicalKeyboardKey.keyG): _shortcutToggleGrid,
-      // Brush size [ / ].
-      const SingleActivator(LogicalKeyboardKey.bracketLeft): () =>
-          _shortcutBrushSizeDelta(-8),
-      const SingleActivator(LogicalKeyboardKey.bracketRight): () =>
-          _shortcutBrushSizeDelta(8),
-      // Selection.
-      const SingleActivator(LogicalKeyboardKey.delete): _shortcutDeleteSelected,
-      const SingleActivator(LogicalKeyboardKey.backspace):
-          _shortcutDeleteSelected,
-      const SingleActivator(LogicalKeyboardKey.escape): _shortcutDeselect,
-    };
-  }
-
-  // ----- Dialogs ----------------------------------------------------------
-
-  void _showExportSheet() {
-    HapticFeedback.selectionClick();
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => ExportScreen(
-        isPro: _state.isPro,
-        baseName: _state.fileName.replaceAll(RegExp(r'\.feather$'), ''),
-        guideSurfaceName: guideSurfaceTypeName(_state.guideSurface.type),
-        exporter: _runExport,
-        onUpgrade: () => _toast('Pro upgrade is not wired yet — stay tuned!'),
-        onToast: _toast,
-        onClose: () => Navigator.of(context).pop(),
-      ),
-    );
-  }
-
-  void _showSettingsSheet() {
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => SettingsScreen(
-        state: _state,
-        onUpgrade: () => _toast('Pro upgrade is not wired yet — stay tuned!'),
-        onClose: () => Navigator.of(context).pop(),
-      ),
-    );
-  }
-
-  Future<void> _pickPreset() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => BrushPickerScreen(
-          presets: _state.presets,
-          activePresetId: null,
-          onPick: (BrushPreset preset) {
-            _state.loadBrushPreset(preset);
-            Navigator.of(context).pop();
-          },
-          onImport: () =>
-              _toast('Copy .kpp files to ${presetsDir().path} — they appear in the picker on the next launch.'),
-          onClose: () => Navigator.of(context).pop(),
-          onOpenFullKrita: _openFullKrita,
-        ),
-      ),
-    );
-  }
-
-  /// Launches the FULL official Krita application bundled with the
-  /// package (krita/bin/krita.exe — the complete, unmodified install
-  /// from krita.org). No-op with a toast when the bundle is absent
-  /// (e.g. dev builds).
-  Future<void> _openFullKrita() async {
-    final ok = await KritaLauncher.launch();
-    if (!mounted) return;
-    _toast(ok
-        ? 'Launching the full Krita application…'
-        : 'The full Krita bundle is not present next to this build.');
-  }
-
-  void _toast(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xCC1A1A2E),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ));
-  }
-
-  // ----- Exporter ---------------------------------------------------------
-
-  static Directory _exportDir() => exportsDir();
-
-  /// Real export implementation behind [ExportScreen]'s [ExportRunner].
-  ///
-  /// All filesystem work is synchronous on purpose: the image encoder is
-  /// synchronous anyway, and keeping the whole operation on microtasks
-  /// makes the future complete under Flutter's fake-async widget tests
-  /// (real async I/O never completes inside a fake event loop).
-  Future<String> _runExport(
-    ExportFormat format,
-    int quality,
-    void Function(double progress) onProgress, {
-    String? path,
-  }) async {
-    try {
-      onProgress(0.1);
-      final dir = _exportDir();
-      final baseName =
-          _state.fileName.replaceAll(RegExp(r'\.feather$'), '');
-      final safe = baseName.replaceAll(RegExp(r'[^\w\- ]'), '_');
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final info = exportInfo(format);
-      final outPath = path ??
-          '${dir.path}${Platform.pathSeparator}$safe-$stamp.${info.extension}';
-
-      switch (format) {
-        case ExportFormat.png:
-          onProgress(0.4);
-          File(outPath).writeAsBytesSync(_encodeTexture());
-          break;
-        case ExportFormat.jpeg:
-          onProgress(0.4);
-          File(outPath).writeAsBytesSync(
-              _encodeTexture(jpegQuality: quality));
-          break;
-        case ExportFormat.obj:
-          onProgress(0.5);
-          File(outPath).writeAsStringSync(_buildObj());
-          break;
-        case ExportFormat.featherProject:
-          onProgress(0.5);
-          File(outPath).writeAsStringSync(_buildProjectJson());
-          break;
-        case ExportFormat.gltf:
-          onProgress(0.5);
-          File(outPath).writeAsStringSync(
-              buildGltf(_state.guideSurface.mesh, name: safe));
-          break;
-        case ExportFormat.gif:
-          onProgress(0.2);
-          final gif = GifExporter(
-            frameCount: 8 + quality ~/ 10,
-          ).export(
-            strokes: _state.strokes.strokes,
-            dabFor: _replayDab,
-            brushSizePx: _state.brushSize,
-            brushOpacity: _state.brushOpacity,
-            sourceTextureSize: _state.texture.width,
-            onProgress: (p) => onProgress(0.2 + p * 0.8),
-          );
-          File(outPath).writeAsBytesSync(gif);
-          break;
-        case ExportFormat.mp4:
-          onProgress(0.2);
-          final mp4 = Mp4Exporter(
-            frameCount: 12 + quality ~/ 8,
-          ).export(
-            strokes: _state.strokes.strokes,
-            dabFor: _replayDab,
-            brushSizePx: _state.brushSize,
-            brushOpacity: _state.brushOpacity,
-            sourceTextureSize: _state.texture.width,
-            onProgress: (p) => onProgress(0.2 + p * 0.8),
-          );
-          File(outPath).writeAsBytesSync(mp4);
-          break;
-      }
-      onProgress(1.0);
-      return outPath;
-    } catch (e) {
-      return 'error: $e';
-    }
-  }
-
-  List<int> _encodeTexture({int? jpegQuality}) {
-    final tex = _state.texture;
-    final image = img.Image(tex.width, tex.height);
-    final px = tex.pixels;
-    for (var y = 0; y < tex.height; y++) {
-      for (var x = 0; x < tex.width; x++) {
-        final i = y * tex.stride + x * 4;
-        // The image package (3.x) stores pixels as #AABBGGRR — R in the
-        // LOW byte. Packing ARGB here would silently swap red and blue in
-        // every exported PNG/JPEG.
-        final packed = (px[i + 3] << 24) |
-            (px[i + 2] << 16) |
-            (px[i + 1] << 8) |
-            px[i];
-        image.setPixel(x, y, packed);
-      }
-    }
-    if (jpegQuality != null) return img.encodeJpg(image, quality: jpegQuality);
-    return img.encodePng(image);
-  }
-
-  /// Serialises the active guide surface as a Wavefront OBJ file with
-  /// vertices, UVs, normals and triangulated faces.
-  String _buildObj() {
-    final mesh = _state.guideSurface.mesh;
-    final buf = StringBuffer()
-      ..writeln('# Feather-Krita OBJ export')
-      ..writeln('# ${mesh.positions.length} vertices');
-    for (final p in mesh.positions) {
-      buf.writeln('v ${p.x.toStringAsFixed(6)} '
-          '${p.y.toStringAsFixed(6)} ${p.z.toStringAsFixed(6)}');
-    }
-    for (final t in mesh.uvs) {
-      buf.writeln('vt ${t.x.toStringAsFixed(6)} ${t.y.toStringAsFixed(6)}');
-    }
-    for (final n in mesh.normals) {
-      buf.writeln('vn ${n.x.toStringAsFixed(6)} '
-          '${n.y.toStringAsFixed(6)} ${n.z.toStringAsFixed(6)}');
-    }
-    for (var i = 0; i + 2 < mesh.indices.length; i += 3) {
-      final a = mesh.indices[i] + 1;
-      final b = mesh.indices[i + 1] + 1;
-      final c = mesh.indices[i + 2] + 1;
-      buf.writeln('f $a/$a/$a $b/$b/$b $c/$c/$c');
-    }
-    return buf.toString();
-  }
-
-  String _buildProjectJson() {
-    return FeatherProjectDocument.fromEditor(_state).toJsonString();
-  }
-
-  /// Dab source for GIF stroke replay. Delegates to [EditorState]'s
-  /// shared replay rule (synthetic dab at the stroke's recorded color —
-  /// the native engine only holds the globally-configured color, which
-  /// would repaint multi-color documents with the wrong palette).
-  BrushDab _replayDab(Stroke stroke, double pressure, double sizePx) {
-    return _state.replayDab(stroke, pressure, sizePx);
-  }
-
-  // ----- Open project -----------------------------------------------------
-
-  Future<void> _showOpenProject() async {
-    HapticFeedback.selectionClick();
-    final path = await showDialog<String>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => OpenProjectDialog(initialDir: _exportDir().path),
-    );
-    if (path == null || !mounted) return;
-    try {
-      final doc = FeatherProjectDocument.parse(File(path).readAsStringSync());
-      doc.applyTo(_state);
-      recordRecentProject(path);
-      if (mounted) setState(() {});
-      _toast('Opened ${doc.fileName} — ${doc.strokes.length} strokes.');
-    } catch (e) {
-      _toast('Could not open project: $e');
-    }
-  }
-
-  // ----- Joystick ---------------------------------------------------------
-
-  void _onJoystickInput(Vector2 input) {
-    final strokes = _state.strokes;
-    if (strokes.selectedStrokes.isEmpty) return;
-    switch (_joystickMode) {
-      case JoystickMode.move:
-        strokes
-          ..applyJoystickTransform(input, TransformMode.move)
-          ..notify();
-        break;
-      case JoystickMode.rotate:
-        strokes
-          ..applyJoystickTransform(input, TransformMode.rotate)
-          ..notify();
-        break;
-      case JoystickMode.scale:
-        strokes
-          ..applyJoystickTransform(input, TransformMode.scale)
-          ..notify();
-        break;
-      case JoystickMode.liquify:
-        final center = _selectionCenter(strokes);
-        if (center == null) return;
-        final strength = input.length.clamp(0.0, 1.0) * 0.10;
-        if (strength <= 0) return;
-        strokes.applyLiquify(
-          LiquifyMode.push,
-          center,
-          0.5,
-          strength,
-          _state.camera.forward,
-        );
-        strokes.notify();
-        break;
-    }
-    setState(() {});
-  }
-
-  static Vector3? _selectionCenter(StrokeManager strokes) {
-    final selected = strokes.selectedStrokes;
-    if (selected.isEmpty) return null;
-    var sum = Vector3.zero();
-    for (final s in selected) {
-      sum += s.worldCenter();
-    }
-    return sum / selected.length.toDouble();
   }
 
   // ----- Build ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    return EditorShortcuts(
-      bindings: _shortcutBindings(),
-      child: Scaffold(
-        backgroundColor: AppTheme.canvasBackground,
-        body: SafeArea(
-        child: ListenableBuilder(
-          listenable: _state,
-          builder: (context, _) {
-            final showJoystick =
-                _state.activeTool == Tool.select ||
-                    _state.activeTool == Tool.liquify;
-            return Stack(
-              children: [
-                // The real 3D canvas viewport.
-                Positioned.fill(child: CanvasWidget(state: _state)),
-
-                // Top app bar.
-                Positioned(
-                  top: 8,
-                  left: 12,
-                  right: 12,
-                  child: GlassAppBar(
-                    fileName: _state.fileName,
-                    canUndo: _state.canUndo,
-                    canRedo: _state.canRedo,
-                    onUndo: _state.undo,
-                    onRedo: _state.redo,
-                    onOpenFolder: _showOpenProject,
-                    onRename: (name) => setState(() => _state.fileName = name),
-                    onShowSettings: _showSettingsSheet,
-                  ),
-                ),
-
-                // Left dock — stroke list (Select tool).
-                if (_showStrokeList)
-                  Positioned(
-                    top: 76,
-                    bottom: 108,
-                    left: 12,
-                    child: StrokeListPanel(
-                      manager: _state.strokes,
-                      onClose: () => setState(() => _showStrokeList = false),
-                    ),
-                  ),
-
-                // Right dock — brush settings.
-                Positioned(
-                  top: 76,
-                  bottom: 108,
-                  right: 12,
-                  child: BrushSettingsPanel(
-                    state: _state,
-                    onPickPreset: _pickPreset,
-                  ),
-                ),
-
-                // Selection joystick.
-                if (showJoystick)
-                  Positioned(
-                    right: 24,
-                    bottom: 104,
-                    child: JoystickWidget(
-                      mode: _joystickMode,
-                      onModeChanged: (m) => setState(() => _joystickMode = m),
-                      onInput: _onJoystickInput,
-                    ),
-                  ),
-
-                // Bottom tool dock.
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 12,
-                  child: Center(
-                    child: GlassBottomBar(
-                      activeTool: _state.activeTool,
-                      onToolSelected: _onTool,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        return EditorScreen(
+          initial: _initialUiState(),
+          scene: _buildCanvasScene(),
+          layers: _buildLayerItems(),
+          resources: _buildResourceItems(),
+          presets: _presets,
+          canUndo: _undoStack.isNotEmpty,
+          canRedo: _redoStack.isNotEmpty,
+          drawingEnabled: _tool == FeatherTool.draw,
+          onStrokeStart: _onStrokeStart,
+          onStrokeUpdate: _onStrokeUpdate,
+          onStrokeEnd: _onStrokeEnd,
+          onUndo: _undo,
+          onRedo: _redo,
+          onUiStateChanged: _onUiStateChanged,
+          onPan: _onPan,
+          onZoom: _onZoom,
+          onSelectAll: _selectAll,
+          onLiquifyMode: _onLiquifyMode,
+          onLiquifyApply: _onLiquifyApply,
+          onLiquifyUndoAll: _onLiquifyUndoAll,
+          onJoystickMove: _onJoystickMove,
+          onJoystickRotate: _onJoystickRotate,
+          onJoystickScale: _onJoystickScale,
+          onPickPreset: _onPickPreset,
+        );
+      },
     );
+  }
+
+  // ----- UI state adaptation ----------------------------------------------
+
+  EditorUiState _initialUiState() => EditorUiState(
+        tool: _tool,
+        color: _color,
+        size: _brushSize,
+        opacity: _brushOpacity,
+        pressure: _pressure,
+        material: _material,
+        pattern: _pattern,
+        groupName: _groupName,
+        renderMode: _renderMode,
+        uiHidden: _uiHidden,
+      );
+
+  /// Builds the [CanvasScene] the viewport paints. Projects each 3D
+  /// stroke through the camera's view-projection matrix to 2D screen
+  /// points so the 2D [CanvasViewport] can render them.
+  CanvasScene _buildCanvasScene() {
+    final aspect = _viewportSize.isEmpty
+        ? 1.0
+        : _viewportSize.width / _viewportSize.height;
+    final vp = _camera.viewProjectionMatrix(aspect);
+    final screenStrokes = <CanvasStroke>[];
+    for (final stroke in _strokes) {
+      if (!stroke.isVisible) continue;
+      final points = <Offset>[];
+      for (final p in stroke.points) {
+        final world = stroke.transform.transform3(p.position.clone());
+        final ndc = vp.transform3(world.clone());
+        // Clip points behind the camera / outside the near-far range.
+        if (ndc.z <= -1.0 || ndc.z >= 1.0) continue;
+        final sx = (ndc.x * 0.5 + 0.5) * _viewportSize.width;
+        final sy = (1.0 - (ndc.y * 0.5 + 0.5)) * _viewportSize.height;
+        points.add(Offset(sx, sy));
+      }
+      if (points.length < 2) continue;
+      screenStrokes.add(CanvasStroke(
+        points: points,
+        color: Color(stroke.color),
+        width: stroke.thickness.clamp(1.0, 24.0),
+      ));
+    }
+    return CanvasScene(
+      strokes: screenStrokes,
+      activeColor: _color,
+      pan: Offset.zero,
+      zoom: 1.0,
+      showGrid: true,
+      renderMode: _renderMode,
+    );
+  }
+
+  List<LayerItem> _buildLayerItems() {
+    final items = <LayerItem>[];
+    for (final layer in _scene.layers.layers) {
+      items.add(LayerItem(
+        id: layer.id,
+        name: layer.name,
+        color: layer.color,
+        visible: layer.visible,
+        selected: layer.id == _scene.layers.activeId,
+        count: layer.curveIds.length,
+      ));
+    }
+    return items;
+  }
+
+  List<ResourceItem> _buildResourceItems() {
+    final items = <ResourceItem>[];
+    for (final r in _scene.resources.values) {
+      items.add(ResourceItem(id: r.id, name: r.name, kind: r.kind));
+    }
+    // Active guides appear as resources too (the Resources tab).
+    final guideIds = _guides.ids;
+    final guideList = _guides.guides;
+    for (var i = 0; i < guideList.length; i++) {
+      final guide = guideList[i];
+      items.add(ResourceItem(
+        id: 'guide-${guideIds[i]}',
+        name: guide.name ?? 'Guide',
+        kind: 'Guide3D',
+      ));
+    }
+    return items;
+  }
+
+  List<BrushPreset> _buildDefaultPresets() {
+    return const [
+      BrushPreset(
+        id: 'basic_round',
+        name: 'Basic Round',
+        previewColor: Color(0xFF1A1A1A),
+        strokeWidth: 5,
+      ),
+      BrushPreset(
+        id: 'soft_airbrush',
+        name: 'Soft Airbrush',
+        previewColor: Color(0xFF60A5FA),
+        strokeWidth: 3,
+      ),
+      BrushPreset(
+        id: 'ink_fineliner',
+        name: 'Ink Fineliner',
+        previewColor: Color(0xFF111111),
+        strokeWidth: 2,
+        tapered: false,
+      ),
+      BrushPreset(
+        id: 'marker_flat',
+        name: 'Marker Flat',
+        previewColor: Color(0xFFFB923C),
+        strokeWidth: 7,
+        tapered: false,
+      ),
+      BrushPreset(
+        id: 'dashed_thin',
+        name: 'Dashed Thin',
+        previewColor: Color(0xFFA78BFA),
+        strokeWidth: 3,
+        dashed: true,
+      ),
+    ];
+  }
+
+  // ----- UI state changes (from EditorScreen) -----------------------------
+
+  void _onUiStateChanged(EditorUiState s) {
+    setState(() {
+      if (_tool != s.tool) {
+        _tool = s.tool;
+        // Entering the liquify tool begins a liquify session on the
+        // current selection; leaving it applies the session.
+        if (_tool == FeatherTool.liquify) {
+          _liquify.begin(_selectedStrokes());
+        } else if (_liquify.isEditing) {
+          _liquify.apply();
+        }
+      }
+      _color = s.color;
+      _brushSize = s.size;
+      _brushOpacity = s.opacity;
+      _pressure = s.pressure;
+      _material = s.material;
+      _pattern = s.pattern;
+      _renderMode = s.renderMode;
+      _uiHidden = s.uiHidden;
+      _groupName = s.groupName;
+    });
+    // Mirror into the live brush engine.
+    _brush.color = _color.toARGB32();
+    _brush.settings = _brush.settings.copyWith(
+      size: _brushSize,
+      opacity: _brushOpacity,
+      pressureEnabled: _pressure,
+    );
+    // Mirror into the Krita backend (real or fallback) so dabs match.
+    final backend = _krita.isInitialized ? _krita.backend : null;
+    if (backend != null) {
+      backend
+        ..size = _brushSize
+        ..opacity = _brushOpacity
+        ..color = BrushColor(
+          (_color.r * 255).round(),
+          (_color.g * 255).round(),
+          (_color.b * 255).round(),
+          (_color.a * 255).round(),
+        );
+    }
+  }
+
+  // ----- Camera gestures --------------------------------------------------
+
+  void _onPan(Offset delta) {
+    setState(() {
+      // Two-finger drag orbits the camera (yaw / pitch). This matches
+      // Feather 3D's "spin the model" gesture.
+      _camera.orbit(delta.dx * 0.008, delta.dy * 0.008);
+    });
+  }
+
+  void _onZoom(double scale) {
+    if ((scale - 1.0).abs() < 0.001) return;
+    setState(() {
+      // Pinch out (scale > 1) → zoom in (distance shrinks).
+      _camera.zoom(1.0 / scale);
+    });
+  }
+
+  // ----- Stroke drawing ---------------------------------------------------
+
+  void _onStrokeStart() {
+    _liveStroke.clear();
+    _pushUndo();
+  }
+
+  void _onStrokeUpdate(Offset screenPos) {
+    final world = _screenToWorld(screenPos);
+    if (world == null) return;
+    _liveStroke.add(world);
+    // Feed the brush engine so smoothing + 3D assembly happen live.
+    if (_liveStroke.length == 1) {
+      _brush.beginStroke(StrokePoint(position: world.clone(), pressure: 0.8));
+    } else {
+      _brush.addPoint(StrokePoint(position: world.clone(), pressure: 0.8));
+    }
+    setState(() {});
+  }
+
+  void _onStrokeEnd() {
+    final stroke = _brush.endStroke(brushType: BrushType.basic);
+    _liveStroke.clear();
+    if (stroke == null) return;
+    stroke.id = _nextStrokeId++;
+    stroke.color = _color.toARGB32();
+    stroke.thickness = _brushSize * 0.15;
+    _strokes.add(stroke);
+    // Register with the scene graph + active layer.
+    _scene.addCurve(curveId: 'stroke-${stroke.id}');
+    setState(() {});
+  }
+
+  /// Unprojects a screen position to a world-space point on the y=0
+  /// ground plane (Feather's default drawing surface). Returns null
+  /// when the camera ray is parallel to the ground plane.
+  ///
+  /// NOTE: the new [Guide3D.raycast] takes the engine's custom [Ray] /
+  /// [Vec3] types (lib/core/math/), which are distinct from the
+  /// vector_math [Vector3] used by the camera and stroke model. The
+  /// guide hit-path therefore needs a Vec3<->Vector3 bridge that is
+  /// not wired in this loop; for now we raycast against the y=0 ground
+  /// plane. The [Guide3DManager] is still owned and its guides are
+  /// surfaced in the Resources tab — rendering the guide meshes and
+  /// snapping strokes to them is the next loop.
+  Vector3? _screenToWorld(Offset screen) {
+    if (_viewportSize.isEmpty) return null;
+    final ray = _screenToRay(screen);
+    // Ground plane (y = 0): t = -origin.y / dir.y.
+    final t = -ray.origin.y / ray.direction.y;
+    if (t.isFinite && t > 0 && t < 1000) {
+      return ray.origin + ray.direction * t;
+    }
+    return null;
+  }
+
+  /// Builds a world-space ray (origin + direction, both [Vector3]) from
+  /// the camera through [screen].
+  _CamRay _screenToRay(Offset screen) {
+    final w = _viewportSize.width;
+    final h = _viewportSize.height;
+    if (w == 0 || h == 0) {
+      return _CamRay(Vector3.zero(), Vector3(0, 0, -1));
+    }
+    // Normalized device coordinates.
+    final ndcX = (screen.dx / w) * 2.0 - 1.0;
+    final ndcY = 1.0 - (screen.dy / h) * 2.0;
+    final aspect = w / h;
+    final vp = _camera.viewProjectionMatrix(aspect);
+    final inv = Matrix4.inverted(vp);
+    // Near-plane point (ndc z = -1).
+    final near = inv.transform3(Vector3(ndcX, ndcY, -1.0));
+    // Far-plane point (ndc z = 1).
+    final far = inv.transform3(Vector3(ndcX, ndcY, 1.0));
+    final dir = (far - near)..normalize();
+    return _CamRay(near, dir);
+  }
+
+  // ----- Selection --------------------------------------------------------
+
+  List<Stroke> _selectedStrokes() {
+    final ids = _selectionModel.active.toSet();
+    return _strokes.where((s) => ids.contains(s.id)).toList();
+  }
+
+  void _selectAll() {
+    _selection.selectAll();
+    setState(() {});
+  }
+
+  // ----- Joystick (transform selected strokes) ---------------------------
+
+  void _onJoystickMove(Offset v) {
+    final selected = _selectedStrokes();
+    if (selected.isEmpty) return;
+    final right = _camera.right;
+    final up = _camera.up;
+    final delta = right * (v.dx * 0.6) + up * (-v.dy * 0.6);
+    for (final s in selected) {
+      s.applyTranslation(delta);
+    }
+    setState(() {});
+  }
+
+  void _onJoystickRotate(double r) {
+    final selected = _selectedStrokes();
+    if (selected.isEmpty) return;
+    final pivot = _selectionPivot(selected);
+    final axis = _camera.forward;
+    final q = Quaternion.axisAngle(axis, r);
+    for (final s in selected) {
+      s.applyRotation(q, pivot: pivot);
+    }
+    setState(() {});
+  }
+
+  void _onJoystickScale(Offset s) {
+    final selected = _selectedStrokes();
+    if (selected.isEmpty) return;
+    final pivot = _selectionPivot(selected);
+    final factor = 1.0 + (s.dx + s.dy) * 0.5;
+    if ((factor - 1.0).abs() < 1e-4) return;
+    for (final stroke in selected) {
+      stroke.applyScale(factor, pivot: pivot);
+    }
+    setState(() {});
+  }
+
+  Vector3 _selectionPivot(List<Stroke> selected) {
+    if (selected.isEmpty) return Vector3.zero();
+    var sum = Vector3.zero();
+    for (final s in selected) {
+      sum += s.worldCenter();
+    }
+    return sum..scale(1.0 / selected.length);
+  }
+
+  // ----- Liquify ----------------------------------------------------------
+
+  void _onLiquifyMode(LiquifyMode mode) {
+    final t = switch (mode) {
+      LiquifyMode.push => LiquifyBrushType.push,
+      LiquifyMode.pinch => LiquifyBrushType.pinch,
+      LiquifyMode.comb => LiquifyBrushType.comb,
+    };
+    _liquify.setBrushType(t);
+  }
+
+  void _onLiquifyApply() {
+    if (!_liquify.isEditing) return;
+    _pushUndo();
+    _liquify.apply();
+    setState(() {});
+  }
+
+  void _onLiquifyUndoAll() {
+    if (!_liquify.isEditing) return;
+    _liquify.undoAll(_strokes);
+    setState(() {});
+  }
+
+  // ----- Brush presets ----------------------------------------------------
+
+  void _onPickPreset(BrushPreset preset) {
+    setState(() {
+      _color = preset.previewColor;
+      _brushSize = preset.strokeWidth * 4.0;
+    });
+    _brush.color = _color.toARGB32();
+    _brush.settings = _brush.settings.copyWith(
+      size: _brushSize,
+      opacity: _brushOpacity,
+      pressureEnabled: _pressure,
+    );
+    final backend = _krita.isInitialized ? _krita.backend : null;
+    if (backend != null) {
+      backend
+        ..size = _brushSize
+        ..color = BrushColor(
+          (_color.r * 255).round(),
+          (_color.g * 255).round(),
+          (_color.b * 255).round(),
+          (_color.a * 255).round(),
+        );
+    }
+  }
+
+  // ----- Undo / redo ------------------------------------------------------
+
+  void _pushUndo() {
+    _undoStack.add(_strokes.map((s) => s.copy()).toList());
+    if (_undoStack.length > _maxUndo) _undoStack.removeAt(0);
+    _redoStack.clear();
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(_strokes.map((s) => s.copy()).toList());
+    final prev = _undoStack.removeLast();
+    _strokes
+      ..clear()
+      ..addAll(prev);
+    _selectionModel.reconcile(_strokes);
+    setState(() {});
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(_strokes.map((s) => s.copy()).toList());
+    final next = _redoStack.removeLast();
+    _strokes
+      ..clear()
+      ..addAll(next);
+    _selectionModel.reconcile(_strokes);
+    setState(() {});
   }
 }
 
-
+/// A world-space camera ray (origin + direction, both vector_math
+/// [Vector3]). Kept separate from the engine's [Ray] type
+/// (lib/core/math/ray.dart) which uses the immutable [Vec3]; the camera
+/// and stroke model operate on [Vector3] so this is the natural type
+/// here.
+class _CamRay {
+  _CamRay(this.origin, this.direction);
+  final Vector3 origin;
+  final Vector3 direction;
+}

@@ -26,3 +26,4 @@ __pycache__/
 !windows/runner/krita_bridge.dll
 !assets/native/krita_bridge.dll
 scripts/out/
+.backup/

@@ -117,6 +117,24 @@ class EditorScreen extends StatefulWidget {
     this.onRedo,
     this.canUndo = false,
     this.canRedo = false,
+    // --- Host wiring (feather-integration) -------------------------------
+    // The EditorScreen is a layout shell; these callbacks let the parent
+    // host (lib/screens/main_screen.dart) observe UI-state mutations and
+    // canvas gestures so it can drive the real engine (camera, brush,
+    // selection, liquify, …). drawingEnabled gates single-finger drawing
+    // so the host can switch to orbit/select/liquify modes.
+    this.drawingEnabled = true,
+    this.onUiStateChanged,
+    this.onPan,
+    this.onZoom,
+    this.onSelectAll,
+    this.onLiquifyMode,
+    this.onLiquifyApply,
+    this.onLiquifyUndoAll,
+    this.onJoystickMove,
+    this.onJoystickRotate,
+    this.onJoystickScale,
+    this.onPickPreset,
   });
 
   final EditorUiState initial;
@@ -132,6 +150,46 @@ class EditorScreen extends StatefulWidget {
   final VoidCallback? onRedo;
   final bool canUndo;
   final bool canRedo;
+
+  /// When false, single-finger canvas drags are NOT treated as strokes
+  /// (the host uses them for orbit / select / liquify instead).
+  final bool drawingEnabled;
+
+  /// Fired whenever the internal [EditorUiState] mutates (tool / mode /
+  /// color / size / opacity / material / pattern / visibility flags).
+  /// The host mirrors the values into the real engine.
+  final ValueChanged<EditorUiState>? onUiStateChanged;
+
+  /// Canvas pan gesture (two-finger drag), in logical pixels.
+  final ValueChanged<Offset>? onPan;
+
+  /// Canvas zoom gesture (pinch), as a multiplicative scale factor.
+  final ValueChanged<double>? onZoom;
+
+  /// Radial menu → Select All action.
+  final VoidCallback? onSelectAll;
+
+  /// Liquify panel → mode switch (Push / Pinch / Comb). The host maps the
+  /// UI enum to [LiquifyBrushType] and pushes it to the [LiquifyEngine].
+  final ValueChanged<LiquifyMode>? onLiquifyMode;
+
+  /// Liquify panel → Apply button.
+  final VoidCallback? onLiquifyApply;
+
+  /// Liquify panel → Undo All button.
+  final VoidCallback? onLiquifyUndoAll;
+
+  /// Joystick → move delta (normalized -1..1 in each axis).
+  final ValueChanged<Offset>? onJoystickMove;
+
+  /// Joystick → rotate delta (radians).
+  final ValueChanged<double>? onJoystickRotate;
+
+  /// Joystick → scale delta (width, height) — fractional.
+  final ValueChanged<Offset>? onJoystickScale;
+
+  /// Brush picker → preset selected. The host loads it into the engine.
+  final ValueChanged<BrushPreset>? onPickPreset;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -154,7 +212,15 @@ class _EditorScreenState extends State<EditorScreen> {
   CanvasStroke? _preview;
   List<Offset> _live = const [];
 
-  void _set(EditorUiState next) => setState(() => _s = next);
+  // Mirror of the Liquify panel's mode (so the panel stays in sync when
+  // the host reports a mode change — kept local for now; the host also
+  // receives the change via [widget.onLiquifyMode]).
+  LiquifyMode _liquifyMode = LiquifyMode.push;
+
+  void _set(EditorUiState next) {
+    setState(() => _s = next);
+    widget.onUiStateChanged?.call(next);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,8 +362,16 @@ class _EditorScreenState extends State<EditorScreen> {
               right: 304,
               bottom: 96,
               child: LiquifyPanel(
-                onApply: () => setState(() => _showLiquify = false),
-                onUndoAll: () {},
+                mode: _liquifyMode,
+                onMode: (m) {
+                  setState(() => _liquifyMode = m);
+                  widget.onLiquifyMode?.call(m);
+                },
+                onApply: () {
+                  setState(() => _showLiquify = false);
+                  widget.onLiquifyApply?.call();
+                },
+                onUndoAll: widget.onLiquifyUndoAll,
               ),
             ),
 
@@ -309,9 +383,9 @@ class _EditorScreenState extends State<EditorScreen> {
               bottom: 96,
               child: Center(
                 child: JoystickWidget(
-                  onMove: (d) {},
-                  onRotate: (r) {},
-                  onScale: (s) {},
+                  onMove: widget.onJoystickMove,
+                  onRotate: widget.onJoystickRotate,
+                  onScale: widget.onJoystickScale,
                 ),
               ),
             ),
@@ -349,6 +423,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 selectedId: widget.presets.isNotEmpty
                     ? widget.presets.first.id
                     : null,
+                onSelected: widget.onPickPreset,
               ),
               onClose: () => setState(() => _showPresets = false),
             ),
@@ -392,6 +467,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     RadialMenuItem(
                       icon: Icons.select_all_rounded,
                       label: 'Select All',
+                      onTap: widget.onSelectAll,
                     ),
                 ],
                 onDismiss: () =>
@@ -408,6 +484,10 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _canvasLayer() {
+    // When drawing is disabled (the host is in select / liquify / orbit
+    // mode), pass `onStrokeStart: null` so the viewport treats single-
+    // finger drags as pan — which the host routes to camera orbit.
+    final start = widget.drawingEnabled ? widget.onStrokeStart : null;
     return Positioned.fill(
       child: CanvasViewport(
         scene: CanvasScene(
@@ -420,11 +500,13 @@ class _EditorScreenState extends State<EditorScreen> {
           renderMode: _s.renderMode,
           selectionBounds: _scene.selectionBounds,
         ),
-        onStrokeStart: () {
-          _live = const [];
-          setState(() => _preview = null);
-          widget.onStrokeStart?.call();
-        },
+        onStrokeStart: start == null
+            ? null
+            : () {
+                _live = const [];
+                setState(() => _preview = null);
+                widget.onStrokeStart?.call();
+              },
         onStrokeUpdate: (p) {
           _live = [..._live, p];
           setState(() => _preview = CanvasStroke(
@@ -441,6 +523,8 @@ class _EditorScreenState extends State<EditorScreen> {
           });
           widget.onStrokeEnd?.call();
         },
+        onPan: widget.onPan,
+        onZoom: widget.onZoom,
       ),
     );
   }

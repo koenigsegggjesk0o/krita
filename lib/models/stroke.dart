@@ -318,7 +318,7 @@ class Stroke {
   void applyScale(double factor, {Vector3? pivot}) {
     final p = pivot ?? worldCenter();
     final toOrigin = Matrix4.identity()..setTranslation(-p);
-    final scaleMat = Matrix4.identity()..scale(factor);
+    final scaleMat = Matrix4.identity()..scaleByVector3(Vector3.all(factor));
     final fromOrigin = Matrix4.identity()..setTranslation(p);
     transform = fromOrigin * scaleMat * toOrigin * transform;
     thickness *= factor;
@@ -347,7 +347,7 @@ class Stroke {
     final sy = sign.y == 0 ? 1.0 : sign.y;
     final sz = sign.z == 0 ? 1.0 : sign.z;
     final toOrigin = Matrix4.identity()..setTranslation(-origin);
-    final scaleMat = Matrix4.identity()..scale(sx, sy, sz);
+    final scaleMat = Matrix4.identity()..scaleByVector3(Vector3(sx, sy, sz));
     final fromOrigin = Matrix4.identity()..setTranslation(origin);
     final newTransform = fromOrigin * scaleMat * toOrigin * transform;
 
