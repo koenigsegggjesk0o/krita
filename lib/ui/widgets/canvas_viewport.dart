@@ -16,6 +16,31 @@
 // renders what it's given through [CanvasScene]. We don't import the
 // engine to keep the UI package hermetic — the parent editor screen
 // adapts the engine state into [CanvasScene].
+//
+// ── 3D shading ────────────────────────────────────────────────────────────
+// Strokes are painted as faux-3D tubes — no full rasterizer, no mesh
+// tessellation, just a smarter CustomPainter. For every stroke we:
+//
+//   1. compute a per-vertex screen-space normal (perpendicular of the
+//      local tangent, smoothed across the polyline),
+//   2. compute a per-vertex lit sign from `dot(normal, -lightDir)` —
+//      i.e. which side of the tube faces the light source,
+//   3. draw THREE offset polylines:
+//        • a base pass at the stroke's own color & width,
+//        • a "shadow" pass offset to the unlit side, darker & thinner,
+//        • a "highlight" pass offset to the lit side, brighter & thinner.
+//      The three passes overlap with round caps/joins so the visible
+//      cross-section reads as a shaded cylinder (Lambert falloff).
+//   4. drop a soft shadow on the ground plane (or an offset blob if
+//      no ground Y is provided), skewed along the light direction,
+//   5. optionally taper width with per-vertex depth (perspective).
+//
+// Materials:
+//   • [CanvasMaterial.flat]    — legacy solid color (no shading).
+//   • [CanvasMaterial.shaded]  — the 3-pass Lambert tube (default).
+//   • [CanvasMaterial.glow]    — additive blend + blurred bloom halo.
+//   • [CanvasMaterial.guide]   — translucent ribbon with grid hatch
+//                                (used to render Guide3D surfaces).
 
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -24,18 +49,48 @@ import 'package:flutter/material.dart';
 
 import '../theme/feather_colors.dart';
 
+/// Material kind for 3D stroke shading.
+enum CanvasMaterial {
+  /// Flat solid color (legacy behaviour, no shading).
+  flat,
+
+  /// Lambert-shaded tube — darker on the shadow side, brighter on the
+  /// light side. The default for brush strokes.
+  shaded,
+
+  /// Additive bloom — bright core plus a soft halo, blended on top of
+  /// the canvas with [BlendMode.plus].
+  glow,
+
+  /// Reads as the scene background: paints with the canvas background
+  /// color so the stroke visually disappears into the paper. Maps to
+  /// Feather's "Cutout" material.
+  cutout,
+
+  /// Translucent surface with grid hatch — used by Guide3D meshes.
+  guide,
+}
+
 class CanvasStroke {
   const CanvasStroke({
     required this.points,
     required this.color,
     this.width = 4,
     this.tapered = true,
+    this.material = CanvasMaterial.shaded,
+    /// Per-point world-space depth (camera-Z), one entry per point in
+    /// [points]. When provided, the painter modulates per-vertex width
+    /// (closer = thicker) and scales the drop-shadow skew. When empty,
+    /// a uniform width is used.
+    this.depths = const [],
   });
 
   final List<Offset> points;
   final Color color;
   final double width;
   final bool tapered;
+  final CanvasMaterial material;
+  final List<double> depths;
 }
 
 class CanvasScene {
@@ -48,6 +103,22 @@ class CanvasScene {
     this.pan = Offset.zero,
     this.showGrid = true,
     this.renderMode = false,
+    /// Direction light TRAVELS in screen space (not necessarily
+    /// normalized — the painter will normalize). Default: light comes
+    /// from the top-left, traveling towards the bottom-right.
+    this.lightDir = const Offset(0.7, 0.7),
+    /// Ambient term in 0..1 — floor for the shadow side. 0.35 means
+    /// the unlit side is at most 35% as bright as the base color.
+    this.ambient = 0.35,
+    /// Diffuse term in 0..1 — ceiling lift for the lit side. 0.65
+    /// means the highlight climbs 65% of the way from the base color
+    /// to pure white.
+    this.diffuse = 0.65,
+    /// Ground-plane Y in scene-local pixels. When non-null, strokes
+    /// cast a proper projected shadow onto this line, skewed along
+    /// [lightDir]. When null, the painter falls back to a soft offset
+    /// blob shadow under each stroke.
+    this.groundY,
   });
 
   final List<CanvasStroke> strokes;
@@ -58,6 +129,10 @@ class CanvasScene {
   final Offset pan;
   final bool showGrid;
   final bool renderMode;
+  final Offset lightDir;
+  final double ambient;
+  final double diffuse;
+  final double? groundY;
 }
 
 class CanvasViewport extends StatefulWidget {
@@ -69,6 +144,8 @@ class CanvasViewport extends StatefulWidget {
     this.onStrokeEnd,
     this.onPan,
     this.onZoom,
+    this.onTapSelect,
+    this.onLiquifyDrag,
     this.paperSeed = 7,
   });
 
@@ -78,6 +155,19 @@ class CanvasViewport extends StatefulWidget {
   final VoidCallback? onStrokeEnd;
   final ValueChanged<Offset>? onPan;
   final ValueChanged<double>? onZoom;
+
+  /// Fired on a single-finger tap (select gesture). Accepted but not yet
+  /// routed from the gesture surface — the host wires it to its
+  /// tap-select handler, but the viewport currently only emits pan /
+  /// stroke / scale gestures. Plumbing the tap detection is a follow-up.
+  final ValueChanged<Offset>? onTapSelect;
+
+  /// Fired on every pan-update while the Liquify tool is active.
+  /// Accepted but not yet routed — the host wires it to its liquify drag
+  /// handler, but the viewport currently only emits pan / stroke / scale
+  /// gestures. Plumbing a dedicated liquify drag mode is a follow-up.
+  final void Function(Offset screenPos, Offset dragDelta)? onLiquifyDrag;
+
   final int paperSeed;
 
   @override
@@ -210,24 +300,30 @@ class _CanvasPainter extends CustomPainter {
     canvas.drawLine(Offset(cx - 10, cy), Offset(cx + 10, cy), crossPaint);
     canvas.drawLine(Offset(cx, cy - 10), Offset(cx, cy + 10), crossPaint);
 
-    // 4. Strokes.
+    // 4. Strokes — drop shadows first (so they sit beneath every tube),
+    //    then tubes / glow / guides on top.
     canvas.save();
     canvas.translate(scene.pan.dx, scene.pan.dy);
     canvas.scale(scene.zoom);
+    // Pass 1: shadows only.
+    for (final s in scene.strokes) {
+      _paintDropShadow(canvas, s);
+    }
+    // Pass 2: the strokes themselves.
     for (final s in scene.strokes) {
       _paintStroke(canvas, s);
     }
     // 5. Live preview.
     if (isDrawing && livePoints.length >= 2) {
-      _paintStroke(
-        canvas,
-        CanvasStroke(
-          points: livePoints,
-          color: scene.activeColor,
-          width: 4,
-        ),
+      final live = CanvasStroke(
+        points: livePoints,
+        color: scene.activeColor,
+        width: 4,
       );
+      _paintDropShadow(canvas, live);
+      _paintStroke(canvas, live);
     } else if (scene.previewStroke != null) {
+      _paintDropShadow(canvas, scene.previewStroke!);
       _paintStroke(canvas, scene.previewStroke!);
     }
     canvas.restore();
@@ -238,28 +334,502 @@ class _CanvasPainter extends CustomPainter {
     }
   }
 
+  // ── Stroke dispatch ──────────────────────────────────────────────────
+
   void _paintStroke(Canvas canvas, CanvasStroke stroke) {
     if (stroke.points.length < 2) return;
+    switch (stroke.material) {
+      case CanvasMaterial.flat:
+        _paintFlat(canvas, stroke);
+        break;
+      case CanvasMaterial.shaded:
+        _paintShadedTube(canvas, stroke, additive: false);
+        break;
+      case CanvasMaterial.glow:
+        _paintGlowHalo(canvas, stroke);
+        _paintShadedTube(canvas, stroke, additive: true);
+        break;
+      case CanvasMaterial.cutout:
+        _paintCutout(canvas, stroke);
+        break;
+      case CanvasMaterial.guide:
+        _paintGuideRibbon(canvas, stroke);
+        break;
+    }
+  }
+
+  /// Cutout: paints the stroke with the canvas background color so it
+  /// reads as the scene background. No drop shadow, no shading — the
+  /// stroke visually disappears into the paper.
+  void _paintCutout(Canvas canvas, CanvasStroke stroke) {
+    final path = _strokePath(stroke);
+    final paint = Paint()
+      ..color = palette.canvasBackground
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke.width
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, paint);
+  }
+
+  // ── Flat (legacy) ────────────────────────────────────────────────────
+
+  void _paintFlat(Canvas canvas, CanvasStroke stroke) {
+    final path = _strokePath(stroke);
     final paint = Paint()
       ..color = stroke.color
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke.width
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    final path = Path()..moveTo(stroke.points.first.dx, stroke.points.first.dy);
-    for (final p in stroke.points.skip(1)) {
-      path.lineTo(p.dx, p.dy);
-    }
     canvas.drawPath(path, paint);
     if (stroke.tapered) {
-      final thin = Paint()
-        ..color = stroke.color.withValues(alpha: 0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke.width * 0.5
-        ..strokeCap = StrokeCap.round;
-      canvas.drawPath(path, thin);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = stroke.color.withValues(alpha: 0.6)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke.width * 0.5
+          ..strokeCap = StrokeCap.round,
+      );
     }
   }
+
+  // ── 3D shaded tube (Lambert) ─────────────────────────────────────────
+
+  /// Draws a stroke as a faux-3D tube: a base pass plus a darker
+  /// "shadow" pass offset to the unlit side and a brighter "highlight"
+  /// pass offset to the lit side. When [additive] is true (used by the
+  /// glow material) the passes blend with [BlendMode.plus].
+  void _paintShadedTube(
+    Canvas canvas,
+    CanvasStroke stroke, {
+    required bool additive,
+  }) {
+    final pts = stroke.points;
+    final n = pts.length;
+    if (n < 2) return;
+
+    final geom = _strokeGeometry(stroke);
+    if (geom == null) return;
+    final normals = geom.normals;
+    final litSigns = geom.litSigns;
+    final halfWidths = geom.halfWidths;
+
+    // Base color analysis → derive shadow & highlight colors.
+    final base = HSVColor.fromColor(stroke.color);
+    final shadowCol = HSVColor.fromAHSV(
+      stroke.color.a,
+      base.hue,
+      (base.saturation * 0.85).clamp(0.0, 1.0),
+      (base.value * scene.ambient).clamp(0.0, 1.0),
+    ).toColor();
+    final lightCol = HSVColor.fromAHSV(
+      stroke.color.a,
+      base.hue,
+      (base.saturation * 0.55).clamp(0.0, 1.0),
+      (base.value + (1.0 - base.value) * scene.diffuse).clamp(0.0, 1.0),
+    ).toColor();
+    final coreCol = HSVColor.fromAHSV(
+      stroke.color.a,
+      base.hue,
+      base.saturation,
+      (base.value + (1.0 - base.value) * 0.5).clamp(0.0, 1.0),
+    ).toColor();
+
+    // Pass 1: shadow side (drawn first so the base pass overlaps it).
+    final shadowPath = _offsetPolyline(pts, normals, litSigns, halfWidths,
+        side: -1.0, factor: 0.55);
+    canvas.drawPath(
+      shadowPath,
+      Paint()
+        ..color = shadowCol
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width * 0.9
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = additive ? BlendMode.plus : BlendMode.srcOver,
+    );
+
+    // Pass 2: base tube (full width, base color).
+    final basePath = _strokePath(stroke);
+    canvas.drawPath(
+      basePath,
+      Paint()
+        ..color = stroke.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = additive ? BlendMode.plus : BlendMode.srcOver,
+    );
+
+    // Pass 3: highlight on the lit side.
+    final lightPath = _offsetPolyline(pts, normals, litSigns, halfWidths,
+        side: 1.0, factor: 0.5);
+    canvas.drawPath(
+      lightPath,
+      Paint()
+        ..color = lightCol
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width * 0.45
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = additive ? BlendMode.plus : BlendMode.srcOver,
+    );
+
+    // Pass 4: a thin specular core for the "tube catch-light" feel.
+    if (stroke.tapered) {
+      final corePath = _offsetPolyline(pts, normals, litSigns, halfWidths,
+          side: 1.0, factor: 0.25);
+      canvas.drawPath(
+        corePath,
+        Paint()
+          ..color = coreCol.withValues(alpha: 0.85)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke.width * 0.18
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..blendMode = additive ? BlendMode.plus : BlendMode.srcOver,
+      );
+    }
+  }
+
+  // ── Glow material ────────────────────────────────────────────────────
+
+  /// Draws a soft bloom halo around the stroke using a heavily blurred,
+  /// additively-blended wider pass. The actual bright core is drawn by
+  /// [_paintShadedTube] with `additive: true`.
+  void _paintGlowHalo(Canvas canvas, CanvasStroke stroke) {
+    final path = _strokePath(stroke);
+    final base = HSVColor.fromColor(stroke.color);
+    final haloCol = HSVColor.fromAHSV(
+      stroke.color.a * 0.6,
+      base.hue,
+      (base.saturation * 0.6).clamp(0.0, 1.0),
+      1.0,
+    ).toColor();
+    // Outer wide blur.
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = haloCol
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width * 4.0
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = BlendMode.plus
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0),
+    );
+    // Mid halo — narrower, brighter.
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = haloCol.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width * 2.0
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = BlendMode.plus
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
+    );
+  }
+
+  // ── Guide3D ribbon ───────────────────────────────────────────────────
+
+  /// Renders the stroke as a translucent surface ribbon with a faint
+  /// grid hatch — the look of a Guide3D helper plane.
+  void _paintGuideRibbon(Canvas canvas, CanvasStroke stroke) {
+    final pts = stroke.points;
+    final n = pts.length;
+    if (n < 2) return;
+    final geom = _strokeGeometry(stroke);
+    if (geom == null) return;
+    final normals = geom.normals;
+    final litSigns = geom.litSigns;
+    final halfWidths = geom.halfWidths;
+
+    final base = HSVColor.fromColor(stroke.color);
+
+    // Build the ribbon polygon (offset both sides of the centreline).
+    final ribbon = Path();
+    final top = <Offset>[];
+    final bot = <Offset>[];
+    for (int i = 0; i < n; i++) {
+      final hw = halfWidths[i];
+      top.add(pts[i] + normals[i] * hw);
+      bot.add(pts[i] - normals[i] * hw);
+    }
+    ribbon.moveTo(top.first.dx, top.first.dy);
+    for (final p in top.skip(1)) {
+      ribbon.lineTo(p.dx, p.dy);
+    }
+    for (int i = bot.length - 1; i >= 0; i--) {
+      ribbon.lineTo(bot[i].dx, bot[i].dy);
+    }
+    ribbon.close();
+
+    // Translucent fill.
+    final fillCol = HSVColor.fromAHSV(
+      0.18,
+      base.hue,
+      base.saturation,
+      base.value,
+    ).toColor();
+    canvas.drawPath(
+      ribbon,
+      Paint()
+        ..color = fillCol
+        ..style = PaintingStyle.fill
+        ..blendMode = BlendMode.srcOver,
+    );
+
+    // Edges — slightly brighter so the surface silhouette reads.
+    final edgeCol = HSVColor.fromAHSV(
+      0.55,
+      base.hue,
+      base.saturation,
+      (base.value + 0.15).clamp(0.0, 1.0),
+    ).toColor();
+    final edgePaint = Paint()
+      ..color = edgeCol
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(ribbon, edgePaint);
+
+    // Grid hatch: short cross-ribbons at regular intervals along the
+    // centreline. The hatch direction is the local normal.
+    final hatchPaint = Paint()
+      ..color = edgeCol.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.75;
+    const hatchEvery = 24.0;
+    var walked = 0.0;
+    for (int i = 1; i < n; i++) {
+      final seg = pts[i] - pts[i - 1];
+      final segLen = seg.distance;
+      if (segLen < 1e-6) continue;
+      walked += segLen;
+      if (walked >= hatchEvery) {
+        walked = 0.0;
+        final hw = halfWidths[i];
+        final nr = normals[i];
+        final p = pts[i];
+        canvas.drawLine(
+          p - nr * hw,
+          p + nr * hw,
+          hatchPaint,
+        );
+      }
+    }
+
+    // Soft lit edge on the lit side (carry-over of the 3D feel).
+    final litEdge = _offsetPolyline(pts, normals, litSigns, halfWidths,
+        side: 1.0, factor: 0.85);
+    canvas.drawPath(
+      litEdge,
+      Paint()
+        ..color = edgeCol.withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  // ── Drop shadow ──────────────────────────────────────────────────────
+
+  /// Drops a shadow under a stroke. If [CanvasScene.groundY] is set,
+  /// the stroke is sheared onto the ground line along [lightDir] (a
+  /// true plan projection). Otherwise a soft offset blob is drawn.
+  void _paintDropShadow(Canvas canvas, CanvasStroke stroke) {
+    if (stroke.material == CanvasMaterial.flat ||
+        stroke.material == CanvasMaterial.cutout ||
+        stroke.material == CanvasMaterial.guide) {
+      // Flat, cutout & guide materials don't cast a 3D shadow.
+      return;
+    }
+    if (stroke.points.length < 2) return;
+
+    final base = HSVColor.fromColor(stroke.color);
+    final shadowCol = HSVColor.fromAHSV(
+      0.30,
+      base.hue,
+      (base.saturation * 0.4).clamp(0.0, 1.0),
+      0.05,
+    ).toColor();
+    final shadowPaint = Paint()
+      ..color = shadowCol
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = stroke.width * 1.15
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
+
+    final groundY = scene.groundY;
+    if (groundY == null) {
+      // Fallback: offset blob shadow. Skew along the light direction so
+      // the shadow falls opposite to the light source.
+      final lLen = scene.lightDir.distance;
+      final ld = lLen < 1e-6
+          ? const Offset(0.7, 0.7)
+          : scene.lightDir / lLen;
+      final offset = Offset(-ld.dx * 8.0, math.max(4.0, -ld.dy * 8.0 + 6.0));
+      final path = _strokePath(stroke, offset: offset);
+      canvas.drawPath(path, shadowPaint);
+      return;
+    }
+
+    // Project every point onto the ground line along the light
+    // direction. Solving for the intersection of the ray
+    //   (P + t * lightDir) .y == groundY
+    // gives t = (groundY - P.y) / lightDir.y. If lightDir.y is ~0 we
+    // fall back to a vertical drop.
+    final lLen = scene.lightDir.distance;
+    final ld = lLen < 1e-6 ? const Offset(0.7, 0.7) : scene.lightDir / lLen;
+    final dy = ld.dy.abs() < 1e-3 ? 1.0 : ld.dy;
+    final projected = <Offset>[];
+    for (final p in stroke.points) {
+      final t = (groundY - p.dy) / dy;
+      projected.add(Offset(p.dx + ld.dx * t, groundY));
+    }
+    if (projected.length < 2) return;
+    final path = Path()..moveTo(projected.first.dx, projected.first.dy);
+    for (final p in projected.skip(1)) {
+      path.lineTo(p.dx, p.dy);
+    }
+    canvas.drawPath(path, shadowPaint);
+  }
+
+  // ── Geometry helpers ─────────────────────────────────────────────────
+
+  /// Builds a [Path] for a stroke's centreline with an optional
+  /// screen-space [offset] applied to every vertex.
+  Path _strokePath(CanvasStroke stroke, {Offset offset = Offset.zero}) {
+    final path = Path();
+    if (stroke.points.isEmpty) return path;
+    final first = stroke.points.first + offset;
+    path.moveTo(first.dx, first.dy);
+    for (final p in stroke.points.skip(1)) {
+      final q = p + offset;
+      path.lineTo(q.dx, q.dy);
+    }
+    return path;
+  }
+
+  /// Computes per-vertex tangent, normal, lit-sign and half-width.
+  /// Returns null if the stroke is degenerate (all coincident points).
+  ({
+    List<Offset> tangents,
+    List<Offset> normals,
+    List<double> litSigns,
+    List<double> halfWidths,
+  })? _strokeGeometry(CanvasStroke stroke) {
+    final pts = stroke.points;
+    final n = pts.length;
+    if (n < 2) return null;
+
+    // Normalize the light direction.
+    final lLen = scene.lightDir.distance;
+    final lightDir = lLen < 1e-6
+        ? const Offset(0.7, 0.7)
+        : scene.lightDir / lLen;
+
+    // Per-vertex tangents — averaged from the two adjacent segments at
+    // interior vertices so the offset polylines stay smooth.
+    final tangents = <Offset>[];
+    for (int i = 0; i < n; i++) {
+      Offset t;
+      if (i == 0) {
+        t = pts[1] - pts[0];
+      } else if (i == n - 1) {
+        t = pts[n - 1] - pts[n - 2];
+      } else {
+        t = (pts[i + 1] - pts[i - 1]);
+      }
+      final len = t.distance;
+      t = len < 1e-6 ? const Offset(1, 0) : t / len;
+      tangents.add(t);
+    }
+
+    // Left-hand perpendicular normals.
+    final normals =
+        tangents.map((t) => Offset(-t.dy, t.dx)).toList(growable: false);
+
+    // Lit sign: +1 if the normal points TOWARDS the light source
+    // (i.e. opposite to the direction light travels), -1 otherwise.
+    final litSigns = <double>[];
+    for (final nrm in normals) {
+      // dot(n, -lightDir) > 0 → facing the light.
+      final s = -(nrm.dx * lightDir.dx + nrm.dy * lightDir.dy);
+      litSigns.add(s >= 0 ? 1.0 : -1.0);
+    }
+
+    // Per-vertex half-width — perspective modulation when depths are
+    // provided. The reference depth is the stroke's mean depth so the
+    // average width matches [CanvasStroke.width].
+    final halfWidths = <double>[];
+    if (stroke.depths.isEmpty) {
+      final half = stroke.width * 0.5;
+      for (int i = 0; i < n; i++) {
+        halfWidths.add(half);
+      }
+    } else {
+      double mean = 0;
+      var count = 0;
+      for (final d in stroke.depths) {
+        if (d > 0.0) {
+          mean += d;
+          count++;
+        }
+      }
+      mean = count > 0 ? mean / count : 1.0;
+      for (int i = 0; i < n; i++) {
+        final d = i < stroke.depths.length ? stroke.depths[i] : mean;
+        final scale = d > 0.0 ? (mean / d).clamp(0.3, 3.0) : 1.0;
+        halfWidths.add(stroke.width * 0.5 * scale);
+      }
+    }
+
+    return (
+      tangents: tangents,
+      normals: normals,
+      litSigns: litSigns,
+      halfWidths: halfWidths,
+    );
+  }
+
+  /// Builds a polyline by offsetting each vertex along the local
+  /// normal. [side] selects which side of the centreline (+1 = along
+  /// the normal, -1 = against it); [factor] scales the offset relative
+  /// to the per-vertex half-width.
+  Path _offsetPolyline(
+    List<Offset> pts,
+    List<Offset> normals,
+    List<double> litSigns,
+    List<double> halfWidths, {
+    required double side,
+    required double factor,
+  }) {
+    final path = Path();
+    if (pts.isEmpty) return path;
+    for (int i = 0; i < pts.length; i++) {
+      // The "lit side" of the tube is `+litSign * normal`; the shadow
+      // side is the opposite. We multiply by `side` so callers can
+      // request the lit side (+1) or shadow side (-1).
+      final dir = side * litSigns[i];
+      final off = normals[i] * (dir * halfWidths[i] * factor);
+      final p = pts[i] + off;
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    return path;
+  }
+
+  // ── Background helpers ───────────────────────────────────────────────
 
   void _paintGrid(Canvas canvas, Size size) {
     final cx = size.width / 2 + scene.pan.dx;

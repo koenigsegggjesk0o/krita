@@ -57,6 +57,8 @@
 //     color / size visually; loading real .kpp presets through
 //     [KritaBrushController.loadPreset] is the next loop.
 
+import 'dart:math' as dmath;
+
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart';
 
@@ -67,11 +69,16 @@ import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
+import 'package:feather_krita/engine/guide3d/drawn_guide.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
 import 'package:feather_krita/engine/liquify/liquify_engine.dart';
 import 'package:feather_krita/engine/selection/selection.dart';
 import 'package:feather_krita/engine/selection/selection_state.dart';
+import 'package:feather_krita/engine/transform/joystick2d.dart';
+import 'package:feather_krita/engine/transform/joystick3d.dart';
+import 'package:feather_krita/engine/transform/transform_mode.dart';
+import 'package:feather_krita/engine/transform/transform_resolver.dart';
 import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor;
 import 'package:feather_krita/models/stroke.dart';
 import 'package:feather_krita/ui/screens/editor_screen.dart';
@@ -85,7 +92,7 @@ import 'package:feather_krita/ui/widgets/tool_dock.dart' show FeatherTool;
 import 'package:feather_krita/ui/widgets/liquify_panel.dart'
     show LiquifyMode;
 import 'package:feather_krita/ui/widgets/canvas_viewport.dart'
-    show CanvasScene, CanvasStroke;
+    show CanvasMaterial, CanvasScene, CanvasStroke;
 
 /// The production editor host. Owns the new engine and composes the
 /// [EditorScreen] layout shell around it.
@@ -136,7 +143,7 @@ class _MainScreenState extends State<MainScreen> {
   double _brushSize = 20.0; // mm
   double _brushOpacity = 1.0;
   bool _pressure = true;
-  FeatherMaterial _material = FeatherMaterial.shaded;
+  FeatherMaterial _material = FeatherMaterial.shadeless;
   FeatherPattern _pattern = FeatherPattern.none;
   bool _renderMode = false;
   bool _uiHidden = false;
@@ -151,6 +158,39 @@ class _MainScreenState extends State<MainScreen> {
   /// Viewport size captured from the last build — needed to map screen
   /// pixel coordinates to camera rays.
   Size _viewportSize = Size.zero;
+
+  /// When true, the next finished stroke is converted into a Draw-mode
+  /// 3D Guide (see [_createDrawnGuide]) instead of being committed as a
+  /// paint stroke. Future UI (a long-press on the Draw tool icon, or a
+  /// dedicated "Guide Draw" toggle in the bottom bar) will flip this;
+  /// for now it is a host-side flag the editor state can set directly.
+  bool _guideDrawMode = false;
+
+  // ----- Per-stroke material + joystick resolver wiring -------------------
+
+  /// Material type per stroke id. Strokes draw with the material that was
+  /// active in the [MaterialPicker] when they were committed. Future
+  /// strokes inherit the live [_material] field; the map keeps the
+  /// per-stroke record so changing the picker later doesn't retro-edit
+  /// already-drawn strokes. Kept as a host-side map (rather than a field
+  /// on the [Stroke] model) to avoid touching the Stroke serialization
+  /// surface in this small task.
+  final Map<int, FeatherMaterial> _strokeMaterials = <int, FeatherMaterial>{};
+
+  /// When false (default), the joystick handlers route through
+  /// [Joystick2dResolver] (view-based: move = camera-right/up plane,
+  /// rotate = around camera forward, scale = uniform around the
+  /// crosshair). When true, they route through [Joystick3dResolver]
+  /// (world-axis: move callback → translate along world X, rotate
+  /// callback → rotate around world Y, scale callback → translate along
+  /// world Z). Exposed for future UI wiring (e.g. a "2D/3D Joystick"
+  /// toggle on the joystick panel).
+  bool _joystick3d = false;
+
+  /// Stateless resolver instances. Constructed once; both are safe to
+  /// reuse across calls (they hold no per-drag state).
+  final Joystick2dResolver _joy2d = Joystick2dResolver();
+  final Joystick3dResolver _joy3d = Joystick3dResolver();
 
   // ----- Presets (UI-only visual catalog) ---------------------------------
 
@@ -223,6 +263,14 @@ class _MainScreenState extends State<MainScreen> {
           onJoystickRotate: _onJoystickRotate,
           onJoystickScale: _onJoystickScale,
           onPickPreset: _onPickPreset,
+          // Tool-gated gesture callbacks: tap-select only fires in the
+          // Select tool, liquify drag only in the Liquify tool. The
+          // viewport uses their presence (vs null) to route single-finger
+          // gestures away from camera orbit.
+          onTapSelect:
+              _tool == FeatherTool.select ? _onTapSelect : null,
+          onLiquifyDrag:
+              _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
         );
       },
     );
@@ -265,10 +313,12 @@ class _MainScreenState extends State<MainScreen> {
         points.add(Offset(sx, sy));
       }
       if (points.length < 2) continue;
+      final mat = _strokeMaterials[stroke.id] ?? FeatherMaterial.shadeless;
       screenStrokes.add(CanvasStroke(
         points: points,
         color: Color(stroke.color),
         width: stroke.thickness.clamp(1.0, 24.0),
+        material: _toCanvasMaterial(mat),
       ));
     }
     return CanvasScene(
@@ -279,6 +329,24 @@ class _MainScreenState extends State<MainScreen> {
       showGrid: true,
       renderMode: _renderMode,
     );
+  }
+
+  /// Maps the UI-side [FeatherMaterial] enum (emitted by the
+  /// [MaterialPicker]) to the canvas viewport's rendering hint enum
+  /// [CanvasMaterial]. The two enums mirror the same four Feather
+  /// material kinds; this converter keeps the canvas viewport decoupled
+  /// from the picker (it doesn't import material_picker.dart).
+  CanvasMaterial _toCanvasMaterial(FeatherMaterial m) {
+    switch (m) {
+      case FeatherMaterial.shadeless:
+        return CanvasMaterial.flat;
+      case FeatherMaterial.shaded:
+        return CanvasMaterial.shaded;
+      case FeatherMaterial.glow:
+        return CanvasMaterial.glow;
+      case FeatherMaterial.cutout:
+        return CanvasMaterial.cutout;
+    }
   }
 
   List<LayerItem> _buildLayerItems() {
@@ -438,6 +506,17 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onStrokeEnd() {
+    if (_guideDrawMode) {
+      // Guide Draw mode: the stroke's world points become the
+      // centerline of a new Draw-mode 3D Guide. Finalize the brush
+      // engine so its internal stroke state is cleaned up, then
+      // discard the returned stroke (we don't want a paint stroke).
+      _brush.endStroke(brushType: BrushType.basic);
+      _createDrawnGuide(_liveStroke);
+      _liveStroke.clear();
+      setState(() {});
+      return;
+    }
     final stroke = _brush.endStroke(brushType: BrushType.basic);
     _liveStroke.clear();
     if (stroke == null) return;
@@ -445,9 +524,46 @@ class _MainScreenState extends State<MainScreen> {
     stroke.color = _color.toARGB32();
     stroke.thickness = _brushSize * 0.15;
     _strokes.add(stroke);
+    // Record the active material so the canvas painter can render this
+    // stroke with the right material kind (shadeless / shaded / glow /
+    // cutout). Future picker changes don't retro-edit existing strokes.
+    _strokeMaterials[stroke.id] = _material;
     // Register with the scene graph + active layer.
     _scene.addCurve(curveId: 'stroke-${stroke.id}');
     setState(() {});
+  }
+
+  /// Builds a [Guide3D] from a finished pen stroke and adds it to the
+  /// active-guide list. Each stroke point becomes a [DrawStrokeSample]
+  /// paired with the camera's current forward vector — the resulting
+  /// ribbon is perpendicular to the viewing angle, per the Feather
+  /// Draw-mode spec (3dguide_draw.txt). The cross-ribbon width is
+  /// scaled by the camera FOV via [DrawGuideParams.effectiveWidth].
+  void _createDrawnGuide(List<Vector3> strokePoints) {
+    if (strokePoints.length < 2) return;
+    final viewDir = _camera.forward;
+    final samples = strokePoints
+        .map((p) => DrawStrokeSample(
+              viewPoint: p.clone(),
+              viewDirection: viewDir,
+            ))
+        .toList();
+    final fovDeg = _camera.fovYRadians * (180.0 / 3.1415926535897932);
+    final guide = const DrawnGuideBuilder().build(
+      samples: samples,
+      params: DrawGuideParams(fovDegrees: fovDeg),
+      name: 'Guide ${_guides.length + 1}',
+    );
+    _guides.add(guide);
+    setState(() {});
+  }
+
+  /// Toggles the Guide Draw mode flag. When true, the next finished
+  /// stroke is converted into a 3D Guide (see [_createDrawnGuide]);
+  /// when false, strokes are committed as normal paint. Exposed for
+  /// future UI wiring (e.g. a long-press on the Draw tool icon).
+  void setGuideDrawMode(bool enabled) {
+    setState(() => _guideDrawMode = enabled);
   }
 
   /// Unprojects a screen position to a world-space point.
@@ -515,41 +631,133 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   // ----- Joystick (transform selected strokes) ---------------------------
+  //
+  // The joystick widget emits raw, normalised pointers:
+  //   - onJoystickMove(Offset v)    → v in [-1, 1]² (full-right = +X)
+  //   - onJoystickRotate(double r)  → r in radians (already-integrated angle)
+  //   - onJoystickScale(Offset s)   → s in [-1, 1]² (drag on scale handle)
+  //
+  // We route each through the appropriate [TransformResolver] (2D view-
+  // based by default, 3D world-axis when [_joystick3d] is true), then
+  // apply the resulting [TransformDelta] to the active selection. The
+  // resolvers own the camera-basis math, axis projection, and pivot
+  // derivation — the host just dispatches.
 
   void _onJoystickMove(Offset v) {
     final selected = _selectedStrokes();
     if (selected.isEmpty) return;
-    final right = _camera.right;
-    final up = _camera.up;
-    final delta = right * (v.dx * 0.6) + up * (-v.dy * 0.6);
-    for (final s in selected) {
-      s.applyTranslation(delta);
-    }
-    setState(() {});
+    final frame = _viewFrame(selected);
+    // delta is in normalised screen units; Y is flipped (screen-down = +Y
+    // in input, but resolver expects (0, 1) = "full up").
+    final drag = Vector2(v.dx, -v.dy);
+    final delta = _resolveJoystickDelta(
+      mode2d: TransformMode2d.move,
+      mode3d: TransformMode3d.moveX,
+      drag: drag,
+      frame: frame,
+    );
+    _applyTransformDelta(selected, delta);
   }
 
   void _onJoystickRotate(double r) {
     final selected = _selectedStrokes();
     if (selected.isEmpty) return;
-    final pivot = _selectionPivot(selected);
-    final axis = _camera.forward;
-    final q = Quaternion.axisAngle(axis, r);
-    for (final s in selected) {
-      s.applyRotation(q, pivot: pivot);
-    }
-    setState(() {});
+    final frame = _viewFrame(selected);
+    // 2D rotate: the resolver maps atan2(-d.y, d.x) to the rotation angle
+    // (rotateSpeed defaults to 2π, so the scale factor is 1.0). A unit
+    // drag at angle r from +X → rotation r. We pass (cos r, -sin r).
+    // 3D rotate (rotateY): the resolver scales the projected drag by
+    // rotateSpeed (2π). Pass (r / 2π, 0) so the resulting angle is ≈ r
+    // (modulo the axis's screen projection).
+    final drag = _joystick3d
+        ? Vector2(r / (dmath.pi * 2.0), 0.0)
+        : Vector2(dmath.cos(r), -dmath.sin(r));
+    final delta = _resolveJoystickDelta(
+      mode2d: TransformMode2d.rotate,
+      mode3d: TransformMode3d.rotateY,
+      drag: drag,
+      frame: frame,
+    );
+    _applyTransformDelta(selected, delta);
   }
 
   void _onJoystickScale(Offset s) {
     final selected = _selectedStrokes();
     if (selected.isEmpty) return;
-    final pivot = _selectionPivot(selected);
-    final factor = 1.0 + (s.dx + s.dy) * 0.5;
-    if ((factor - 1.0).abs() < 1e-4) return;
-    for (final stroke in selected) {
-      stroke.applyScale(factor, pivot: pivot);
+    final frame = _viewFrame(selected);
+    final drag = Vector2(s.dx, -s.dy);
+    final delta = _resolveJoystickDelta(
+      mode2d: TransformMode2d.freeScale,
+      // 3D mode has no native scale; reuse the scale callback to drive a
+      // Z-axis translate (the third cone) so the toggle still does
+      // something useful in 3D mode.
+      mode3d: TransformMode3d.moveZ,
+      drag: drag,
+      frame: frame,
+    );
+    _applyTransformDelta(selected, delta);
+  }
+
+  /// Builds the [ViewFrame] the resolver needs from the live camera and
+  /// the active selection's centroid (used as the rotation/scale pivot
+  /// when the resolver doesn't compute one).
+  ViewFrame _viewFrame(List<Stroke> selected) {
+    return ViewFrame(
+      right: _camera.right,
+      up: _camera.up,
+      forward: _camera.forward,
+      viewportWidth: _viewportSize.width,
+      viewportHeight: _viewportSize.height,
+      crosshairWorld: _selectionPivot(selected),
+    );
+  }
+
+  /// Dispatches [drag] to the active resolver (2D or 3D based on
+  /// [_joystick3d]) under the appropriate sub-mode.
+  TransformDelta _resolveJoystickDelta({
+    required TransformMode2d mode2d,
+    required TransformMode3d mode3d,
+    required Vector2 drag,
+    required ViewFrame frame,
+  }) {
+    if (_joystick3d) {
+      return _joy3d.resolve(mode: mode3d, delta: drag, frame: frame);
+    }
+    return _joy2d.resolve(mode: mode2d, delta: drag, frame: frame);
+  }
+
+  /// Applies a single [TransformDelta] to every stroke in [selected].
+  /// Translation is applied as-is; rotation uses the delta's pivot (or
+  /// falls back to the selection centroid); scale is averaged across
+  /// axes (the resolver emits uniform scale for free-scale and per-axis
+  /// for width/height — we collapse to a single factor here since the
+  /// [Stroke] model only carries a uniform [Stroke.applyScale]).
+  void _applyTransformDelta(List<Stroke> selected, TransformDelta d) {
+    if (d.isZero) return;
+    final fallbackPivot = _selectionPivot(selected);
+    for (final s in selected) {
+      if (d.translation != null) {
+        s.applyTranslation(d.translation!);
+      }
+      if (d.rotation != null) {
+        s.applyRotation(d.rotation!, pivot: d.pivot ?? fallbackPivot);
+      }
+      if (d.scale != null) {
+        final f = (d.scale!.x + d.scale!.y + d.scale!.z) / 3.0;
+        if ((f - 1.0).abs() > 1e-4) {
+          s.applyScale(f, pivot: d.pivot ?? fallbackPivot);
+        }
+      }
     }
     setState(() {});
+  }
+
+  /// Flips the joystick resolver between 2D (view-based) and 3D
+  /// (world-axis). Exposed for future UI wiring (a "2D/3D" toggle on the
+  /// joystick panel). Calling this does not affect already-applied
+  /// transforms; the next joystick drag will use the new resolver.
+  void setJoystick3d(bool enabled) {
+    setState(() => _joystick3d = enabled);
   }
 
   Vector3 _selectionPivot(List<Stroke> selected) {

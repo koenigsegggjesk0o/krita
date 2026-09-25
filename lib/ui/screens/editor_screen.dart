@@ -135,6 +135,15 @@ class EditorScreen extends StatefulWidget {
     this.onJoystickRotate,
     this.onJoystickScale,
     this.onPickPreset,
+    // --- Gesture wiring (feather-integration gap 2 + 3) ------------------
+    // onTapSelect: fired when the canvas receives a tap (single-finger,
+    // no drag) while the Select tool is active. The host routes the
+    // screen position through [SelectionSystem.tapSelectSync].
+    // onLiquifyDrag: fired on every pan-update while the Liquify tool is
+    // active. The host forwards (screenPos, dragDelta) into
+    // [LiquifyEngine.applyDrag].
+    this.onTapSelect,
+    this.onLiquifyDrag,
   });
 
   final EditorUiState initial;
@@ -190,6 +199,17 @@ class EditorScreen extends StatefulWidget {
 
   /// Brush picker → preset selected. The host loads it into the engine.
   final ValueChanged<BrushPreset>? onPickPreset;
+
+  /// Canvas tap (select tool). The host runs [SelectionSystem.tapSelectSync]
+  /// against the screen position to pick the nearest stroke within the
+  /// tap radius.
+  final ValueChanged<Offset>? onTapSelect;
+
+  /// Canvas drag (liquify tool). Fired on every pan-update with the live
+  /// screen position + the screen-space drag delta since the previous
+  /// update. The host bridges them into world space and forwards them to
+  /// [LiquifyEngine.applyDrag].
+  final void Function(Offset screenPos, Offset dragDelta)? onLiquifyDrag;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -525,6 +545,8 @@ class _EditorScreenState extends State<EditorScreen> {
         },
         onPan: widget.onPan,
         onZoom: widget.onZoom,
+        onTapSelect: widget.onTapSelect,
+        onLiquifyDrag: widget.onLiquifyDrag,
       ),
     );
   }
