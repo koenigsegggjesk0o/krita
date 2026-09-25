@@ -23,6 +23,13 @@ enum FeatherTool {
   systemMenu,
   draw,
   erase,
+  // Sub-modes of [erase] reached by tapping the Erase dock button
+  // again (per Feather's Draw-and-Erase docs: draw -> eraser -> vacuum
+  // -> draw). The dock still shows a single "erase" button; the active
+  // sub-mode is tracked by the host's `_tool` field and surfaced to the
+  // dock via [_eraseIsSelected].
+  eraser,
+  vacuum,
   select,
   mirror,
   clipboard,
@@ -30,6 +37,13 @@ enum FeatherTool {
   liquify,
   transform,
 }
+
+/// True when [active] should highlight the dock's single Erase button
+/// (i.e. the user is in the eraser, vacuum, or pending-erase state).
+bool _eraseIsSelected(FeatherTool active) =>
+    active == FeatherTool.erase ||
+    active == FeatherTool.eraser ||
+    active == FeatherTool.vacuum;
 
 extension FeatherToolX on FeatherTool {
   IconData get icon {
@@ -41,7 +55,10 @@ extension FeatherToolX on FeatherTool {
       case FeatherTool.draw:
         return Icons.edit_outlined;
       case FeatherTool.erase:
+      case FeatherTool.eraser:
         return Icons.auto_fix_high_outlined;
+      case FeatherTool.vacuum:
+        return Icons.delete_sweep_outlined;
       case FeatherTool.select:
         return Icons.highlight_alt_outlined;
       case FeatherTool.mirror:
@@ -66,7 +83,10 @@ extension FeatherToolX on FeatherTool {
       case FeatherTool.draw:
         return 'Draw / Shape';
       case FeatherTool.erase:
-        return 'Erase / Vacuum';
+      case FeatherTool.eraser:
+        return 'Erase (partial)';
+      case FeatherTool.vacuum:
+        return 'Vacuum (whole curves)';
       case FeatherTool.select:
         return 'Select / Deselect';
       case FeatherTool.mirror:
@@ -87,6 +107,8 @@ extension FeatherToolX on FeatherTool {
       case FeatherTool.draw:
         return FeatherColors.toolDraw;
       case FeatherTool.erase:
+      case FeatherTool.eraser:
+      case FeatherTool.vacuum:
         return FeatherColors.toolErase;
       case FeatherTool.select:
         return FeatherColors.toolSelect;
@@ -177,7 +199,11 @@ class ToolDock extends StatelessWidget {
           for (final t in tools) ...[
             _DockButton(
               tool: t,
-              selected: t == active,
+              // The Erase dock button stays highlighted for both eraser
+              // and vacuum sub-modes (single button, cycled state).
+              selected: t == FeatherTool.erase
+                  ? _eraseIsSelected(active)
+                  : t == active,
               onSelect: () => onSelect(t),
             ),
             if (t != tools.last) const SizedBox(height: 6),

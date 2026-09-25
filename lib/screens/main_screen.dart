@@ -57,10 +57,14 @@
 //     color / size visually; loading real .kpp presets through
 //     [KritaBrushController.loadPreset] is the next loop.
 
+import 'dart:async';
+import 'dart:io' show File;
 import 'dart:math' as dmath;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:vector_math/vector_math_64.dart';
+import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
@@ -68,8 +72,14 @@ import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
+import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/guide3d/drawn_guide.dart';
+import 'package:feather_krita/engine/guide3d/lofted_guide.dart';
+import 'package:feather_krita/engine/guide3d/bent_guide.dart';
+import 'package:feather_krita/engine/guide3d/primitive_guide.dart';
+import 'package:feather_krita/engine/guide3d/guide3d_primitive.dart';
+import 'package:feather_krita/engine/krita_bridge/krita_canvas_controller.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
 import 'package:feather_krita/engine/liquify/liquify_engine.dart';
@@ -79,9 +89,13 @@ import 'package:feather_krita/engine/transform/joystick2d.dart';
 import 'package:feather_krita/engine/transform/joystick3d.dart';
 import 'package:feather_krita/engine/transform/transform_mode.dart';
 import 'package:feather_krita/engine/transform/transform_resolver.dart';
-import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor;
+import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor, BrushInput;
+import 'package:feather_krita/io/gltf_exporter.dart';
+import 'package:feather_krita/io/obj_exporter.dart';
+import 'package:feather_krita/io/png_exporter.dart';
 import 'package:feather_krita/models/stroke.dart';
 import 'package:feather_krita/ui/screens/editor_screen.dart';
+import 'package:feather_krita/ui/theme/feather_typography.dart';
 import 'package:feather_krita/ui/widgets/brush_picker.dart'
     show BrushPreset;
 import 'package:feather_krita/ui/widgets/material_picker.dart'
@@ -112,7 +126,8 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen>
+    with TickerProviderStateMixin {
   // ----- Engine singletons ------------------------------------------------
 
   late final Scene _scene;
@@ -166,6 +181,68 @@ class _MainScreenState extends State<MainScreen> {
   /// for now it is a host-side flag the editor state can set directly.
   bool _guideDrawMode = false;
 
+  // ----- Guide creation sub-modes (Loft / Primitive / Bend) ---------------
+  //
+  // Three sub-modes for creating 3D Guides beyond the Draw-mode pen-stroke
+  // flow already handled by [_guideDrawMode]. Each sub-mode is entered via
+  // [setGuideMode] and exits via its own finish / cancel method (which
+  // reverts [_guideMode] to [_GuideMode.none]). The host owns the in-progress
+  // state (selected curve ids, live preview guide ids, tension / segment
+  // slider values, bend source guide); the launcher UI is rendered as an
+  // overlay on top of the [EditorScreen] (see [_buildGuideOverlay]).
+  //
+  //   * Loft      — the artist taps 2+ existing strokes; the host calls
+  //                 [LoftedGuideBuilder.build] to skin a surface across
+  //                 them, with a live tension slider.
+  //   * Primitive — the artist picks Cube / Pyramid / Sphere / Tube; the
+  //                 host calls [PrimitiveGuideBuilder.build] to drop the
+  //                 shape at the world origin, with a live segment slider.
+  //   * Bend      — the artist (with a guide selected) draws a path on the
+  //                 canvas; the host calls [BentGuideBuilder.build] to
+  //                 deform the source guide along the path. The bent result
+  //                 becomes the new source so the bend can be repeated.
+
+  /// Currently active guide-creation sub-mode.
+  _GuideMode _guideMode = _GuideMode.none;
+
+  // Loft state:
+  /// Stroke ids selected as loft curves, in selection order.
+  final List<int> _loftStrokeIds = <int>[];
+  /// Tension slider value in [0, 1] (0 = sharp, 1 = smooth). Matches the
+  /// Feather tension slider: slide up for smoother, down for sharper.
+  double _loftTension = 0.5;
+  /// Manager id of the in-progress lofted guide preview, or `null` when
+  /// fewer than two curves are selected (no preview is shown).
+  GuideId? _loftPreviewId;
+
+  // Primitive state:
+  /// Currently active primitive kind, or `null` when no primitive is being
+  /// inserted.
+  Guide3DPrimitive? _primitiveKind;
+  /// Live segment count for the segment slider.
+  int _primitiveSegments = 24;
+  /// Manager id of the in-progress primitive preview, or `null`.
+  GuideId? _primitivePreviewId;
+
+  // Bend state:
+  /// Manager id of the source guide being bent. Defaults to the currently
+  /// selected guide on entering bend mode; updated to the bent result after
+  /// each bend pass so the artist can repeat the bend (per the Feather docs:
+  /// "You can repeat the Bend 3D Guide process multiple times").
+  GuideId? _bendSourceId;
+
+  // ----- Tutorial caption overlay -----------------------------------------
+  //
+  // A handwritten-style caption (Caveat font, white text + soft shadow)
+  // shown at the top-center of the canvas. [setCaption] fades the caption
+  // in over ~400 ms, holds it for 3 seconds, then fades it out over ~400 ms.
+  // Used by guide-creation modes to surface the Feather-style "Let's sketch
+  // this!" tutorial prompts.
+
+  late final AnimationController _captionAnim;
+  Timer? _captionHideTimer;
+  String _captionText = '';
+
   // ----- Per-stroke material + joystick resolver wiring -------------------
 
   /// Material type per stroke id. Strokes draw with the material that was
@@ -176,6 +253,42 @@ class _MainScreenState extends State<MainScreen> {
   /// on the [Stroke] model) to avoid touching the Stroke serialization
   /// surface in this small task.
   final Map<int, FeatherMaterial> _strokeMaterials = <int, FeatherMaterial>{};
+
+  // ----- Stroke3D capture (curves-system source of truth) -----------------
+  //
+  // The engine ships a 10-file curves package (lib/engine/curves/) that
+  // models strokes as [Stroke3D] — an ordered list of [StrokeSample3D]s
+  // carrying position, pressure, tilt, timestamp, and optional UV. This
+  // is the *capture* model: the raw input from the pointer handler,
+  // before smoothing / simplification / curve-fitting.
+  //
+  // The host now wires Stroke3D as the SOURCE OF TRUTH for every paint
+  // stroke. On draw, each pointer sample is appended to a live
+  // [_liveStroke3D]. On stroke end, the Stroke3D is smoothed (gaussian,
+  // via [StrokeSmoother]) and simplified (RDP), then CONVERTED to a
+  // [Stroke] for rendering — the Stroke3D is kept in [_stroke3Ds] as
+  // the canonical curves-system view (used by the glTF exporter and
+  // available for future Bezier / Catmull-Rom / NURBS fitting).
+  //
+  // Erase / vacuum operations mutate both the rendered Stroke and the
+  // Stroke3D via [_syncStroke3D] / [_strokeToStroke3D] so the two views
+  // never drift. Undo / redo rebuilds the Stroke3D map from the new
+  // Stroke snapshot via [_rebuildStroke3Ds] (lossy: raw timestamps are
+  // lost, but positions / pressures are preserved).
+
+  /// The Stroke3D currently being captured (one sample per
+  /// onStrokeUpdate). `null` outside of an active draw stroke.
+  Stroke3D? _liveStroke3D;
+
+  /// Wall-clock timestamp at the start of the current stroke, used to
+  /// compute per-sample `time` (seconds since stroke start).
+  DateTime? _strokeStartTime;
+
+  /// The canonical Stroke3D for every committed paint stroke, keyed by
+  /// stroke id. Kept in sync with [_strokes] on draw / erase / vacuum /
+  /// undo / redo. Used by the glTF exporter (passed alongside the
+  /// rendered Strokes so exporters can choose either view).
+  final Map<int, Stroke3D> _stroke3Ds = <int, Stroke3D>{};
 
   /// When false (default), the joystick handlers route through
   /// [Joystick2dResolver] (view-based: move = camera-right/up plane,
@@ -196,6 +309,54 @@ class _MainScreenState extends State<MainScreen> {
 
   late final List<BrushPreset> _presets;
 
+  // ----- Real Krita dab rendering (host-side composite path) ---------------
+  //
+  // The brush engine exposes `generateDab(BrushInput) → BrushDab` on the
+  // active [KritaBrushBackend]. When the real native engine is live, the
+  // host feeds each stroke-update sample through that path: the engine
+  // produces a real Krita dab (the same pixel stamp Krita would paint on
+  // a flat canvas), the host composite-stamps it onto a
+  // [KritaCanvasController] (the host-side paint buffer — Krita's
+  // KisPaintDevice equivalent), rasterizes the buffer into a [ui.Image]
+  // and hands it to the canvas viewport's painter, which draws it on top
+  // of the 3D stroke ribbons via `canvas.drawImage`.
+  //
+  // When the real engine is NOT available (the boot probe fell back to
+  // [KritaFallbackEngine]), this entire path is skipped — the editor
+  // keeps painting through the 3D polyline renderer only (current
+  // behaviour, no regression). The fallback engine still implements
+  // `generateDab` for tests, but the host never calls it for rendering.
+
+  /// True when the real native Krita brush backend is live (the FFI
+  /// bridge loaded and a brush handle was allocated). Set in [initState]
+  /// from [_krita.status]. Gates the real-dab rendering path in
+  /// [_onStrokeUpdate].
+  bool _realBackendActive = false;
+
+  /// The host-side paint canvas that composite-stamps real Krita dabs.
+  /// Lazily allocated to the viewport size on the first dab; resized
+  /// when the viewport changes (existing content preserved in the
+  /// top-left corner, like KisImage::resize). Null until the first real
+  /// dab is painted.
+  KritaCanvasController? _paintCanvas;
+
+  /// The rasterized form of [_paintCanvas] — a [ui.Image] snapshot of
+  /// the backing RGBA8 buffer, drawn on top of the 3D stroke ribbons by
+  /// the canvas viewport's painter. Re-rasterized whenever
+  /// [_paintCanvas] mutates (see [_scheduleRasterizePaint]).
+  ui.Image? _paintLayerImage;
+
+  /// The [_paintCanvas] version captured in [_paintLayerImage]. Used to
+  /// decide whether a re-rasterization is needed (the canvas controller
+  /// bumps its version on every paintDab / resize / clear).
+  int _paintLayerVersion = -1;
+
+  /// True while a rasterization is in flight. Guards against stacking
+  /// multiple concurrent rasterizations — incoming dabs during a
+  /// rasterization are picked up by a follow-up rasterization scheduled
+  /// when the in-flight one completes (if the canvas version advanced).
+  bool _rasterizingPaint = false;
+
   @override
   void initState() {
     super.initState();
@@ -213,6 +374,11 @@ class _MainScreenState extends State<MainScreen> {
       settings: const BrushSettings(size: 20.0, opacity: 1.0),
       color: _color.toARGB32(),
     );
+    // Detect the real backend so we can route stroke updates through the
+    // real `generateDab` path. On the fallback (no native library), the
+    // host keeps using the 3D polyline renderer only — no behaviour
+    // regression vs. the previous build.
+    _realBackendActive = _krita.status == KritaEngineStatus.realEngine;
     _guides = Guide3DManager();
     _liquify = LiquifyEngine();
     _selectionModel = SelectionModel();
@@ -222,12 +388,29 @@ class _MainScreenState extends State<MainScreen> {
     );
 
     _presets = _buildDefaultPresets();
+
+    // Tutorial caption fade controller (forward = visible, reverse = hidden).
+    _captionAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
   }
 
   @override
   void dispose() {
+    _captionHideTimer?.cancel();
+    _captionAnim.dispose();
     _brush.dispose();
     _krita.shutdown();
+    // Release the GPU-backed paint layer. Use a post-frame callback so
+    // any in-flight paint pass that captured the old image finishes
+    // before we release it.
+    final image = _paintLayerImage;
+    _paintLayerImage = null;
+    _paintCanvas = null;
+    if (image != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => image.dispose());
+    }
     super.dispose();
   }
 
@@ -238,39 +421,96 @@ class _MainScreenState extends State<MainScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
-        return EditorScreen(
-          initial: _initialUiState(),
-          scene: _buildCanvasScene(),
-          layers: _buildLayerItems(),
-          resources: _buildResourceItems(),
-          presets: _presets,
-          canUndo: _undoStack.isNotEmpty,
-          canRedo: _redoStack.isNotEmpty,
-          drawingEnabled: _tool == FeatherTool.draw,
-          onStrokeStart: _onStrokeStart,
-          onStrokeUpdate: _onStrokeUpdate,
-          onStrokeEnd: _onStrokeEnd,
-          onUndo: _undo,
-          onRedo: _redo,
-          onUiStateChanged: _onUiStateChanged,
-          onPan: _onPan,
-          onZoom: _onZoom,
-          onSelectAll: _selectAll,
-          onLiquifyMode: _onLiquifyMode,
-          onLiquifyApply: _onLiquifyApply,
-          onLiquifyUndoAll: _onLiquifyUndoAll,
-          onJoystickMove: _onJoystickMove,
-          onJoystickRotate: _onJoystickRotate,
-          onJoystickScale: _onJoystickScale,
-          onPickPreset: _onPickPreset,
-          // Tool-gated gesture callbacks: tap-select only fires in the
-          // Select tool, liquify drag only in the Liquify tool. The
-          // viewport uses their presence (vs null) to route single-finger
-          // gestures away from camera orbit.
-          onTapSelect:
-              _tool == FeatherTool.select ? _onTapSelect : null,
-          onLiquifyDrag:
-              _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
+        return Stack(
+          children: [
+            EditorScreen(
+              initial: _initialUiState(),
+              scene: _buildCanvasScene(),
+              layers: _buildLayerItems(),
+              resources: _buildResourceItems(),
+              presets: _presets,
+              canUndo: _undoStack.isNotEmpty,
+              canRedo: _redoStack.isNotEmpty,
+              // Drawing is enabled in the Draw tool, the Eraser / Vacuum
+              // sub-modes (pen drag erases), and Bend mode (the artist
+              // draws the bend path on the canvas). Loft mode uses
+              // tap-to-select instead — see [_onTapSelect] branching.
+              drawingEnabled: _tool == FeatherTool.draw ||
+                  _tool == FeatherTool.eraser ||
+                  _tool == FeatherTool.vacuum ||
+                  _guideMode == _GuideMode.bend,
+              onStrokeStart: _onStrokeStart,
+              onStrokeUpdate: _onStrokeUpdate,
+              onStrokeEnd: _onStrokeEnd,
+              onUndo: _undo,
+              onRedo: _redo,
+              onUiStateChanged: _onUiStateChanged,
+              onPan: _onPan,
+              onZoom: _onZoom,
+              onSelectAll: _selectAll,
+              onLiquifyMode: _onLiquifyMode,
+              onLiquifyApply: _onLiquifyApply,
+              onLiquifyUndoAll: _onLiquifyUndoAll,
+              onJoystickMove: _onJoystickMove,
+              onJoystickRotate: _onJoystickRotate,
+              onJoystickScale: _onJoystickScale,
+              onPickPreset: _onPickPreset,
+              // Tool-gated gesture callbacks: tap-select only fires in the
+              // Select tool OR in Loft mode (where taps add strokes to the
+              // loft curve selection). Liquify drag only in the Liquify tool.
+              // The viewport uses their presence (vs null) to route single-
+              // finger gestures away from camera orbit.
+              onTapSelect: (_tool == FeatherTool.select ||
+                      _guideMode == _GuideMode.loft)
+                  ? _onTapSelect
+                  : null,
+              onLiquifyDrag:
+                  _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
+            ),
+
+            // Guide-creation launcher + per-mode panels (top-center overlay,
+            // just below the top bar). When no mode is active, shows the
+            // launcher row [Loft] [Primitive] [Bend] [Caption]. When a mode
+            // is active, shows the mode's panel (tension/segment sliders +
+            // Done/Cancel).
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 68,
+              child: Center(child: _buildGuideOverlay()),
+            ),
+
+            // Tutorial caption (top-center, white Caveat text with shadow).
+            // Mounted only while a caption is showing; IgnorePointer lets
+            // taps fall through to the canvas underneath.
+            if (_captionText.isNotEmpty)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 116,
+                child: Center(
+                  child: IgnorePointer(
+                    child: FadeTransition(
+                      opacity: _captionAnim,
+                      child: Text(
+                        _captionText,
+                        style: FeatherTypography.tutorial.copyWith(
+                          color: Colors.white,
+                          fontSize: 28,
+                          shadows: const <Shadow>[
+                            Shadow(
+                              color: Colors.black54,
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -328,6 +568,10 @@ class _MainScreenState extends State<MainScreen> {
       zoom: 1.0,
       showGrid: true,
       renderMode: _renderMode,
+      // The host-side paint raster (real Krita dabs). Null on the
+      // fallback engine — the viewport's painter skips drawing it and
+      // falls back to the 3D polyline renderer only (current behaviour).
+      paintLayer: _paintLayerImage,
     );
   }
 
@@ -489,23 +733,241 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onStrokeStart() {
     _liveStroke.clear();
-    _pushUndo();
+    // Bend mode: the stroke is a bend path, not a paint stroke. We don't
+    // push undo (the stroke list isn't mutated) — the resulting bent guide
+    // is committed to the [Guide3DManager], which is its own undo domain.
+    if (_guideMode != _GuideMode.bend) {
+      _pushUndo();
+    }
+    // Initialize Stroke3D capture for draw mode. The Stroke3D is the
+    // curves-system source of truth (carries pressure + timestamp per
+    // sample) and is converted to a Stroke for rendering in
+    // [_onStrokeEnd]. Bend / guide-draw / eraser / vacuum don't need a
+    // Stroke3D — they're either guide-creation paths or erase paths.
+    if (_tool == FeatherTool.draw &&
+        !_guideDrawMode &&
+        _guideMode != _GuideMode.bend) {
+      _liveStroke3D = Stroke3D(
+        color: _color.toARGB32(),
+        thickness: _brushSize * 0.15,
+        inputDevice: StrokeInputDevice.touch,
+        source: 'feather-canvas',
+      );
+      _strokeStartTime = DateTime.now();
+    }
   }
 
   void _onStrokeUpdate(Offset screenPos) {
+    // Eraser sub-mode: remove stroke POINTS within the erase radius
+    // (per the Feather docs: "removes points from the center of the
+    // curve, not the surrounding geometry"). Strokes covered by a 3D
+    // Guide are protected (see [_strokeProtectedByGuide]).
+    if (_tool == FeatherTool.eraser) {
+      _eraseAt(screenPos);
+      setState(() {});
+      return;
+    }
+    // Vacuum sub-mode: remove entire STROKES the pen touches (per the
+    // Feather docs: "erases all curves it touches"). Same guide
+    // isolation as the eraser.
+    if (_tool == FeatherTool.vacuum) {
+      _vacuumAt(screenPos);
+      setState(() {});
+      return;
+    }
     final world = _screenToWorld(screenPos);
     if (world == null) return;
     _liveStroke.add(world);
-    // Feed the brush engine so smoothing + 3D assembly happen live.
-    if (_liveStroke.length == 1) {
-      _brush.beginStroke(StrokePoint(position: world.clone(), pressure: 0.8));
-    } else {
-      _brush.addPoint(StrokePoint(position: world.clone(), pressure: 0.8));
+    // Build Stroke3D (curves-system source of truth) for draw mode.
+    if (_liveStroke3D != null && _strokeStartTime != null) {
+      final t =
+          DateTime.now().difference(_strokeStartTime!).inMicroseconds /
+              1e6;
+      _liveStroke3D!.addSample(StrokeSample3D(
+        position: world.clone(),
+        pressure: _pressure ? 0.8 : 0.5,
+        time: t,
+      ));
+    }
+    // Feed the brush engine so the live dab pipeline (real Krita
+    // backend) can stamp dabs in real time. The BrushEngine-assembled
+    // stroke is discarded in [_onStrokeEnd] for the Draw path — the
+    // canonical stroke is built from the Stroke3D so the curves system
+    // stays the source of truth. Bend / guide-draw still use
+    // BrushEngine's stroke assembly (those strokes are interpreted as
+    // guide paths, not paint).
+    if (_guideMode == _GuideMode.bend || _guideDrawMode) {
+      if (_liveStroke.length == 1) {
+        _brush
+            .beginStroke(StrokePoint(position: world.clone(), pressure: 0.8));
+      } else {
+        _brush
+            .addPoint(StrokePoint(position: world.clone(), pressure: 0.8));
+      }
+    }
+    // Wire real Krita dab → host paint canvas → ui.Image → canvas drawImage.
+    // The fallback engine skips this path and keeps using the 3D polyline
+    // renderer (current behaviour). Bend / guide-draw modes also skip —
+    // those strokes are interpreted as guide paths, not paint.
+    if (_realBackendActive &&
+        _guideMode != _GuideMode.bend &&
+        !_guideDrawMode) {
+      _paintRealDab(screenPos);
     }
     setState(() {});
   }
 
+  // ----- Real Krita dab → host paint canvas → ui.Image --------------------
+  //
+  // The pipeline (only runs when the real native backend is live):
+  //
+  //   stroke update (screenPos, pressure)
+  //     → _krita.backend.generateDab(BrushInput(x, y, pressure))   [sync, FFI]
+  //     → BrushDab (RGBA8 pixels, width, height)
+  //     → _paintCanvas.paintDab(dab, x, y, mode, alpha)             [sync, host]
+  //     → _scheduleRasterizePaint()
+  //        → _paintCanvas.readPixels()                              [sync, copy]
+  //        → ui.ImmutableBuffer + ui.ImageDescriptor.raw + codec    [async]
+  //        → _paintLayerImage = image
+  //        → setState → _buildCanvasScene → CanvasScene.paintLayer
+  //        → _CanvasPainter.paint → canvas.drawImage(paintLayer, Offset.zero)
+  //
+  // Coalescing: rasterization is async; multiple dabs during a rasterization
+  // are picked up by a follow-up rasterization scheduled when the in-flight
+  // one completes (if the canvas version advanced).
+
+  /// Generates one dab from the real Krita backend at [screenPos] (in
+  /// canvas / viewport pixel space) and composite-stamps it onto the
+  /// host-side paint canvas. After stamping, schedules a re-rasterization
+  /// of the paint canvas into a [ui.Image] so the canvas viewport's
+  /// painter can `drawImage` it on the next frame.
+  ///
+  /// The dab's pressure is `0.8` when the brush panel's pressure toggle
+  /// is on (matching the value the 3D stroke-assembly path uses) and
+  /// `1.0` when off. The blend mode is [KritaBlendMode.erase] when the
+  /// loaded preset is an eraser, [KritaBlendMode.normal] otherwise.
+  /// Per-dab alpha is `flow * opacity * pressure` — the same per-dab
+  /// modulation the engine's own stroke renderer applies (see
+  /// `KritaDabRenderer.renderStroke`).
+  void _paintRealDab(Offset screenPos) {
+    if (!_krita.isInitialized) return;
+    final backend = _krita.backend;
+    final pressure = _pressure ? 0.8 : 1.0;
+    final dab = backend.generateDab(BrushInput(
+      x: screenPos.dx,
+      y: screenPos.dy,
+      pressure: pressure,
+    ));
+    if (dab.isEmpty) return;
+    _ensurePaintCanvas();
+    final erase = backend.isEraserPreset;
+    final mode = erase ? KritaBlendMode.erase : KritaBlendMode.normal;
+    final alpha = (backend.currentFlow *
+            backend.currentOpacity *
+            pressure)
+        .clamp(0.0, 1.0);
+    _paintCanvas!.paintDab(
+      dab,
+      screenPos.dx,
+      screenPos.dy,
+      mode: mode,
+      alpha: alpha,
+    );
+    _scheduleRasterizePaint();
+  }
+
+  /// Lazily allocates / resizes [_paintCanvas] to match the current
+  /// viewport size. The canvas is sized in logical pixels (1:1 with the
+  /// painter's coordinate space), so dabs painted at screen positions
+  /// land exactly where the user expects them.
+  void _ensurePaintCanvas() {
+    final w = _viewportSize.width.round().clamp(1, 4096);
+    final h = _viewportSize.height.round().clamp(1, 4096);
+    if (_paintCanvas == null) {
+      _paintCanvas = KritaCanvasController(width: w, height: h);
+    } else if (_paintCanvas!.width != w || _paintCanvas!.height != h) {
+      _paintCanvas!.resize(w, h);
+    }
+  }
+
+  /// Schedules a re-rasterization of the paint canvas backing buffer
+  /// into a [ui.Image] (assigned to [_paintLayerImage]). Coalesces
+  /// multiple dab updates into a single rasterization — if a
+  /// rasterization is already in flight, this call is a no-op; a
+  /// follow-up rasterization is scheduled when the in-flight one
+  /// completes if the canvas's version has advanced in the meantime.
+  void _scheduleRasterizePaint() {
+    if (_rasterizingPaint) return;
+    final canvas = _paintCanvas;
+    if (canvas == null) return;
+    final pixels = canvas.readPixels();
+    final w = canvas.width;
+    final h = canvas.height;
+    final version = canvas.version;
+    _rasterizingPaint = true;
+    _rgbaToImage(pixels, w, h).then((image) {
+      if (!mounted) {
+        image.dispose();
+        _rasterizingPaint = false;
+        return;
+      }
+      final old = _paintLayerImage;
+      setState(() {
+        _paintLayerImage = image;
+        _paintLayerVersion = version;
+        _rasterizingPaint = false;
+      });
+      // Dispose of the previous image after the next frame so any
+      // in-flight paint pass that captured it finishes first.
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      // If a new dab came in while we were rasterizing, schedule another.
+      if (_paintCanvas != null &&
+          _paintCanvas!.version != _paintLayerVersion) {
+        _scheduleRasterizePaint();
+      }
+    }).catchError((Object _) {
+      if (mounted) setState(() => _rasterizingPaint = false);
+    });
+  }
+
+  /// Converts an RGBA8 pixel buffer ([pixels], laid out row-major as
+  /// `width * height * 4` bytes in R,G,B,A byte order) into a [ui.Image].
+  /// Uses [ui.ImmutableBuffer] + [ui.ImageDescriptor.raw] under the hood
+  /// (the modern Flutter path for raw-pixel upload). Async because GPU
+  /// buffer upload runs on the platform thread.
+  Future<ui.Image> _rgbaToImage(
+    Uint8List pixels,
+    int width,
+    int height,
+  ) async {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
+    final descriptor = ui.ImageDescriptor.raw(
+      buffer,
+      width: width,
+      height: height,
+      pixelFormat: ui.PixelFormat.rgba8888,
+    );
+    final codec = await descriptor.instantiateCodec();
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  }
+
   void _onStrokeEnd() {
+    // Bend mode: the just-drawn stroke is a bend path, not a paint stroke.
+    // Finalize the brush engine (so its internal state is cleaned up),
+    // then route the live stroke into [BentGuideBuilder] via
+    // [_onBendStrokeEnd]. The returned brush stroke is discarded.
+    if (_guideMode == _GuideMode.bend) {
+      _brush.endStroke(brushType: BrushType.basic);
+      _onBendStrokeEnd();
+      _liveStroke.clear();
+      _liveStroke3D = null;
+      _strokeStartTime = null;
+      setState(() {});
+      return;
+    }
     if (_guideDrawMode) {
       // Guide Draw mode: the stroke's world points become the
       // centerline of a new Draw-mode 3D Guide. Finalize the brush
@@ -514,16 +976,49 @@ class _MainScreenState extends State<MainScreen> {
       _brush.endStroke(brushType: BrushType.basic);
       _createDrawnGuide(_liveStroke);
       _liveStroke.clear();
+      _liveStroke3D = null;
+      _strokeStartTime = null;
       setState(() {});
       return;
     }
-    final stroke = _brush.endStroke(brushType: BrushType.basic);
+    // Eraser / vacuum sub-modes: the erase happened live in
+    // [_onStrokeUpdate]. Nothing to commit — just clean up the capture
+    // state and refresh.
+    if (_tool == FeatherTool.eraser || _tool == FeatherTool.vacuum) {
+      _liveStroke.clear();
+      _liveStroke3D = null;
+      _strokeStartTime = null;
+      setState(() {});
+      return;
+    }
+    // Draw mode: convert the captured Stroke3D → Stroke for rendering.
+    // The Stroke3D is the curves-system source of truth (carries
+    // per-sample pressure + timestamp); the Stroke is the rendered
+    // view (positions, pressures, optional UVs). Smoothing (gaussian
+    // via [StrokeSmoother]) and simplification (RDP) are applied to
+    // the Stroke3D before conversion so the rendered Stroke is clean.
+    final stroke3d = _liveStroke3D;
     _liveStroke.clear();
-    if (stroke == null) return;
+    _liveStroke3D = null;
+    _strokeStartTime = null;
+    // Finalize the brush engine (no-op when no stroke was started —
+    // draw mode bypasses BrushEngine's stroke assembly).
+    _brush.endStroke(brushType: BrushType.basic);
+    if (stroke3d == null || stroke3d.length < 2) {
+      setState(() {});
+      return;
+    }
+    final smoothed = stroke3d.smooth(strength: 0.4);
+    final simplified = smoothed.simplify(0.005);
+    final stroke = _stroke3DToStroke(simplified);
     stroke.id = _nextStrokeId++;
     stroke.color = _color.toARGB32();
     stroke.thickness = _brushSize * 0.15;
     _strokes.add(stroke);
+    // Keep the Stroke3D as the curves-system source of truth (used by
+    // the glTF exporter and available for future Bezier / Catmull-Rom /
+    // NURBS fitting via stroke3d.toBezier / toCatmullRom / toNurbs).
+    _stroke3Ds[stroke.id] = stroke3d;
     // Record the active material so the canvas painter can render this
     // stroke with the right material kind (shadeless / shaded / glow /
     // cutout). Future picker changes don't retro-edit existing strokes.
@@ -564,6 +1059,277 @@ class _MainScreenState extends State<MainScreen> {
   /// future UI wiring (e.g. a long-press on the Draw tool icon).
   void setGuideDrawMode(bool enabled) {
     setState(() => _guideDrawMode = enabled);
+  }
+
+  // ----- Guide creation sub-modes (Loft / Primitive / Bend) ---------------
+  //
+  // See the field doc on [_guideMode] for the per-mode state and the
+  // feather docs (3dguide_loft.txt / 3dguide_primitives.txt /
+  // 3dguide_draw.txt) for the user-facing behaviour.
+
+  /// Activates the given guide-creation sub-mode. Switching to a new mode
+  /// cancels any in-progress previous mode (via [_cancelGuideModeInternal]).
+  /// Each mode also surfaces a handwritten tutorial caption via
+  /// [setCaption] (Feather-style "Let's sketch this!" prompts).
+  void setGuideMode(_GuideMode mode) {
+    setState(() {
+      _cancelGuideModeInternal();
+      _guideMode = mode;
+      if (mode == _GuideMode.bend) {
+        // Pre-select the source guide: the currently selected guide, or
+        // the most recently added guide if nothing is selected.
+        _bendSourceId = _guides.selectedId ??
+            (_guides.ids.isNotEmpty ? _guides.ids.last : null);
+      }
+    });
+    switch (mode) {
+      case _GuideMode.loft:
+        setCaption('Tap strokes to loft!');
+      case _GuideMode.primitive:
+        setCaption('Pick a shape!');
+      case _GuideMode.bend:
+        setCaption('Draw a bend path!');
+      case _GuideMode.none:
+        break;
+    }
+  }
+
+  /// Clears all per-mode in-progress state (called when switching modes or
+  /// finalising / cancelling). Removes any live preview guides from the
+  /// [Guide3DManager] so the canvas doesn't carry dangling previews.
+  void _cancelGuideModeInternal() {
+    // Loft.
+    if (_loftPreviewId != null) {
+      _guides.remove(_loftPreviewId!);
+      _loftPreviewId = null;
+    }
+    _loftStrokeIds.clear();
+    // Primitive.
+    if (_primitivePreviewId != null) {
+      _guides.remove(_primitivePreviewId!);
+      _primitivePreviewId = null;
+    }
+    _primitiveKind = null;
+    // Bend.
+    _bendSourceId = null;
+    _liveStroke.clear();
+  }
+
+  // ----- Loft -----
+
+  /// Tap handler while in loft mode. [world] is the world-space tap point
+  /// (already raycast by the caller). Finds the nearest stroke within the
+  /// tap radius and toggles its membership in [_loftStrokeIds]. Rebuilds
+  /// the live loft preview whenever the selection changes.
+  void _onLoftTap(Vector3 world) {
+    const tapRadius = 0.5;
+    int? nearestId;
+    var nearestDist = double.infinity;
+    for (final s in _strokes) {
+      for (var i = 0; i < s.length; i++) {
+        final d = (s.worldPosition(i) - world).length;
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestId = s.id;
+        }
+      }
+    }
+    if (nearestId != null && nearestDist < tapRadius) {
+      if (_loftStrokeIds.contains(nearestId)) {
+        _loftStrokeIds.remove(nearestId);
+      } else {
+        _loftStrokeIds.add(nearestId);
+      }
+      _rebuildLoftPreview();
+      setState(() {});
+    }
+  }
+
+  /// Rebuilds the in-progress lofted guide preview from the currently
+  /// selected strokes + tension. Removes the previous preview (if any)
+  /// and adds the new one to the [Guide3DManager]. No-op when fewer than
+  /// two curves are selected (matches the Feather docs: "When you select
+  /// two or more curves, a preview of the 3D Guide will appear
+  /// immediately").
+  void _rebuildLoftPreview() {
+    if (_loftPreviewId != null) {
+      _guides.remove(_loftPreviewId!);
+      _loftPreviewId = null;
+    }
+    final curves = <List<Vector3>>[];
+    for (final id in _loftStrokeIds) {
+      final s = _findStroke(id);
+      if (s == null || s.length < 2) continue;
+      curves.add([for (var i = 0; i < s.length; i++) s.worldPosition(i)]);
+    }
+    if (curves.length < 2) return;
+    final guide = const LoftedGuideBuilder().build(
+      curves: curves,
+      params: LoftGuideParams(tension: _loftTension),
+      name: 'Lofted Guide ${_guides.length + 1}',
+    );
+    _loftPreviewId = _guides.add(guide);
+  }
+
+  /// Sets the loft tension slider value in [0, 1] and rebuilds the live
+  /// preview. Matches the Feather tension slider: 0 = sharp (linear-ish),
+  /// 1 = smooth (full Catmull-Rom).
+  void setLoftTension(double t) {
+    setState(() {
+      _loftTension = t.clamp(0.0, 1.0);
+      _rebuildLoftPreview();
+    });
+  }
+
+  /// Finalises the loft: the in-progress preview (already in the manager)
+  /// becomes a committed guide. Clears loft state and exits loft mode.
+  void finishLoft() {
+    setState(() {
+      _loftStrokeIds.clear();
+      _loftPreviewId = null;
+      _guideMode = _GuideMode.none;
+    });
+    setCaption('Lofted guide created!');
+  }
+
+  /// Cancels the loft: removes the in-progress preview from the manager
+  /// and clears loft state.
+  void cancelLoft() {
+    setState(() {
+      _cancelGuideModeInternal();
+      _guideMode = _GuideMode.none;
+    });
+  }
+
+  // ----- Primitive -----
+
+  /// Inserts a primitive guide of [kind] at the world origin (per the
+  /// Feather docs: "Shapes are always created at the fixed coordinates
+  /// (0, 0, 0)"). Replaces any previous in-progress primitive preview.
+  /// The segment slider is reset to the primitive's default segment count.
+  void insertPrimitive(Guide3DPrimitive kind) {
+    setState(() {
+      if (_primitivePreviewId != null) {
+        _guides.remove(_primitivePreviewId!);
+        _primitivePreviewId = null;
+      }
+      _primitiveKind = kind;
+      _primitiveSegments = kind.defaultSegments;
+      final guide = const PrimitiveGuideBuilder().build(
+        kind: kind,
+        params: PrimitiveGuideParams(segments: _primitiveSegments),
+        name: '${kind.displayName} Guide',
+      );
+      _primitivePreviewId = _guides.add(guide);
+    });
+  }
+
+  /// Sets the segment count and rebuilds the in-progress primitive preview
+  /// via [PrimitiveGuideBuilder.withSegments]. Clamps to the primitive's
+  /// legal range so a runaway slider cannot collapse the mesh.
+  void setPrimitiveSegments(int n) {
+    if (_primitiveKind == null) return;
+    setState(() {
+      final clamped = n.clamp(
+        _primitiveKind!.minSegments,
+        Guide3DPrimitive.maxSegments,
+      );
+      _primitiveSegments = clamped;
+      final oldGuide =
+          _primitivePreviewId != null ? _guides[_primitivePreviewId!] : null;
+      if (oldGuide == null) return;
+      final rebuilt =
+          const PrimitiveGuideBuilder().withSegments(oldGuide, clamped);
+      _guides.remove(_primitivePreviewId!);
+      _primitivePreviewId = _guides.add(rebuilt);
+    });
+  }
+
+  /// Finalises the primitive: the in-progress preview (already in the
+  /// manager) becomes a committed guide.
+  void finishPrimitive() {
+    setState(() {
+      _primitiveKind = null;
+      _primitivePreviewId = null;
+      _guideMode = _GuideMode.none;
+    });
+    setCaption('Primitive guide created!');
+  }
+
+  /// Cancels the primitive: removes the in-progress preview from the
+  /// manager and clears primitive state.
+  void cancelPrimitive() {
+    setState(() {
+      _cancelGuideModeInternal();
+      _guideMode = _GuideMode.none;
+    });
+  }
+
+  // ----- Bend -----
+
+  /// Called from [_onStrokeEnd] when in bend mode. Builds a new bent guide
+  /// from the source guide ([_bendSourceId]) and the just-drawn bend path
+  /// (the live stroke's world points), adds it to the [Guide3DManager],
+  /// and re-anchors the source to the bent result so the artist can repeat
+  /// the bend (per the Feather docs: "You can repeat the Bend 3D Guide
+  /// process multiple times").
+  void _onBendStrokeEnd() {
+    if (_bendSourceId == null || _liveStroke.length < 2) return;
+    final source = _guides[_bendSourceId!];
+    if (source == null) return;
+    final bent = const BentGuideBuilder().build(
+      source: source,
+      bendPath: _liveStroke.map((p) => p.clone()).toList(),
+      params: const BentGuideParams(),
+      name: source.name != null ? '${source.name} (bent)' : 'Bent Guide',
+    );
+    final newId = _guides.add(bent);
+    _bendSourceId = newId;
+  }
+
+  /// Cancels the bend: clears the bend source + live stroke. The source
+  /// guide itself is untouched (no bent copy was added if the artist
+  /// cancels before drawing).
+  void cancelBend() {
+    setState(() {
+      _bendSourceId = null;
+      _liveStroke.clear();
+      _guideMode = _GuideMode.none;
+    });
+  }
+
+  // ----- Tutorial caption -------------------------------------------------
+
+  /// Shows [text] as a handwritten caption (Caveat font, white text + soft
+  /// shadow) at the top-center of the canvas. The caption fades in over
+  /// ~400 ms, stays visible for 3 seconds, then fades out over ~400 ms.
+  /// Calling this again while a caption is showing replaces the text and
+  /// restarts the timer (so rapid calls don't pile up overlapping timers).
+  ///
+  /// Used by [setGuideMode] to surface the Feather-style "Let's sketch
+  /// this!" tutorial prompts when each mode is entered, and exposed for
+  /// any future tutorial / onboarding flow to call directly.
+  void setCaption(String text) {
+    _captionHideTimer?.cancel();
+    setState(() => _captionText = text);
+    _captionAnim.forward(from: 0.0);
+    _captionHideTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _captionAnim.reverse().whenComplete(() {
+        if (mounted) setState(() => _captionText = '');
+      });
+    });
+  }
+
+  // ----- Helpers -----
+
+  /// Looks up a stroke by id in the document's stroke list. Returns `null`
+  /// when the id is no longer present (e.g. after an undo that removed it).
+  Stroke? _findStroke(int id) {
+    for (final s in _strokes) {
+      if (s.id == id) return s;
+    }
+    return null;
   }
 
   /// Unprojects a screen position to a world-space point.
@@ -809,13 +1575,22 @@ class _MainScreenState extends State<MainScreen> {
   void _onTapSelect(Offset screenPos) {
     final world = _screenToWorld(screenPos);
     if (world == null) return;
-    // Find nearest stroke within tap radius.
+    // Loft mode: tap adds / removes the nearest stroke from the loft curve
+    // selection (and rebuilds the live loft preview).
+    if (_guideMode == _GuideMode.loft) {
+      _onLoftTap(world);
+      return;
+    }
+    // Select tool: toggle the nearest stroke in the [SelectionModel].
+    // Find nearest stroke within tap radius (in world space — strokes
+    // carry their own local-to-world transform, so we go through
+    // [Stroke.worldPosition] rather than the raw local point).
     const tapRadius = 0.5;
     int? nearestId;
     var nearestDist = double.infinity;
     for (final s in _strokes) {
-      for (final p in s.points) {
-        final d = (p.position - world).length;
+      for (var i = 0; i < s.length; i++) {
+        final d = (s.worldPosition(i) - world).length;
         if (d < nearestDist) {
           nearestDist = d;
           nearestId = s.id;
@@ -870,6 +1645,11 @@ class _MainScreenState extends State<MainScreen> {
       ..clear()
       ..addAll(prev);
     _selectionModel.reconcile(_strokes);
+    // Rebuild the Stroke3D map from the new Stroke snapshot so the
+    // curves-system source of truth stays in sync. Lossy: raw
+    // timestamps are lost (reverse-conversion from Stroke points),
+    // but positions / pressures are preserved.
+    _rebuildStroke3Ds();
     setState(() {});
   }
 
@@ -881,9 +1661,506 @@ class _MainScreenState extends State<MainScreen> {
       ..clear()
       ..addAll(next);
     _selectionModel.reconcile(_strokes);
+    _rebuildStroke3Ds();
     setState(() {});
   }
+
+  // ----- Stroke3D ↔ Stroke conversion + sync ------------------------------
+  //
+  // The host owns two parallel views of every paint stroke:
+  //   * [_strokes]       — the rendered [Stroke] list (used by the canvas
+  //                        viewport, selection, transform, undo / redo).
+  //   * [_stroke3Ds]     — the canonical [Stroke3D] per stroke id (used
+  //                        by the curves system: smoothing, simplification,
+  //                        Bezier / Catmull-Rom / NURBS fitting, export).
+  //
+  // The two are kept in sync by these helpers:
+  //   * [_stroke3DToStroke] — Stroke3D → Stroke (positions, pressures,
+  //                           tilts, times, UVs).
+  //   * [_strokeToStroke3D] — Stroke → Stroke3D (reverse; lossy on
+  //                           timestamps when invoked after undo / redo).
+  //   * [_syncStroke3D]     — rebuild the Stroke3D for a single stroke
+  //                           after an in-place erase mutation.
+  //   * [_rebuildStroke3Ds] — rebuild the whole Stroke3D map from the
+  //                           current Stroke list (after undo / redo).
+
+  /// Converts a [Stroke3D] to a [Stroke] for rendering. Each sample's
+  /// position / pressure / tilt / time / UV is preserved verbatim.
+  Stroke _stroke3DToStroke(Stroke3D s3d) {
+    final points = s3d.samples
+        .map((sample) => StrokePoint(
+              position: sample.position.clone(),
+              pressure: sample.pressure,
+              tilt: sample.tilt.clone(),
+              time: sample.time,
+              uv: sample.uv?.clone(),
+            ))
+        .toList();
+    return Stroke(
+      brushType: BrushType.basic,
+      color: s3d.color,
+      thickness: s3d.thickness,
+      points: points,
+    );
+  }
+
+  /// Reverse-converts a [Stroke] back to a [Stroke3D]. Used to rebuild
+  /// the Stroke3D map after undo / redo (the undo stack snapshots Strokes,
+  /// not Stroke3Ds) and after an in-place erase mutation.
+  Stroke3D _strokeToStroke3D(Stroke stroke) {
+    final samples = stroke.points
+        .map((p) => StrokeSample3D(
+              position: p.position.clone(),
+              pressure: p.pressure,
+              tilt: p.tilt.clone(),
+              time: p.time,
+              uv: p.uv?.clone(),
+            ))
+        .toList();
+    return Stroke3D(
+      samples: samples,
+      color: stroke.color,
+      thickness: stroke.thickness,
+      inputDevice: StrokeInputDevice.touch,
+      source: 'feather-canvas',
+    );
+  }
+
+  /// Rebuilds the Stroke3D for [stroke] from its current StrokePoint
+  /// list. Called after an erase mutation removes points from the
+  /// Stroke in place — the Stroke3D is recreated so its cached
+  /// polyline length is reset and the curves system sees the
+  /// post-erase sample list.
+  void _syncStroke3D(Stroke stroke) {
+    _stroke3Ds[stroke.id] = _strokeToStroke3D(stroke);
+  }
+
+  /// Rebuilds the entire [_stroke3Ds] map from the current [_strokes]
+  /// list. Called after undo / redo (which replace the Stroke list
+  /// wholesale) so the Stroke3D map reflects the new snapshot.
+  void _rebuildStroke3Ds() {
+    _stroke3Ds.clear();
+    for (final stroke in _strokes) {
+      _stroke3Ds[stroke.id] = _strokeToStroke3D(stroke);
+    }
+  }
+
+  // ----- Eraser + Vacuum (per Feather Draw-and-Erase docs) ----------------
+  //
+  // Eraser: tap or drag with the pen to erase PARTS of curves. Per the
+  // docs, "the Eraser removes points from the center of the curve, not
+  // the surrounding geometry" — so we test against stroke POINTS (not
+  // the tube surface) and remove any within the erase radius. Strokes
+  // that fall below 2 points are dropped entirely.
+  //
+  // Vacuum: tap or drag with the pen to erase WHOLE curves. Per the
+  // docs, "erases all curves it touches" — so we test whether ANY
+  // point of a stroke is within the vacuum radius and remove the
+  // entire stroke on a single hit.
+  //
+  // 3D Guide isolation: "Cover the curves you don't want to erase with
+  // a 3D Guide. The eraser will not erase curves within the guide." We
+  // approximate "within the guide" as the stroke's world centroid
+  // falling inside a guide's world-space bounding sphere (centered on
+  // the guide's mesh-bounds center, radius = half the diagonal of the
+  // mesh AABB). Strokes whose centroid is inside any visible guide are
+  // skipped by both the eraser and the vacuum.
+
+  /// World-space radius within which the eraser removes stroke points.
+  static const double _eraseRadius = 0.5;
+
+  /// World-space radius within which the vacuum removes whole strokes.
+  static const double _vacuumRadius = 1.0;
+
+  /// Eraser: removes stroke POINTS within [_eraseRadius] of the world
+  /// position under [screenPos]. Strokes covered by a 3D Guide are
+  /// skipped (see [_strokeProtectedByGuide]). Strokes that drop below
+  /// 2 points after the erase are removed entirely (with their
+  /// Stroke3D + material records cleaned up).
+  void _eraseAt(Offset screenPos) {
+    final world = _screenToWorld(screenPos);
+    if (world == null) return;
+    var mutated = false;
+    for (final stroke in _strokes) {
+      if (_strokeProtectedByGuide(stroke)) continue;
+      final before = stroke.points.length;
+      stroke.points.removeWhere((p) {
+        final wp = stroke.transform.transform3(p.position.clone());
+        return (wp - world).length <= _eraseRadius;
+      });
+      if (stroke.points.length != before) {
+        _syncStroke3D(stroke);
+        mutated = true;
+      }
+    }
+    if (mutated) {
+      _strokes.removeWhere((s) {
+        if (s.points.length < 2) {
+          _stroke3Ds.remove(s.id);
+          _strokeMaterials.remove(s.id);
+          return true;
+        }
+        return false;
+      });
+    }
+  }
+
+  /// Vacuum: removes entire STROKES that have any point within
+  /// [_vacuumRadius] of the world position under [screenPos]. Strokes
+  /// covered by a 3D Guide are skipped.
+  void _vacuumAt(Offset screenPos) {
+    final world = _screenToWorld(screenPos);
+    if (world == null) return;
+    _strokes.removeWhere((s) {
+      if (_strokeProtectedByGuide(s)) return false;
+      for (var i = 0; i < s.length; i++) {
+        final d = (s.worldPosition(i) - world).length;
+        if (d <= _vacuumRadius) {
+          _stroke3Ds.remove(s.id);
+          _strokeMaterials.remove(s.id);
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  /// 3D Guide isolation check. Returns true when [stroke]'s world
+  /// centroid falls inside any visible guide's world-space bounding
+  /// sphere (centered on the guide's mesh-bounds center, radius = half
+  /// the diagonal of the mesh AABB). Such strokes are protected from
+  /// the eraser and vacuum (per the Feather docs: "Cover the curves
+  /// you don't want to erase with a 3D Guide. The eraser will not
+  /// erase curves within the guide").
+  bool _strokeProtectedByGuide(Stroke stroke) {
+    if (_guides.guides.isEmpty) return false;
+    final center = stroke.worldCenter();
+    for (final guide in _guides.guides) {
+      if (!guide.visible) continue;
+      final guideCenter = guide.worldCenter;
+      final bounds = guide.mesh.bounds;
+      final radius = (bounds.max - bounds.min).length * 0.5;
+      if ((guideCenter - center).length <= radius) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ----- Export (glTF + OBJ + PNG) ----------------------------------------
+  //
+  // Three export entry points exposed on [_MainScreenState] for future
+  // UI wiring (an export sheet / share sheet). Each delegates to the
+  // pure-Dart exporter in lib/io/:
+  //
+  //   * [exportAsGltf] — GltfExporter: strokes as LINE_STRIP primitives,
+  //                      guides as TRIANGLES primitives, single
+  //                      base64-encoded binary buffer.
+  //   * [exportAsObj]  — ObjExporter: strokes as capped tube meshes
+  //                      (parallel-transport framing, configurable
+  //                      segment count + radius).
+  //   * [exportAsPng]  — PngExporter: raw RGBA8 buffer → PNG file
+  //                      (caller captures the viewport pixels via a
+  //                      RepaintBoundary or similar).
+
+  /// Exports the current scene (strokes + active guides) as a glTF 2.0
+  /// JSON file at [path]. Strokes are emitted as LINE_STRIP primitives;
+  /// guides as TRIANGLES primitives. The Stroke3D map is passed
+  /// alongside so the exporter can be extended to emit fitted Bezier /
+  /// Catmull-Rom curves without changing the call site.
+  Future<File> exportAsGltf(String path) async {
+    final exporter = GltfExporter();
+    final bytes = exporter.export(
+      strokes: _strokes,
+      strokeCurves: _stroke3Ds,
+      guides: _guides.guides,
+    );
+    final file = File(path);
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  /// Exports the current strokes as a tube mesh in Wavefront OBJ format
+  /// at [path]. Each stroke becomes a closed tube (capped at both ends)
+  /// with 8 vertices per ring and a 0.05 world-unit radius (defaults of
+  /// [ObjExporter]).
+  Future<File> exportAsObj(String path) async {
+    final exporter = ObjExporter();
+    final obj = exporter.export(strokes: _strokes);
+    final file = File(path);
+    await file.writeAsString(obj, flush: true);
+    return file;
+  }
+
+  /// Exports the given RGBA pixel buffer as a PNG file at [path]. The
+  /// buffer must be `width * height * 4` bytes (RGBA8, top-to-bottom
+  /// row-major). Uses the pure-Dart [PngExporter] (no platform
+  /// plugins). The caller is responsible for capturing the viewport
+  /// pixels — e.g. via a [RepaintBoundary] + `toByteData` on the
+  /// rendered image.
+  Future<File> exportAsPng(
+    String path, {
+    required int width,
+    required int height,
+    required List<int> rgba,
+  }) async {
+    final exporter = PngExporter();
+    return exporter.exportToFile(
+      path: path,
+      width: width,
+      height: height,
+      rgba: rgba,
+    );
+  }
+
+  // ----- Guide creation overlay UI ----------------------------------------
+  //
+  // A small top-center overlay mounted on top of the [EditorScreen]. When
+  // no guide mode is active, it shows a launcher row with four buttons:
+  //   [Loft] [Primitive] [Bend] [Caption]
+  // Tapping one enters the corresponding sub-mode (see [setGuideMode]) —
+  // or, for [Caption], fires [setCaption] as a manual demo of the
+  // tutorial overlay. When a sub-mode is active, the launcher is replaced
+  // by that mode's panel (slider + Done / Cancel).
+
+  Widget _buildGuideOverlay() {
+    switch (_guideMode) {
+      case _GuideMode.none:
+        return _buildGuideLauncher();
+      case _GuideMode.loft:
+        return _buildLoftPanel();
+      case _GuideMode.primitive:
+        return _buildPrimitivePanel();
+      case _GuideMode.bend:
+        return _buildBendPanel();
+    }
+  }
+
+  Widget _buildGuideLauncher() {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _launcherButton('Loft', () => setGuideMode(_GuideMode.loft)),
+            _launcherButton(
+                'Primitive', () => setGuideMode(_GuideMode.primitive)),
+            _launcherButton('Bend', () => setGuideMode(_GuideMode.bend)),
+            _launcherButton(
+                'Caption', () => setCaption("Let's sketch this!")),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _launcherButton(String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoftPanel() {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(10),
+          border:
+              Border.all(color: Colors.blueAccent.withValues(alpha: 0.6)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Loft — ${_loftStrokeIds.length} curve(s) selected. '
+              'Tap strokes to add / remove.',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Tension',
+                    style: TextStyle(color: Colors.white70, fontSize: 11)),
+                SizedBox(
+                  width: 160,
+                  child: Slider(
+                    value: _loftTension,
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 100,
+                    label: _loftTension.toStringAsFixed(2),
+                    onChanged: setLoftTension,
+                  ),
+                ),
+                _iconBtn(Icons.check_rounded, finishLoft, Colors.greenAccent),
+                _iconBtn(Icons.close_rounded, cancelLoft, Colors.redAccent),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimitivePanel() {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: Colors.purpleAccent.withValues(alpha: 0.6)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final kind in Guide3DPrimitive.values)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: _primitiveButton(kind),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Segments',
+                    style: TextStyle(color: Colors.white70, fontSize: 11)),
+                SizedBox(
+                  width: 160,
+                  child: Slider(
+                    value: _primitiveSegments.toDouble(),
+                    min: 3,
+                    max: 64,
+                    divisions: 61,
+                    label: '$_primitiveSegments',
+                    onChanged: (v) => setPrimitiveSegments(v.round()),
+                  ),
+                ),
+                SizedBox(
+                  width: 32,
+                  child: Text('$_primitiveSegments',
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 11)),
+                ),
+                _iconBtn(
+                    Icons.check_rounded, finishPrimitive, Colors.greenAccent),
+                _iconBtn(
+                    Icons.close_rounded, cancelPrimitive, Colors.redAccent),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _primitiveButton(Guide3DPrimitive kind) {
+    final active = _primitiveKind == kind;
+    return GestureDetector(
+      onTap: () => insertPrimitive(kind),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? Colors.purpleAccent.withValues(alpha: 0.6)
+              : Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? Colors.purpleAccent : Colors.transparent,
+          ),
+        ),
+        child: Text(
+          kind.displayName,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBendPanel() {
+    final source = _bendSourceId != null ? _guides[_bendSourceId!] : null;
+    final sourceName =
+        source?.name ?? 'Guide #${_bendSourceId ?? '-'}';
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: Colors.orangeAccent.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Bend — source: $sourceName. Draw a path on the canvas.',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+            _iconBtn(Icons.check_rounded,
+                () => setGuideMode(_GuideMode.none), Colors.greenAccent),
+            _iconBtn(Icons.close_rounded, cancelBend, Colors.redAccent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _iconBtn(IconData icon, VoidCallback onTap, Color color) {
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon, color: color, size: 20),
+      tooltip: '',
+      padding: const EdgeInsets.all(4),
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+    );
+  }
 }
+
+/// Guide-creation sub-mode for the host's overlay UI. `none` is the
+/// default painting mode; the other values activate the Loft / Primitive
+/// / Bend guide-creation flows per the Feather docs.
+enum _GuideMode { none, loft, primitive, bend }
 
 /// A world-space camera ray (origin + direction, both vector_math
 /// [Vector3]). Kept separate from the engine's [Ray] type

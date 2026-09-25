@@ -311,7 +311,24 @@ class _EditorScreenState extends State<EditorScreen> {
             child: Center(
               child: ToolDock(
                 active: _s.tool,
-                onSelect: (t) => _set(_s.copyWith(tool: t)),
+                onSelect: (t) {
+                  if (t == FeatherTool.erase) {
+                    // Cycle: draw -> eraser -> vacuum -> draw (per
+                    // Feather's Draw-and-Erase docs). Tapping the Erase
+                    // dock button while already in an erase sub-mode
+                    // advances to the next; tapping it from any other
+                    // tool enters the eraser sub-mode.
+                    final next = switch (_s.tool) {
+                      FeatherTool.draw => FeatherTool.eraser,
+                      FeatherTool.eraser => FeatherTool.vacuum,
+                      FeatherTool.vacuum => FeatherTool.draw,
+                      _ => FeatherTool.eraser,
+                    };
+                    _set(_s.copyWith(tool: next));
+                  } else {
+                    _set(_s.copyWith(tool: t));
+                  }
+                },
                 onHome: () => Navigator.of(context).maybePop(),
                 onSystemMenu: () => setState(() => _showStage = true),
               ),
@@ -519,6 +536,7 @@ class _EditorScreenState extends State<EditorScreen> {
           showGrid: _scene.showGrid,
           renderMode: _s.renderMode,
           selectionBounds: _scene.selectionBounds,
+          paintLayer: _scene.paintLayer,
         ),
         onStrokeStart: start == null
             ? null
@@ -566,14 +584,21 @@ class _EditorScreenState extends State<EditorScreen> {
               icon: Icons.hexagon_outlined, label: 'Shape', onTap: () {}),
         ];
       case FeatherTool.erase:
+      case FeatherTool.eraser:
+      case FeatherTool.vacuum:
         return [
           TopBarAction(
               icon: Icons.auto_fix_high_outlined,
               label: 'Partial',
-              active: true,
-              onTap: () {}),
+              active: _s.tool != FeatherTool.vacuum,
+              onTap: () =>
+                  _set(_s.copyWith(tool: FeatherTool.eraser))),
           TopBarAction(
-              icon: Icons.delete_sweep_outlined, label: 'Whole', onTap: () {}),
+              icon: Icons.delete_sweep_outlined,
+              label: 'Whole',
+              active: _s.tool == FeatherTool.vacuum,
+              onTap: () =>
+                  _set(_s.copyWith(tool: FeatherTool.vacuum))),
         ];
       case FeatherTool.select:
         return [

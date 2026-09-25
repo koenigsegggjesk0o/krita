@@ -119,6 +119,13 @@ class CanvasScene {
     /// [lightDir]. When null, the painter falls back to a soft offset
     /// blob shadow under each stroke.
     this.groundY,
+    /// Real Krita paint layer — an RGBA8 raster composited by the
+    /// brush engine's `generateDab` path (via `KritaCanvasController`
+    /// on the host). Drawn on top of the 3D stroke ribbons so the
+    /// actual dab pixels are visible. Null when the real engine is
+    /// unavailable (the procedural / fallback path keeps using the
+    /// 3D polyline rendering only).
+    this.paintLayer,
   });
 
   final List<CanvasStroke> strokes;
@@ -133,6 +140,11 @@ class CanvasScene {
   final double ambient;
   final double diffuse;
   final double? groundY;
+
+  /// The real-Krita dab composite layer (host-side rasterized from the
+  /// [KritaCanvasController] backing buffer). Null on the fallback
+  /// engine or before the first dab is painted.
+  final ui.Image? paintLayer;
 }
 
 class CanvasViewport extends StatefulWidget {
@@ -242,6 +254,15 @@ class _CanvasViewportState extends State<CanvasViewport> {
           _isPanning = false;
           _lastPan = null;
         },
+        // Tap-to-select: fires when a single finger lands and lifts
+        // without significant drag. Used by the Select tool's tap-select
+        // (host routes the screen point to its [SelectionSystem]) and by
+        // Loft mode's tap-to-pick-curve flow (host routes the point to
+        // its loft selection list). The gesture arena resolves tap vs
+        // pan: a quick tap wins, a drag wins pan.
+        onTapUp: widget.onTapSelect == null
+            ? null
+            : (details) => widget.onTapSelect!(details.localPosition),
         child: ClipRect(
           child: CustomPaint(
             size: Size.infinite,
@@ -327,6 +348,22 @@ class _CanvasPainter extends CustomPainter {
       _paintStroke(canvas, scene.previewStroke!);
     }
     canvas.restore();
+
+    // 5b. Real Krita dab composite layer — drawn on top of the 3D
+    //     strokes so the actual `generateDab` pixels are visible. The
+    //     layer is rasterized from the host-side [KritaCanvasController]
+    //     backing buffer (1:1 with the viewport in logical pixels), so
+    //     we draw it at the canvas origin without any pan/zoom. Null on
+    //     the fallback engine — in that case the 3D polyline rendering
+    //     above is the only paint path (current behaviour preserved).
+    final paintLayer = scene.paintLayer;
+    if (paintLayer != null) {
+      canvas.drawImage(
+        paintLayer,
+        Offset.zero,
+        Paint()..filterQuality = FilterQuality.low,
+      );
+    }
 
     // 6. Selection bounds.
     if (scene.selectionBounds != null) {
