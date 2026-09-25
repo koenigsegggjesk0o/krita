@@ -64,6 +64,8 @@ import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
 import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
+import 'package:feather_krita/core/math/vec3.dart';
+import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/engine/guide3d/guide3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
@@ -449,22 +451,29 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {});
   }
 
-  /// Unprojects a screen position to a world-space point on the y=0
-  /// ground plane (Feather's default drawing surface). Returns null
-  /// when the camera ray is parallel to the ground plane.
-  ///
-  /// NOTE: the new [Guide3D.raycast] takes the engine's custom [Ray] /
-  /// [Vec3] types (lib/core/math/), which are distinct from the
-  /// vector_math [Vector3] used by the camera and stroke model. The
-  /// guide hit-path therefore needs a Vec3<->Vector3 bridge that is
-  /// not wired in this loop; for now we raycast against the y=0 ground
-  /// plane. The [Guide3DManager] is still owned and its guides are
-  /// surfaced in the Resources tab — rendering the guide meshes and
-  /// snapping strokes to them is the next loop.
+  /// Unprojects a screen position to a world-space point.
+  /// Tries active Guide3D surfaces first (via Vec3<->Vector3 bridge),
+  /// falls back to y=0 ground plane if no guide hit.
   Vector3? _screenToWorld(Offset screen) {
     if (_viewportSize.isEmpty) return null;
     final ray = _screenToRay(screen);
-    // Ground plane (y = 0): t = -origin.y / dir.y.
+
+    // GAP 1 FIX: Try Guide3D raycast first (Vec3<->Vector3 bridge).
+    final guides = _guides.guides;
+    for (final guide in guides) {
+      if (!guide.visible || guide.locked) continue;
+      // Bridge vector_math Vector3 -> engine Vec3.
+      final engineOrigin = Vec3(ray.origin.x, ray.origin.y, ray.origin.z);
+      final engineDir = Vec3(ray.direction.x, ray.direction.y, ray.direction.z);
+      final engineRay = math.Ray.normalized(engineOrigin, engineDir);
+      final hit = guide.raycast(engineRay);
+      if (hit != null) {
+        // Bridge back Vec3 -> Vector3.
+        return Vector3(hit.point.x, hit.point.y, hit.point.z);
+      }
+    }
+
+    // Fallback: ground plane (y = 0).
     final t = -ray.origin.y / ray.direction.y;
     if (t.isFinite && t > 0 && t < 1000) {
       return ray.origin + ray.direction * t;
@@ -575,6 +584,41 @@ class _MainScreenState extends State<MainScreen> {
     if (!_liquify.isEditing) return;
     _liquify.undoAll(_strokes);
     setState(() {});
+  }
+
+  // GAP 3 FIX: Forward canvas drag to LiquifyEngine.
+  void _onLiquifyDrag(Offset screenPos, Offset dragDelta) {
+    if (!_liquify.isEditing) return;
+    final world = _screenToWorld(screenPos);
+    if (world == null) return;
+    final right = _camera.right;
+    final up = _camera.up;
+    final worldDelta = right * (dragDelta.dx * 0.5) + up * (-dragDelta.dy * 0.5);
+    _liquify.applyDrag(strokes: _strokes, centre: world, drag: worldDelta);
+    setState(() {});
+  }
+
+  // GAP 2 FIX: Tap-select on canvas.
+  void _onTapSelect(Offset screenPos) {
+    final world = _screenToWorld(screenPos);
+    if (world == null) return;
+    // Find nearest stroke within tap radius.
+    const tapRadius = 0.5;
+    int? nearestId;
+    var nearestDist = double.infinity;
+    for (final s in _strokes) {
+      for (final p in s.points) {
+        final d = (p.position - world).length;
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestId = s.id;
+        }
+      }
+    }
+    if (nearestId != null && nearestDist < tapRadius) {
+      _selectionModel.toggle(nearestId);
+      setState(() {});
+    }
   }
 
   // ----- Brush presets ----------------------------------------------------
