@@ -109,9 +109,16 @@ class MaterialLightRig {
 
   /// Lambert diffuse term for [normal] (unit) under the key light,
   /// ambient-floored and color-tinted.
+  ///
+  /// [key.unit] points FROM the light TOWARD the scene (the OpenGL
+  /// convention), so the diffuse term is `N · (-L)`: a surface whose
+  /// normal faces the light source reads as fully lit, while one facing
+  /// away (normal aligned with L) reads as the ambient floor. Using
+  /// `N · L` directly would invert the lighting — a back-facing surface
+  /// would read as fully lit.
   double lambert(Vec3 normal) {
     final n = normal.normalized();
-    final ndl = n.dot(key.unit).clamp(0.0, 1.0);
+    final ndl = n.dot(-key.unit).clamp(0.0, 1.0);
     return (ambient + (1.0 - ambient) * key.intensity * ndl).clamp(0.0, 1.0);
   }
 

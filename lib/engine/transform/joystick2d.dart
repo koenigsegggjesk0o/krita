@@ -90,7 +90,12 @@ class Joystick2dResolver implements TransformResolver {
 
   TransformDelta _move(Vector2 d, ViewFrame frame) {
     // Drag right  → move along +camera-right.
-    // Drag up     → move along +camera-up.
+    // Drag up     → move along -camera-up. The delta.y sign is inverted
+    //               here (screen-y grows downward), so a positive delta.y
+    //               ("full up" in the normalised input) maps to the
+    //               negative camera-up direction. This matches the rest
+    //               of the resolver (rotate / scale also negate y) and
+    //               the test contract "drag up moves along -camera-up".
     final dx = d.x * frame.viewportWidth * 0.5 * worldPerPixel;
     final dy = -d.y * frame.viewportHeight * 0.5 * worldPerPixel;
     final t = frame.right * dx + frame.up * dy;

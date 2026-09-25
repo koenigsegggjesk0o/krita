@@ -168,29 +168,35 @@ class CatmullRomCurve3D extends Curve3D {
   }
 
   /// Cardinal-spline basis evaluated on four control points at local
-  /// parameter [u] in [0, 1]. [s] is `2 - tension` (so s = 2 is plain
+  /// parameter [u] in [0, 1]. [s] is `2 - 2*tension` (so s = 2 is plain
   /// Catmull-Rom).
+  ///
+  /// The basis polynomials are the standard Cardinal form (no extra
+  /// scaling): they sum to 1 at u=0 and u=1, so the curve *interpolates*
+  /// p1 at u=0 and p2 at u=1. A stray 0.5 factor here would halve every
+  /// basis coefficient and stop the spline passing through its control
+  /// points.
   static Vector3 _cardinal(
       Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, double u, double s) {
     final u2 = u * u;
     final u3 = u2 * u;
-    // Cardinal basis polynomials.
-    final b0 = (s * (-u3 + 2 * u2 - u)) * 0.5;
-    final b1 = ((2 - s) * u3 + (s - 3) * u2 + 1.0) * 0.5;
-    final b2 = ((s - 2) * u3 + (3 - 2 * s) * u2 + s * u) * 0.5;
-    final b3 = (s * (u3 - u2)) * 0.5;
+    // Cardinal basis polynomials (partition of unity at u=0 and u=1).
+    final b0 = s * (-u3 + 2 * u2 - u);
+    final b1 = (2 - s) * u3 + (s - 3) * u2 + 1.0;
+    final b2 = (s - 2) * u3 + (3 - 2 * s) * u2 + s * u;
+    final b3 = s * (u3 - u2);
     return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
   }
 
-  /// Derivative of [_cardinal] w.r.t. u.
+  /// Derivative of [_cardinal] w.r.t. u (same basis, no 0.5 scaling).
   static Vector3 _cardinalDerivative(
       Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, double u, double s) {
     final u2 = u * u;
     // d/du of the basis polynomials above.
-    final b0 = (s * (-3 * u2 + 4 * u - 1)) * 0.5;
-    final b1 = (3 * (2 - s) * u2 + 2 * (s - 3) * u) * 0.5;
-    final b2 = (3 * (s - 2) * u2 + 2 * (3 - 2 * s) * u + s) * 0.5;
-    final b3 = (s * (3 * u2 - 2 * u)) * 0.5;
+    final b0 = s * (-3 * u2 + 4 * u - 1);
+    final b1 = 3 * (2 - s) * u2 + 2 * (s - 3) * u;
+    final b2 = 3 * (s - 2) * u2 + 2 * (3 - 2 * s) * u + s;
+    final b3 = s * (3 * u2 - 2 * u);
     return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
   }
 

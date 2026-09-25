@@ -222,8 +222,13 @@ class Guide3D {
     if (!visible || locked) return null;
     _ensureInverse();
 
-    final Vector3 localOrigin = _inverse.transform3(Vector3.copy(ray.origin as dynamic));
-    final Vector3 localDir = _inverse.transform3(Vector3.copy(ray.direction as dynamic));
+    // ray.origin / ray.direction are core's immutable Vec3; convert to
+    // vector_math's mutable Vector3 by component (Vector3.copy expects a
+    // Vector3 and would crash on a Vec3 via `as dynamic`).
+    final Vector3 localOrigin =
+        _inverse.transform3(Vector3(ray.origin.x, ray.origin.y, ray.origin.z));
+    final Vector3 localDir = _inverse
+        .transform3(Vector3(ray.direction.x, ray.direction.y, ray.direction.z));
     final Vector3 localDirN = localDir.normalized();
 
     var bestT = maxDistance;

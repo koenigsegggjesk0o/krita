@@ -59,12 +59,15 @@
 //     [KritaBrushController.loadPreset] is the next loop.
 
 import 'dart:async';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
 import 'dart:math' as dmath;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:share_plus/share_plus.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'package:feather_krita/core/camera/orbit_camera.dart';
@@ -94,6 +97,7 @@ import 'package:feather_krita/engine/transform/joystick3d.dart';
 import 'package:feather_krita/engine/transform/transform_mode.dart';
 import 'package:feather_krita/engine/transform/transform_resolver.dart';
 import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor, BrushInput;
+import 'package:feather_krita/io/app_dirs.dart' show exportsDir;
 import 'package:feather_krita/io/gltf_exporter.dart';
 import 'package:feather_krita/io/obj_exporter.dart';
 import 'package:feather_krita/io/png_exporter.dart';
@@ -386,6 +390,34 @@ class _MainScreenState extends State<MainScreen>
   /// when the in-flight one completes (if the canvas version advanced).
   bool _rasterizingPaint = false;
 
+  // ----- Export wiring (TopBar buttons → exporters) ----------------------
+  //
+  // The TopBar now exposes two buttons wired by this host:
+  //   * Export  (Icons.ios_share_rounded) → [_showExportSheet]
+  //   * Share   (Icons.share_outlined)     → [_shareLastExport]
+  //
+  // PNG export captures the live editor via a [RepaintBoundary] that
+  // wraps [EditorScreen] (keyed by [_viewportBoundaryKey]). The captured
+  // [ui.Image] is converted to an RGBA8 buffer (premultiplied → straight
+  // alpha) and handed to [PngExporter]. glTF / OBJ exports pick a save
+  // location via [FilePicker.platform.saveFile] (desktop) or fall back to
+  // the canonical exports directory (mobile). The last successful export
+  // path is cached in [_lastExportPath] so the Share button can re-share
+  // without forcing a re-pick.
+
+  /// Key for the [RepaintBoundary] wrapping the [EditorScreen]. Used by
+  /// [_captureViewportPng] to call `RenderRepaintBoundary.toImage()`.
+  final GlobalKey _viewportBoundaryKey = GlobalKey();
+
+  /// Path of the most recent successful export (any format). The Share
+  /// button re-shares this file; null until the first export succeeds.
+  String? _lastExportPath;
+
+  /// True while an export is in flight. Disables the export buttons
+  /// (the sheet closes on tap; this guards against re-entry from the
+  /// Share button while a PNG snapshot is still rendering).
+  bool _exporting = false;
+
   @override
   void initState() {
     super.initState();
@@ -452,49 +484,59 @@ class _MainScreenState extends State<MainScreen>
         _viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
         return Stack(
           children: [
-            EditorScreen(
-              initial: _initialUiState(),
-              scene: _buildCanvasScene(),
-              layers: _buildLayerItems(),
-              resources: _buildResourceItems(),
-              presets: _presets,
-              canUndo: _undoStack.isNotEmpty,
-              canRedo: _redoStack.isNotEmpty,
-              // Drawing is enabled in the Draw tool, the Eraser / Vacuum
-              // sub-modes (pen drag erases), and Bend mode (the artist
-              // draws the bend path on the canvas). Loft mode uses
-              // tap-to-select instead — see [_onTapSelect] branching.
-              drawingEnabled: _tool == FeatherTool.draw ||
-                  _tool == FeatherTool.eraser ||
-                  _tool == FeatherTool.vacuum ||
-                  _guideMode == _GuideMode.bend,
-              onStrokeStart: _onStrokeStart,
-              onStrokeUpdate: _onStrokeUpdate,
-              onStrokeEnd: _onStrokeEnd,
-              onUndo: _undo,
-              onRedo: _redo,
-              onUiStateChanged: _onUiStateChanged,
-              onPan: _onPan,
-              onZoom: _onZoom,
-              onSelectAll: _selectAll,
-              onLiquifyMode: _onLiquifyMode,
-              onLiquifyApply: _onLiquifyApply,
-              onLiquifyUndoAll: _onLiquifyUndoAll,
-              onJoystickMove: _onJoystickMove,
-              onJoystickRotate: _onJoystickRotate,
-              onJoystickScale: _onJoystickScale,
-              onPickPreset: _onPickPreset,
-              // Tool-gated gesture callbacks: tap-select only fires in the
-              // Select tool OR in Loft mode (where taps add strokes to the
-              // loft curve selection). Liquify drag only in the Liquify tool.
-              // The viewport uses their presence (vs null) to route single-
-              // finger gestures away from camera orbit.
-              onTapSelect: (_tool == FeatherTool.select ||
-                      _guideMode == _GuideMode.loft)
-                  ? _onTapSelect
-                  : null,
-              onLiquifyDrag:
-                  _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
+            // RepaintBoundary wrapping the EditorScreen so PNG export
+            // can capture the live canvas via RenderRepaintBoundary.toImage().
+            // The boundary sits beneath the guide overlay + caption so
+            // those transient hints are NOT included in the snapshot.
+            RepaintBoundary(
+              key: _viewportBoundaryKey,
+              child: EditorScreen(
+                initial: _initialUiState(),
+                scene: _buildCanvasScene(),
+                layers: _buildLayerItems(),
+                resources: _buildResourceItems(),
+                presets: _presets,
+                canUndo: _undoStack.isNotEmpty,
+                canRedo: _redoStack.isNotEmpty,
+                // Drawing is enabled in the Draw tool, the Eraser / Vacuum
+                // sub-modes (pen drag erases), and Bend mode (the artist
+                // draws the bend path on the canvas). Loft mode uses
+                // tap-to-select instead — see [_onTapSelect] branching.
+                drawingEnabled: _tool == FeatherTool.draw ||
+                    _tool == FeatherTool.eraser ||
+                    _tool == FeatherTool.vacuum ||
+                    _guideMode == _GuideMode.bend,
+                onStrokeStart: _onStrokeStart,
+                onStrokeUpdate: _onStrokeUpdate,
+                onStrokeEnd: _onStrokeEnd,
+                onUndo: _undo,
+                onRedo: _redo,
+                onUiStateChanged: _onUiStateChanged,
+                onPan: _onPan,
+                onZoom: _onZoom,
+                onSelectAll: _selectAll,
+                onLiquifyMode: _onLiquifyMode,
+                onLiquifyApply: _onLiquifyApply,
+                onLiquifyUndoAll: _onLiquifyUndoAll,
+                onJoystickMove: _onJoystickMove,
+                onJoystickRotate: _onJoystickRotate,
+                onJoystickScale: _onJoystickScale,
+                onPickPreset: _onPickPreset,
+                // Export wiring: TopBar buttons → host exporter calls.
+                onExport: _showExportSheet,
+                onShare: _shareLastExport,
+                // Tool-gated gesture callbacks: tap-select only fires in the
+                // Select tool OR in Loft mode (where taps add strokes to the
+                // loft curve selection). Liquify drag only in the Liquify tool.
+                // The viewport uses their presence (vs null) to route single-
+                // finger gestures away from camera orbit.
+                onTapSelect: (_tool == FeatherTool.select ||
+                        _guideMode == _GuideMode.loft)
+                    ? _onTapSelect
+                    : null,
+                onLiquifyDrag:
+                    _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
+              ),
             ),
 
             // Guide-creation launcher + per-mode panels (top-center overlay,
@@ -2114,6 +2156,329 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
+  // ----- Export UI wiring (TopBar buttons → exporters) -------------------
+  //
+  // The TopBar now exposes Export + Share buttons (see top_bar.dart).
+  // These methods bridge those buttons to the exporter entry points above:
+  //
+  //   * [_showExportSheet]   — opens a material bottom sheet with four
+  //                            options (glTF / OBJ / PNG / Share). Each
+  //                            option kicks off the corresponding handler
+  //                            below. The sheet is the single entry point
+  //                            for every export action so the host owns
+  //                            the file-picker + share-plus plumbing in
+  //                            one place.
+  //   * [_exportGltf]        — FilePicker.saveFile → exportAsGltf.
+  //   * [_exportObj]         — FilePicker.saveFile → exportAsObj.
+  //   * [_exportPng]         — RepaintBoundary.toImage → exportAsPng.
+  //   * [_shareLastExport]   — share_plus.Share.shareXFiles on the last
+  //                            exported file (falls back to a PNG snapshot
+  //                            when nothing has been exported yet).
+  //
+  // File-picker note: `FilePicker.platform.saveFile` is only implemented
+  // on desktop (Windows / macOS / Linux). On mobile it returns null and
+  // we fall back to writing into the canonical exports directory
+  // (lib/io/app_dirs.dart `exportsDir`) with an auto-generated filename.
+  // The chosen / fallback path is cached in [_lastExportPath] so the
+  // Share button can re-share without forcing a re-pick.
+
+  /// Opens the export bottom sheet. Wired to the TopBar Export button.
+  Future<void> _showExportSheet() async {
+    if (_exporting) return;
+    final ctx = context;
+    if (!mounted) return;
+    final choice = await showModalBottomSheet<_ExportFormat>(
+      context: ctx,
+      backgroundColor: Theme.of(ctx).colorScheme.surface,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Export',
+                  style: Theme.of(sheetCtx).textTheme.titleMedium,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.view_in_ar_rounded),
+              title: const Text('Export glTF'),
+              subtitle: const Text(
+                  'Strokes as line strips + guides as triangles (.gltf)'),
+              onTap: () => Navigator.pop(sheetCtx, _ExportFormat.gltf),
+            ),
+            ListTile(
+              leading: const Icon(Icons.grain_outlined),
+              title: const Text('Export OBJ'),
+              subtitle: const Text(
+                  'Strokes as capped tube meshes (.obj)'),
+              onTap: () => Navigator.pop(sheetCtx, _ExportFormat.obj),
+            ),
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Export PNG'),
+              subtitle: const Text(
+                  'Snapshot of the current canvas viewport (.png)'),
+              onTap: () => Navigator.pop(sheetCtx, _ExportFormat.png),
+            ),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('Share'),
+              subtitle: const Text(
+                  'Open the system share sheet for the last export'),
+              onTap: () => Navigator.pop(sheetCtx, _ExportFormat.share),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    switch (choice) {
+      case _ExportFormat.gltf:
+        await _exportGltf();
+        break;
+      case _ExportFormat.obj:
+        await _exportObj();
+        break;
+      case _ExportFormat.png:
+        await _exportPng();
+        break;
+      case _ExportFormat.share:
+        await _shareLastExport();
+        break;
+    }
+  }
+
+  /// Picks a save path (desktop) or falls back to the exports dir, then
+  /// calls [exportAsGltf]. Caches the result in [_lastExportPath] and
+  /// surfaces a SnackBar with the chosen path.
+  Future<void> _exportGltf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final path = await _pickSavePath(
+        dialogTitle: 'Export glTF',
+        defaultName: _defaultExportName('gltf'),
+        extension: 'gltf',
+      );
+      if (path == null) return; // user canceled
+      final file = await exportAsGltf(path);
+      _lastExportPath = file.path;
+      _showExportSnackBar('glTF exported', file.path);
+    } catch (e) {
+      _showExportSnackBar('glTF export failed: $e', null, isError: true);
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Picks a save path (desktop) or falls back to the exports dir, then
+  /// calls [exportAsObj]. Caches the result in [_lastExportPath].
+  Future<void> _exportObj() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final path = await _pickSavePath(
+        dialogTitle: 'Export OBJ',
+        defaultName: _defaultExportName('obj'),
+        extension: 'obj',
+      );
+      if (path == null) return; // user canceled
+      final file = await exportAsObj(path);
+      _lastExportPath = file.path;
+      _showExportSnackBar('OBJ exported', file.path);
+    } catch (e) {
+      _showExportSnackBar('OBJ export failed: $e', null, isError: true);
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Captures the live editor via the [RepaintBoundary] wrapping the
+  /// [EditorScreen], converts the resulting [ui.Image] to a straight-alpha
+  /// RGBA8 buffer, and calls [exportAsPng]. Caches the result.
+  Future<void> _exportPng() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final path = await _pickSavePath(
+        dialogTitle: 'Export PNG',
+        defaultName: _defaultExportName('png'),
+        extension: 'png',
+      );
+      if (path == null) return; // user canceled
+      final captured = await _captureViewportRgba();
+      if (captured == null) {
+        _showExportSnackBar(
+            'PNG export failed: viewport not ready', null, isError: true);
+        return;
+      }
+      final file = await exportAsPng(
+        path,
+        width: captured.width,
+        height: captured.height,
+        rgba: captured.rgba,
+      );
+      _lastExportPath = file.path;
+      _showExportSnackBar('PNG exported', file.path);
+    } catch (e) {
+      _showExportSnackBar('PNG export failed: $e', null, isError: true);
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Fires the platform share sheet (share_plus) for the last exported
+  /// file. If nothing has been exported yet, kicks off a PNG snapshot
+  /// into the exports dir and shares that.
+  Future<void> _shareLastExport() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      var path = _lastExportPath;
+      if (path == null) {
+        // No previous export — capture a PNG snapshot into the exports
+        // dir and share that. This makes the Share button work on a
+        // fresh session without forcing the user through the Export
+        // sheet first.
+        final captured = await _captureViewportRgba();
+        if (captured == null) {
+          _showExportSnackBar(
+              'Share failed: viewport not ready', null, isError: true);
+          return;
+        }
+        path = '${exportsDir().path}${Platform.pathSeparator}'
+            '${_defaultExportName('png')}';
+        await exportAsPng(
+          path,
+          width: captured.width,
+          height: captured.height,
+          rgba: captured.rgba,
+        );
+        _lastExportPath = path;
+      }
+      // share_plus shareXFiles: opens the platform share sheet for the
+      // given file(s). On desktop this is the Windows share dialog /
+      // macOS NSSharingServicePicker; on mobile the native share sheet.
+      await Share.shareXFiles(
+        [XFile(path)],
+        text: 'Exported from Feather-Krita',
+      );
+    } catch (e) {
+      _showExportSnackBar('Share failed: $e', null, isError: true);
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Captures the [RepaintBoundary] wrapping the [EditorScreen] via
+  /// `RenderRepaintBoundary.toImage()`, then converts the resulting
+  /// [ui.Image] to a straight-alpha RGBA8 buffer (Flutter hands us
+  /// premultiplied alpha; [PngExporter] expects straight alpha, so we
+  /// un-premultiply every pixel). Returns null when the boundary hasn't
+  /// attached yet (e.g. called before the first frame painted).
+  Future<_CapturedViewport?> _captureViewportRgba() async {
+    final boundary = _viewportBoundaryKey.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary) return null;
+    // toImage is async; pixelRatio is set to 1.0 so the RGBA buffer
+    // matches the on-screen pixel size exactly (no upscaling).
+    final image = await boundary.toImage(pixelRatio: 1.0);
+    try {
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) return null;
+      final src = byteData.buffer.asUint8List();
+      // Flutter's rawRgba is premultiplied; un-premultiply so the PNG
+      // encoder gets straight alpha (PngExporter's contract).
+      final rgba = Uint8List(src.length);
+      for (var i = 0; i < src.length; i += 4) {
+        final a = src[i + 3];
+        if (a == 0) {
+          rgba[i] = 0;
+          rgba[i + 1] = 0;
+          rgba[i + 2] = 0;
+          rgba[i + 3] = 0;
+        } else if (a == 255) {
+          rgba[i] = src[i];
+          rgba[i + 1] = src[i + 1];
+          rgba[i + 2] = src[i + 2];
+          rgba[i + 3] = 255;
+        } else {
+          rgba[i] = (src[i] * 255 / a).round().clamp(0, 255);
+          rgba[i + 1] = (src[i + 1] * 255 / a).round().clamp(0, 255);
+          rgba[i + 2] = (src[i + 2] * 255 / a).round().clamp(0, 255);
+          rgba[i + 3] = a;
+        }
+      }
+      return _CapturedViewport(width: image.width, height: image.height, rgba: rgba);
+    } finally {
+      image.dispose();
+    }
+  }
+
+  /// Opens FilePicker.saveFile (desktop) and returns the chosen path.
+  /// Returns null when the user cancels. On platforms where saveFile is
+  /// not implemented (mobile / web), falls back to a path inside the
+  /// canonical exports directory with [defaultName] as the filename.
+  Future<String?> _pickSavePath({
+    required String dialogTitle,
+    required String defaultName,
+    required String extension,
+  }) async {
+    final picked = await FilePicker.platform.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: defaultName,
+      type: extension == 'gltf' || extension == 'obj' || extension == 'png'
+          ? FileType.custom
+          : FileType.any,
+      allowedExtensions: extension == 'gltf' || extension == 'obj' || extension == 'png'
+          ? [extension]
+          : null,
+    );
+    if (picked != null) return picked;
+    // Mobile / web fallback: write into the canonical exports dir.
+    final dir = exportsDir();
+    return '${dir.path}${Platform.pathSeparator}$defaultName';
+  }
+
+  /// Builds a default export filename: `feather_<timestamp>.<ext>`.
+  String _defaultExportName(String extension) {
+    final now = DateTime.now();
+    final stamp = '${now.year}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}'
+        '${now.minute.toString().padLeft(2, '0')}'
+        '${now.second.toString().padLeft(2, '0')}';
+    return 'feather_$stamp.$extension';
+  }
+
+  /// Surfaces a SnackBar with the export result. When [path] is non-null
+  /// the SnackBar text includes the chosen file path so the user knows
+  /// where the export landed (file-system reveal would need the `process`
+  /// package; deliberately kept out of scope to limit the dep surface).
+  void _showExportSnackBar(String message, String? path, {bool isError = false}) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    final text = path == null ? message : '$message\n$path';
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          backgroundColor:
+              isError ? Theme.of(context).colorScheme.error : null,
+          duration: Duration(seconds: isError ? 4 : 3),
+        ),
+      );
+  }
+
   // ----- Guide creation overlay UI ----------------------------------------
   //
   // A small top-center overlay mounted on top of the [EditorScreen]. When
@@ -2372,4 +2737,25 @@ class _CamRay {
   _CamRay(this.origin, this.direction);
   final Vector3 origin;
   final Vector3 direction;
+}
+
+/// Format choices surfaced by the export bottom sheet
+/// (see [_MainScreenState._showExportSheet]). Drives the switch that
+/// dispatches to [_exportGltf] / [_exportObj] / [_exportPng] /
+/// [_shareLastExport].
+enum _ExportFormat { gltf, obj, png, share }
+
+/// Immutable result of [_MainScreenState._captureViewportRgba]: the
+/// width + height of the captured [ui.Image] plus the straight-alpha
+/// RGBA8 buffer (length == width * height * 4) ready for
+/// [PngExporter.exportToFile].
+class _CapturedViewport {
+  const _CapturedViewport({
+    required this.width,
+    required this.height,
+    required this.rgba,
+  });
+  final int width;
+  final int height;
+  final List<int> rgba;
 }

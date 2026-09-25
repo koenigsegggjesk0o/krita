@@ -122,16 +122,16 @@ void main() {
       final m = ShadedMaterial(
         baseColor: Color.fromARGB(255, 200, 200, 200),
       );
-      // Normal aligned with the light direction (per the rig's
-      // convention, the dot product n·L is positive and contributes
-      // diffuse light).
+      // Normal aligned with the light direction — the specular term
+      // (reflection-vector form) lands a highlight toward the viewer.
       final bright = m.shade(ShadeContext(
         normal: const Vec3(0, -1, 0),
         viewDir: const Vec3(0, -1, 0),
         lightRig: rig,
       ));
-      // Normal opposite the light direction — only the ambient floor
-      // contributes.
+      // Normal opposite the light direction — faces the light source so
+      // lambert diffuse is maximal, but no specular highlight reaches
+      // the viewer along this normal.
       final dark = m.shade(ShadeContext(
         normal: const Vec3(0, 1, 0),
         viewDir: const Vec3(0, 1, 0),
@@ -169,20 +169,21 @@ void main() {
       expect(m.roughness, 1.0);
     });
 
-    test('MaterialLightRig.lambert floors at ambient when n·L ≤ 0', () {
+    test('MaterialLightRig.lambert floors at ambient when n·(-L) ≤ 0', () {
       final r = MaterialLightRig(
         direction: const Vec3(0, -1, 0),
         intensity: 1.0,
         ambient: 0.4,
       );
-      // Normal opposite the light direction — n·L = -1, clamped to 0,
-      // so lambert returns the ambient floor.
-      final away = r.lambert(const Vec3(0, 1, 0));
-      expect(away, closeTo(0.4, 1e-6));
-      // Normal aligned with the light direction: ambient + (1-ambient)
-      // * 1.0 = 1.0.
-      final toward = r.lambert(const Vec3(0, -1, 0));
+      // Normal facing the light source (opposite the light direction) —
+      // n·(-L) = 1, so lambert returns ambient + (1-ambient) = 1.0.
+      final toward = r.lambert(const Vec3(0, 1, 0));
       expect(toward, closeTo(1.0, 1e-6));
+      // Normal aligned with the light direction (facing away from the
+      // source) — n·(-L) = -1, clamped to 0, so lambert returns the
+      // ambient floor.
+      final away = r.lambert(const Vec3(0, -1, 0));
+      expect(away, closeTo(0.4, 1e-6));
     });
 
     test('MaterialLightRig.phong returns 0 when n·L ≤ 0', () {

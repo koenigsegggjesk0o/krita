@@ -37,6 +37,8 @@ class TopBar extends StatelessWidget {
     this.onZoomIn,
     this.onZoomOut,
     this.onFit,
+    this.onExport,
+    this.onShare,
     this.contextualActions = const [],
   });
 
@@ -53,6 +55,16 @@ class TopBar extends StatelessWidget {
   final VoidCallback? onZoomIn;
   final VoidCallback? onZoomOut;
   final VoidCallback? onFit;
+
+  /// Export menu — opens a sheet / popover with glTF / OBJ / PNG options
+  /// (host owns the actual exporter calls + file picker wiring). Wired by
+  /// [MainScreen._showExportSheet].
+  final VoidCallback? onExport;
+
+  /// Share — fires the platform share sheet for the last exported file
+  /// (or, if none exists, kicks off a PNG snapshot then shares it). Wired
+  /// by [MainScreen._shareLastExport].
+  final VoidCallback? onShare;
   final List<TopBarAction> contextualActions;
 
   @override
@@ -130,6 +142,23 @@ class TopBar extends StatelessWidget {
             size: 38,
             iconSize: 18,
             onTap: onHideUI,
+          ),
+          _divider(palette),
+          // Export cluster — glTF / OBJ / PNG via the host's export sheet.
+          FeatherIconButton(
+            icon: Icons.ios_share_rounded,
+            tooltip: 'Export',
+            size: 38,
+            iconSize: 18,
+            onTap: onExport,
+          ),
+          const SizedBox(width: 4),
+          FeatherIconButton(
+            icon: Icons.share_outlined,
+            tooltip: 'Share',
+            size: 38,
+            iconSize: 18,
+            onTap: onShare,
           ),
           _divider(palette),
           // Status chip.

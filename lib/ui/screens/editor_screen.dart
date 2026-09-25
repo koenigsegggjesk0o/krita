@@ -135,6 +135,11 @@ class EditorScreen extends StatefulWidget {
     this.onJoystickRotate,
     this.onJoystickScale,
     this.onPickPreset,
+    // --- Export wiring (feather-integration) -----------------------------
+    // onExport: opens the host's export sheet (glTF / OBJ / PNG options).
+    // onShare: fires the platform share sheet for the last export.
+    this.onExport,
+    this.onShare,
     // --- Gesture wiring (feather-integration gap 2 + 3) ------------------
     // onTapSelect: fired when the canvas receives a tap (single-finger,
     // no drag) while the Select tool is active. The host routes the
@@ -199,6 +204,16 @@ class EditorScreen extends StatefulWidget {
 
   /// Brush picker → preset selected. The host loads it into the engine.
   final ValueChanged<BrushPreset>? onPickPreset;
+
+  /// Top-bar Export button. Opens the host's export sheet
+  /// (glTF / OBJ / PNG options). The host owns the actual exporter
+  /// calls and file-picker wiring.
+  final VoidCallback? onExport;
+
+  /// Top-bar Share button. Fires the platform share sheet for the
+  /// last exported file (or kicks off a PNG snapshot first when none
+  /// exists yet). The host owns the share_plus wiring.
+  final VoidCallback? onShare;
 
   /// Canvas tap (select tool). The host runs [SelectionSystem.tapSelectSync]
   /// against the screen position to pick the nearest stroke within the
@@ -394,6 +409,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 onRenderToggle: () =>
                     _set(_s.copyWith(renderMode: !_s.renderMode)),
                 onHideUI: () => _set(_s.copyWith(uiHidden: true)),
+                onExport: widget.onExport,
+                onShare: widget.onShare,
                 contextualActions: _contextualActions(),
               ),
             ),
