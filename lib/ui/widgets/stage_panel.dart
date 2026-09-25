@@ -14,6 +14,8 @@
 //   * Resource Tab — import resources,
 //   * Environment Tab — render toggle, lighting, glow area, world/bg.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/feather_animations.dart';
@@ -32,9 +34,16 @@ class StagePanel extends StatefulWidget {
     this.resources = const [],
     this.activeGroupId,
     this.renderMode = false,
-    this.lightDirection = 0.0,
+    // Lighting direction is split into azimuth (heading around the
+    // scene, 0..2π) and elevation (angle above the ground plane,
+    // 0..π/2). The host converts the pair into a screen-space
+    // direction vector for the Lambert tube shader — see
+    // [_MainScreenState._azimuthElevationToLightDir] in
+    // lib/screens/main_screen.dart.
+    this.lightAzimuth = 5 * math.pi / 4,
+    this.lightElevation = math.pi / 4,
     this.glowArea = 0.5,
-    this.backgroundImage,
+    this.backgroundColor,
     this.showGrid = true,
     this.showGroundPlane = false,
     this.onAddGroup,
@@ -44,9 +53,11 @@ class StagePanel extends StatefulWidget {
     this.onImportResource,
     this.onDeleteResource,
     this.onRenderToggle,
-    this.onLightDirection,
+    this.onLightAzimuth,
+    this.onLightElevation,
     this.onGlowArea,
-    this.onPickBackground,
+    this.onPickBackgroundColor,
+    this.onClearBackgroundColor,
     this.onToggleGrid,
     this.onToggleGroundPlane,
     this.onClose,
@@ -57,9 +68,10 @@ class StagePanel extends StatefulWidget {
   final List<ResourceItem> resources;
   final String? activeGroupId;
   final bool renderMode;
-  final double lightDirection;
+  final double lightAzimuth;
+  final double lightElevation;
   final double glowArea;
-  final String? backgroundImage;
+  final Color? backgroundColor;
   final bool showGrid;
   final bool showGroundPlane;
   final VoidCallback? onAddGroup;
@@ -69,9 +81,11 @@ class StagePanel extends StatefulWidget {
   final VoidCallback? onImportResource;
   final ValueChanged<String>? onDeleteResource;
   final VoidCallback? onRenderToggle;
-  final ValueChanged<double>? onLightDirection;
+  final ValueChanged<double>? onLightAzimuth;
+  final ValueChanged<double>? onLightElevation;
   final ValueChanged<double>? onGlowArea;
-  final VoidCallback? onPickBackground;
+  final VoidCallback? onPickBackgroundColor;
+  final VoidCallback? onClearBackgroundColor;
   final ValueChanged<bool>? onToggleGrid;
   final ValueChanged<bool>? onToggleGroundPlane;
   final VoidCallback? onClose;
@@ -140,15 +154,18 @@ class _StagePanelState extends State<StagePanel> {
           key: const ValueKey('env'),
           palette: palette,
           renderMode: widget.renderMode,
-          lightDirection: widget.lightDirection,
+          lightAzimuth: widget.lightAzimuth,
+          lightElevation: widget.lightElevation,
           glowArea: widget.glowArea,
-          backgroundImage: widget.backgroundImage,
+          backgroundColor: widget.backgroundColor,
           showGrid: widget.showGrid,
           showGroundPlane: widget.showGroundPlane,
           onRenderToggle: widget.onRenderToggle,
-          onLightDirection: widget.onLightDirection,
+          onLightAzimuth: widget.onLightAzimuth,
+          onLightElevation: widget.onLightElevation,
           onGlowArea: widget.onGlowArea,
-          onPickBackground: widget.onPickBackground,
+          onPickBackgroundColor: widget.onPickBackgroundColor,
+          onClearBackgroundColor: widget.onClearBackgroundColor,
           onToggleGrid: widget.onToggleGrid,
           onToggleGroundPlane: widget.onToggleGroundPlane,
         );
@@ -668,30 +685,36 @@ class _EnvironmentTab extends StatelessWidget {
     super.key,
     required this.palette,
     required this.renderMode,
-    required this.lightDirection,
+    required this.lightAzimuth,
+    required this.lightElevation,
     required this.glowArea,
-    this.backgroundImage,
+    this.backgroundColor,
     this.showGrid = true,
     this.showGroundPlane = false,
     this.onRenderToggle,
-    this.onLightDirection,
+    this.onLightAzimuth,
+    this.onLightElevation,
     this.onGlowArea,
-    this.onPickBackground,
+    this.onPickBackgroundColor,
+    this.onClearBackgroundColor,
     this.onToggleGrid,
     this.onToggleGroundPlane,
   });
 
   final FeatherPalette palette;
   final bool renderMode;
-  final double lightDirection;
+  final double lightAzimuth;
+  final double lightElevation;
   final double glowArea;
-  final String? backgroundImage;
+  final Color? backgroundColor;
   final bool showGrid;
   final bool showGroundPlane;
   final VoidCallback? onRenderToggle;
-  final ValueChanged<double>? onLightDirection;
+  final ValueChanged<double>? onLightAzimuth;
+  final ValueChanged<double>? onLightElevation;
   final ValueChanged<double>? onGlowArea;
-  final VoidCallback? onPickBackground;
+  final VoidCallback? onPickBackgroundColor;
+  final VoidCallback? onClearBackgroundColor;
   final ValueChanged<bool>? onToggleGrid;
   final ValueChanged<bool>? onToggleGroundPlane;
 
@@ -714,12 +737,29 @@ class _EnvironmentTab extends StatelessWidget {
             onTap: onRenderToggle,
           ),
           const SizedBox(height: 8),
+          // Azimuth: heading around the scene (0..360°). 0° = light from
+          // the right, 90° = light from below, 180° = light from the
+          // left, 270° = light from above — matching the screen-space
+          // direction vector the painter uses.
           _Slider(
-            label: 'Light direction',
-            value: (lightDirection / (2 * 3.14159265)).clamp(0.0, 1.0),
+            label: 'Azimuth',
+            value: (lightAzimuth / (2 * math.pi)).clamp(0.0, 1.0),
             palette: palette,
             formatter: (v) => '${(v * 360).round()}°',
-            onChanged: (v) => onLightDirection?.call(v * 2 * 3.14159265),
+            onChanged: (v) => onLightAzimuth?.call(v * 2 * math.pi),
+          ),
+          const SizedBox(height: 8),
+          // Elevation: angle above the ground plane (0..90°). 0° = light
+          // travels horizontally (long shadows, strong side-lit feel);
+          // 90° = light comes from straight above (no shadow skew, top
+          // lighting). The host projects this to the y-component of the
+          // screen-space direction vector.
+          _Slider(
+            label: 'Elevation',
+            value: (lightElevation / (math.pi / 2)).clamp(0.0, 1.0),
+            palette: palette,
+            formatter: (v) => '${(v * 90).round()}°',
+            onChanged: (v) => onLightElevation?.call(v * math.pi / 2),
           ),
           const SizedBox(height: 8),
           _Slider(
@@ -731,13 +771,16 @@ class _EnvironmentTab extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           // Background section (per stagepanel.txt Environment Tab:
-          // background).
+          // background). Now a color picker — when the user picks a
+          // color, the canvas background + cutout material use it; when
+          // null, the palette default is used.
           _SectionLabel(palette: palette, text: 'BACKGROUND'),
           const SizedBox(height: 6),
-          _BackgroundRow(
+          _BackgroundColorRow(
             palette: palette,
-            backgroundImage: backgroundImage,
-            onTap: onPickBackground,
+            color: backgroundColor,
+            onTap: onPickBackgroundColor,
+            onClear: onClearBackgroundColor,
           ),
           const SizedBox(height: 18),
           // World settings (per stagepanel.txt Environment Tab:
@@ -780,48 +823,81 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _BackgroundRow extends StatelessWidget {
-  const _BackgroundRow({
+class _BackgroundColorRow extends StatelessWidget {
+  const _BackgroundColorRow({
     required this.palette,
-    required this.backgroundImage,
+    required this.color,
     this.onTap,
+    this.onClear,
   });
 
   final FeatherPalette palette;
-  final String? backgroundImage;
+  final Color? color;
   final VoidCallback? onTap;
+  final VoidCallback? onClear;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: palette.panelFill,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: palette.panelBorder),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.landscape_outlined,
-                size: 16, color: palette.textSecondary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                backgroundImage ?? 'Pick background image',
-                style: FeatherTypography.bodyStrong.copyWith(
-                  color: backgroundImage != null
-                      ? palette.textPrimary
-                      : palette.textTertiary,
-                ),
+    final hasColor = color != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.panelFill,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: palette.panelBorder),
+      ),
+      child: Row(
+        children: [
+          // Color swatch (checkerboard placeholder when no override set
+          // so it reads as "transparent / palette default").
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: hasColor ? color : palette.canvasBackground,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: palette.panelBorder),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Row(
+                children: [
+                  Icon(Icons.palette_outlined,
+                      size: 16, color: palette.textSecondary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hasColor
+                          ? 'Background color set'
+                          : 'Pick background color',
+                      style: FeatherTypography.bodyStrong.copyWith(
+                        color: hasColor
+                            ? palette.textPrimary
+                            : palette.textTertiary,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded,
+                      size: 18, color: palette.textTertiary),
+                ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                size: 18, color: palette.textTertiary),
-          ],
-        ),
+          ),
+          if (hasColor)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onClear,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Icon(Icons.close_rounded,
+                    size: 16, color: palette.textTertiary),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -59,6 +59,7 @@
 //     [KritaBrushController.loadPreset] is the next loop.
 
 import 'dart:async';
+import 'dart:convert' show jsonDecode;
 import 'dart:io' show File, Platform;
 import 'dart:math' as dmath;
 import 'dart:typed_data';
@@ -67,11 +68,13 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:share_plus/share_plus.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
+import 'package:feather_krita/data/models/project_model.dart';
 import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/core/math/vec3.dart';
@@ -106,6 +109,7 @@ import 'package:feather_krita/ui/screens/editor_screen.dart';
 import 'package:feather_krita/ui/theme/feather_typography.dart';
 import 'package:feather_krita/ui/widgets/brush_picker.dart'
     show BrushPreset;
+import 'package:feather_krita/ui/widgets/editor_shortcuts.dart';
 import 'package:feather_krita/ui/widgets/material_picker.dart'
     show FeatherMaterial, FeatherPattern;
 import 'package:feather_krita/ui/widgets/right_panel.dart'
@@ -167,7 +171,7 @@ class _MainScreenState extends State<MainScreen>
   final List<List<Stroke>> _redoStack = <List<Stroke>>[];
   static const int _maxUndo = 40;
 
-  // ----- UI state mirror (kept in sync with EditorScreen via onUiStateChanged) -----
+  // ----- UI state ---------------------------------------------------------
 
   FeatherTool _tool = FeatherTool.draw;
   Color _color = const Color(0xFF60A5FA);
@@ -179,6 +183,25 @@ class _MainScreenState extends State<MainScreen>
   bool _renderMode = false;
   bool _uiHidden = false;
   String _groupName = 'Group 1';
+
+  // ----- Environment state (Stage panel → CanvasScene) -------------------
+  //
+  // Mirror of the Stage panel's Environment tab. The host projects these
+  // onto the [CanvasScene] in [_buildCanvasScene]:
+  //   * [_lightAzimuth] + [_lightElevation] → [CanvasScene.lightDir] (2D
+  //     screen-space direction vector — see [_azimuthElevationToLightDir]).
+  //   * [_glowArea] → [CanvasScene.glowArea] (glow halo blur radius).
+  //   * [_backgroundColor] → [CanvasScene.backgroundColor] (canvas bg +
+  //     cutout material color; null = palette default).
+  //   * [_showGrid] → [CanvasScene.showGrid].
+  //   * [_showGroundPlane] → [CanvasScene.showGroundPlane] (also gates
+  //     shadow projection in the painter).
+  double _lightAzimuth = 5 * dmath.pi / 4;
+  double _lightElevation = dmath.pi / 4;
+  double _glowArea = 0.5;
+  Color? _backgroundColor;
+  bool _showGrid = true;
+  bool _showGroundPlane = false;
 
   // ----- Live stroke assembly state ---------------------------------------
 
@@ -482,106 +505,121 @@ class _MainScreenState extends State<MainScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         _viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
-        return Stack(
-          children: [
-            // RepaintBoundary wrapping the EditorScreen so PNG export
-            // can capture the live canvas via RenderRepaintBoundary.toImage().
-            // The boundary sits beneath the guide overlay + caption so
-            // those transient hints are NOT included in the snapshot.
-            RepaintBoundary(
-              key: _viewportBoundaryKey,
-              child: EditorScreen(
-                initial: _initialUiState(),
-                scene: _buildCanvasScene(),
-                layers: _buildLayerItems(),
-                resources: _buildResourceItems(),
-                presets: _presets,
-                canUndo: _undoStack.isNotEmpty,
-                canRedo: _redoStack.isNotEmpty,
-                // Drawing is enabled in the Draw tool, the Eraser / Vacuum
-                // sub-modes (pen drag erases), and Bend mode (the artist
-                // draws the bend path on the canvas). Loft mode uses
-                // tap-to-select instead — see [_onTapSelect] branching.
-                drawingEnabled: _tool == FeatherTool.draw ||
-                    _tool == FeatherTool.eraser ||
-                    _tool == FeatherTool.vacuum ||
-                    _guideMode == _GuideMode.bend,
-                onStrokeStart: _onStrokeStart,
-                onStrokeUpdate: _onStrokeUpdate,
-                onStrokeEnd: _onStrokeEnd,
-                onUndo: _undo,
-                onRedo: _redo,
-                onUiStateChanged: _onUiStateChanged,
-                onPan: _onPan,
-                onZoom: _onZoom,
-                onSelectAll: _selectAll,
-                onLiquifyMode: _onLiquifyMode,
-                onLiquifyApply: _onLiquifyApply,
-                onLiquifyUndoAll: _onLiquifyUndoAll,
-                onJoystickMove: _onJoystickMove,
-                onJoystickRotate: _onJoystickRotate,
-                onJoystickScale: _onJoystickScale,
-                onPickPreset: _onPickPreset,
-                // Export wiring: TopBar buttons → host exporter calls.
-                onExport: _showExportSheet,
-                onShare: _shareLastExport,
-                // Tool-gated gesture callbacks: tap-select only fires in the
-                // Select tool OR in Loft mode (where taps add strokes to the
-                // loft curve selection). Liquify drag only in the Liquify tool.
-                // The viewport uses their presence (vs null) to route single-
-                // finger gestures away from camera orbit.
-                onTapSelect: (_tool == FeatherTool.select ||
-                        _guideMode == _GuideMode.loft)
-                    ? _onTapSelect
-                    : null,
-                onLiquifyDrag:
-                    _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
+        // Wrap the whole editor (canvas + overlays) in [EditorShortcuts]
+        // so the keyboard bindings are live the moment the screen mounts.
+        // The wrapper's auto-focusing [Focus] node is an ANCESTOR of every
+        // child, so the bindings fire regardless of which descendant holds
+        // focus — and a modal dialog (export sheet, settings) opens in its
+        // own focus scope, pausing the editor bindings until it closes.
+        return EditorShortcuts(
+          bindings: _shortcutBindings(),
+          child: Stack(
+            children: [
+              // RepaintBoundary wrapping the EditorScreen so PNG export
+              // can capture the live canvas via RenderRepaintBoundary.toImage().
+              // The boundary sits beneath the guide overlay + caption so
+              // those transient hints are NOT included in the snapshot.
+              RepaintBoundary(
+                key: _viewportBoundaryKey,
+                child: EditorScreen(
+                  initial: _initialUiState(),
+                  scene: _buildCanvasScene(),
+                  layers: _buildLayerItems(),
+                  resources: _buildResourceItems(),
+                  presets: _presets,
+                  canUndo: _undoStack.isNotEmpty,
+                  canRedo: _redoStack.isNotEmpty,
+                  // Drawing is enabled in the Draw tool, the Eraser / Vacuum
+                  // sub-modes (pen drag erases), and Bend mode (the artist
+                  // draws the bend path on the canvas). Loft mode uses
+                  // tap-to-select instead — see [_onTapSelect] branching.
+                  drawingEnabled: _tool == FeatherTool.draw ||
+                      _tool == FeatherTool.eraser ||
+                      _tool == FeatherTool.vacuum ||
+                      _guideMode == _GuideMode.bend,
+                  onStrokeStart: _onStrokeStart,
+                  onStrokeUpdate: _onStrokeUpdate,
+                  onStrokeEnd: _onStrokeEnd,
+                  onUndo: _undo,
+                  onRedo: _redo,
+                  onUiStateChanged: _onUiStateChanged,
+                  onPan: _onPan,
+                  onZoom: _onZoom,
+                  onSelectAll: _selectAll,
+                  onLiquifyMode: _onLiquifyMode,
+                  onLiquifyApply: _onLiquifyApply,
+                  onLiquifyUndoAll: _onLiquifyUndoAll,
+                  onJoystickMove: _onJoystickMove,
+                  onJoystickRotate: _onJoystickRotate,
+                  onJoystickScale: _onJoystickScale,
+                  onPickPreset: _onPickPreset,
+                  // Export wiring: TopBar buttons → host exporter calls.
+                  onExport: _showExportSheet,
+                  onShare: _shareLastExport,
+                  // Tool-gated gesture callbacks: tap-select only fires in the
+                  // Select tool OR in Loft mode (where taps add strokes to the
+                  // loft curve selection). Liquify drag only in the Liquify tool.
+                  // The viewport uses their presence (vs null) to route single-
+                  // finger gestures away from camera orbit.
+                  onTapSelect: (_tool == FeatherTool.select ||
+                          _guideMode == _GuideMode.loft)
+                      ? _onTapSelect
+                      : null,
+                  onLiquifyDrag:
+                      _tool == FeatherTool.liquify ? _onLiquifyDrag : null,
+                  // Desktop mouse wiring: right-click orbit (reuses _onPan
+                  // which already orbits), middle-click pan (real camera
+                  // translate), Ctrl+scroll brush size ±.
+                  onOrbit: _onPan,
+                  onCameraPan: _onCameraPan,
+                  onBrushSizeDelta: _onBrushSizeDelta,
+                ),
               ),
-            ),
 
-            // Guide-creation launcher + per-mode panels (top-center overlay,
-            // just below the top bar). When no mode is active, shows the
-            // launcher row [Loft] [Primitive] [Bend] [Caption]. When a mode
-            // is active, shows the mode's panel (tension/segment sliders +
-            // Done/Cancel).
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 68,
-              child: Center(child: _buildGuideOverlay()),
-            ),
-
-            // Tutorial caption (top-center, white Caveat text with shadow).
-            // Mounted only while a caption is showing; IgnorePointer lets
-            // taps fall through to the canvas underneath.
-            if (_captionText.isNotEmpty)
+              // Guide-creation launcher + per-mode panels (top-center overlay,
+              // just below the top bar). When no mode is active, shows the
+              // launcher row [Loft] [Primitive] [Bend] [Caption]. When a mode
+              // is active, shows the mode's panel (tension/segment sliders +
+              // Done/Cancel).
               Positioned(
                 left: 0,
                 right: 0,
-                top: 116,
-                child: Center(
-                  child: IgnorePointer(
-                    child: FadeTransition(
-                      opacity: _captionAnim,
-                      child: Text(
-                        _captionText,
-                        style: FeatherTypography.tutorial.copyWith(
-                          color: Colors.white,
-                          fontSize: 28,
-                          shadows: const <Shadow>[
-                            Shadow(
-                              color: Colors.black54,
-                              blurRadius: 8,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
+                top: 68,
+                child: Center(child: _buildGuideOverlay()),
+              ),
+
+              // Tutorial caption (top-center, white Caveat text with shadow).
+              // Mounted only while a caption is showing; IgnorePointer lets
+              // taps fall through to the canvas underneath.
+              if (_captionText.isNotEmpty)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 116,
+                  child: Center(
+                    child: IgnorePointer(
+                      child: FadeTransition(
+                        opacity: _captionAnim,
+                        child: Text(
+                          _captionText,
+                          style: FeatherTypography.tutorial.copyWith(
+                            color: Colors.white,
+                            fontSize: 28,
+                            shadows: const <Shadow>[
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 8,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -600,6 +638,14 @@ class _MainScreenState extends State<MainScreen>
         groupName: _groupName,
         renderMode: _renderMode,
         uiHidden: _uiHidden,
+        // Seed the editor with the host's current env state so the
+        // Stage panel opens with the right slider / toggle positions.
+        lightAzimuth: _lightAzimuth,
+        lightElevation: _lightElevation,
+        glowArea: _glowArea,
+        backgroundColor: _backgroundColor,
+        showGrid: _showGrid,
+        showGroundPlane: _showGroundPlane,
       );
 
   /// Builds the [CanvasScene] the viewport paints. Projects each 3D
@@ -637,8 +683,26 @@ class _MainScreenState extends State<MainScreen>
       activeColor: _color,
       pan: Offset.zero,
       zoom: 1.0,
-      showGrid: true,
+      showGrid: _showGrid,
       renderMode: _renderMode,
+      // Lighting direction (Stage panel → Environment → Azimuth /
+      // Elevation). The painter's _strokeGeometry uses this for the
+      // Lambert lit-sign computation (dot(normal, -lightDir)) and the
+      // drop-shadow projection (skew along lightDir). Converted from
+      // spherical (azimuth, elevation) to a 2D screen-space direction
+      // vector — see [_azimuthElevationToLightDir].
+      lightDir: _azimuthElevationToLightDir(_lightAzimuth, _lightElevation),
+      // Ground plane + shadow projection. When ON, the painter draws a
+      // visible band at 80% of the viewport height (computed in
+      // _groundLineY) and projects stroke shadows onto it. When OFF,
+      // no ground plane and no shadows at all.
+      showGroundPlane: _showGroundPlane,
+      // User-picked background color override (null = palette default).
+      // The painter uses this for the canvas background AND the Cutout
+      // material so cutout strokes disappear into the chosen color.
+      backgroundColor: _backgroundColor,
+      // Glow halo size multiplier (0..1).
+      glowArea: _glowArea,
       // The host-side paint raster (real Krita dabs). Null on the
       // fallback engine — the viewport's painter skips drawing it and
       // falls back to the 3D polyline renderer only (current behaviour).
@@ -649,6 +713,33 @@ class _MainScreenState extends State<MainScreen>
       // the Draw tool with no active selection).
       overlayPrimitives: _buildOverlayPrimitives(vp),
     );
+  }
+
+  /// Converts a spherical light direction (azimuth + elevation, both in
+  /// radians) into a 2D screen-space direction vector for the canvas
+  /// painter's Lambert tube shader.
+  ///
+  /// Convention:
+  ///   * Azimuth [az] is the heading around the scene, measured
+  ///     clockwise from +x (right) when viewed from above. 0 = light
+  ///     from the right, π/2 = light from below (screen-y down),
+  ///     π = light from the left, 3π/2 = light from above.
+  ///   * Elevation [el] is the angle above the ground plane
+  ///     (0 = horizon, π/2 = zenith). Higher elevation → steeper
+  ///     downward light travel → shorter shadow skew.
+  ///
+  /// The returned [Offset] is the direction light TRAVELS (the OpenGL
+  /// convention the painter's lit-sign + shadow-projection code
+  /// expects):
+  ///   dx = cos(el) * cos(az)
+  ///   dy = cos(el) * sin(az)
+  /// The depth (z) component is implicit (sin(el)) and only affects
+  /// the perceptual shadow length via the dy magnitude — higher
+  /// elevation shrinks dy → less shadow skew along the screen-y axis.
+  Offset _azimuthElevationToLightDir(double az, double el) {
+    final e = el.clamp(0.0, dmath.pi / 2);
+    final ce = dmath.cos(e);
+    return Offset(ce * dmath.cos(az), ce * dmath.sin(az));
   }
 
   /// Builds the overlay primitives for the current frame, adapting the
@@ -923,6 +1014,15 @@ class _MainScreenState extends State<MainScreen>
       _renderMode = s.renderMode;
       _uiHidden = s.uiHidden;
       _groupName = s.groupName;
+      // Mirror the Stage panel's Environment tab into the host's env
+      // state. [_buildCanvasScene] then projects these onto the
+      // [CanvasScene] handed to the viewport.
+      _lightAzimuth = s.lightAzimuth;
+      _lightElevation = s.lightElevation;
+      _glowArea = s.glowArea;
+      _backgroundColor = s.backgroundColor;
+      _showGrid = s.showGrid;
+      _showGroundPlane = s.showGroundPlane;
     });
     // Mirror into the live brush engine.
     _brush.color = _color.toARGB32();
@@ -945,6 +1045,293 @@ class _MainScreenState extends State<MainScreen>
         );
     }
   }
+
+  // ----- Keyboard shortcuts (loop-keyboard-shortcuts-mouse) --------------
+  //
+  // The bindings map below is wired into [EditorShortcuts] in [build].
+  // Every Ctrl-shortcut is registered twice — once with `control: true`
+  // (Windows/Linux) and once with `meta: true` (macOS / Android physical
+  // keyboards) — so the same logical shortcut works on every desktop.
+  // Plain-letter shortcuts (B/E/V/S/M/G/L/P/F) are registered without
+  // modifiers; when a text field has focus those keys are consumed by
+  // the field and never reach this node, so typing in a Save-As filename
+  // box is unaffected. Each handler is a thin wrapper around the real
+  // engine method (or the existing UI-state path through [_setUiState]),
+  // so the wiring stays here and the behaviour stays testable.
+
+  void _shortcutUndo() => _undo();
+
+  void _shortcutRedo() => _redo();
+
+  void _shortcutSetTool(FeatherTool tool) => _setUiStateTool(tool);
+
+  /// Pushes a tool change through the same path the EditorScreen uses
+  /// ([_onUiStateChanged]) so the host's mirror + engine side-effects
+  /// (brush size sync, liquify session begin/end, cursor clear) all fire.
+  void _setUiStateTool(FeatherTool next) {
+    final s = _currentUiState().copyWith(tool: next);
+    _onUiStateChanged(s);
+    // Re-mirror into the EditorScreen so the dock + top bar reflect the
+    // new tool. The EditorScreen rebuilds via its own setState on
+    // _onUiStateChanged (it stores the new state) but the host's
+    // setState ensures the build method re-runs with the new
+    // drawingEnabled / onTapSelect / onLiquifyDrag gating.
+    setState(() {});
+  }
+
+  /// Mirror of the live UI state, used to compute "next" states for the
+  /// keyboard shortcuts (tool / mode / visibility toggles). Kept in sync
+  /// with the host fields by [_onUiStateChanged].
+  EditorUiState _currentUiState() => EditorUiState(
+        tool: _tool,
+        color: _color,
+        size: _brushSize,
+        opacity: _brushOpacity,
+        pressure: _pressure,
+        material: _material,
+        pattern: _pattern,
+        groupName: _groupName,
+        renderMode: _renderMode,
+        uiHidden: _uiHidden,
+      );
+
+  void _shortcutToggleMirror() => _setUiStateTool(FeatherTool.mirror);
+
+  void _shortcutToggleGuideDrawMode() {
+    setState(() => _guideDrawMode = !_guideDrawMode);
+  }
+
+  void _shortcutLoftMode() => setGuideMode(_GuideMode.loft);
+
+  void _shortcutPrimitivesMode() => setGuideMode(_GuideMode.primitive);
+
+  void _shortcutDeselectAll() {
+    _selectionModel.clear();
+    setState(() {});
+  }
+
+  void _shortcutSelectAll() => _selectAll();
+
+  void _shortcutDeleteSelected() {
+    final selected = _selectedStrokes();
+    if (selected.isEmpty) return;
+    _pushUndo();
+    final ids = selected.map((s) => s.id).toSet();
+    _strokes.removeWhere((s) => ids.contains(s.id));
+    for (final id in ids) {
+      _stroke3Ds.remove(id);
+      _strokeMaterials.remove(id);
+    }
+    _selectionModel.clear();
+    _rebuildStroke3Ds();
+    setState(() {});
+  }
+
+  void _shortcutExport() => _showExportSheet();
+
+  /// Ctrl+S — quick-save the current document as a `.feather` JSON file
+  /// in the exports directory. Reuses the [ProjectModel] schema so the
+  /// file is loadable by [_shortcutOpen] (and any future project browser).
+  Future<void> _shortcutSave() async {
+    try {
+      final dir = exportsDir();
+      final now = DateTime.now();
+      final stamp = '${now.year}'
+          '${now.month.toString().padLeft(2, '0')}'
+          '${now.day.toString().padLeft(2, '0')}_'
+          '${now.hour.toString().padLeft(2, '0')}'
+          '${now.minute.toString().padLeft(2, '0')}'
+          '${now.second.toString().padLeft(2, '0')}';
+      final path = '${dir.path}${Platform.pathSeparator}feather_$stamp.feather';
+      final model = ProjectModel(
+        name: 'feather_$stamp',
+        scene: ProjectSceneModel(strokes: _strokes),
+        camera: ProjectCameraModel(
+          yaw: _camera.yaw,
+          pitch: _camera.pitch,
+          distance: _camera.distance,
+          targetX: _camera.target.x,
+          targetY: _camera.target.y,
+          targetZ: _camera.target.z,
+        ),
+        brush: ProjectBrushModel(
+          presetName: 'Basic Round',
+          size: _brushSize,
+          opacity: _brushOpacity,
+          color: _color.toARGB32(),
+        ),
+        created: now,
+        modified: now,
+      );
+      File(path).writeAsStringSync(model.toJson().toString());
+      _lastExportPath = path;
+      _showExportSnackBar('Project saved', path);
+    } catch (e) {
+      _showExportSnackBar('Save failed: $e', null, isError: true);
+    }
+  }
+
+  /// Ctrl+O — pick a `.feather` file and load its strokes + camera + brush
+  /// into the live editor. Pushes the current state to the undo stack so
+  /// the open is reversible.
+  Future<void> _shortcutOpen() async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Open Feather project',
+      type: FileType.custom,
+      allowedExtensions: const ['feather'],
+    );
+    final path = result?.files.single.path;
+    if (path == null) return;
+    try {
+      final raw = File(path).readAsStringSync();
+      final json = (jsonDecode(raw) as Map?)?.cast<String, dynamic>() ?? {};
+      final model = ProjectModel.fromJson(json);
+      _pushUndo();
+      _strokes
+        ..clear()
+        ..addAll(model.scene.strokes);
+      _selectionModel.clear();
+      _rebuildStroke3Ds();
+      _camera.yaw = model.camera.yaw;
+      _camera.pitch = model.camera.pitch;
+      _camera.distance = model.camera.distance;
+      _camera.target = Vector3(
+        model.camera.targetX,
+        model.camera.targetY,
+        model.camera.targetZ,
+      );
+      _brushSize = model.brush.size;
+      _brushOpacity = model.brush.opacity;
+      _color = Color(model.brush.color);
+      setState(() {});
+      _showExportSnackBar('Opened ${model.name}', path);
+    } catch (e) {
+      _showExportSnackBar('Open failed: $e', null, isError: true);
+    }
+  }
+
+  void _shortcutResetCamera() {
+    setState(() {
+      _camera.yaw = 0.0;
+      _camera.pitch = -0.35;
+      _camera.distance = 6.0;
+      _camera.target = Vector3.zero();
+    });
+  }
+
+  void _shortcutZoomIn() => setState(() => _camera.zoom(0.9));
+
+  void _shortcutZoomOut() => setState(() => _camera.zoom(1.1));
+
+  void _shortcutToggleUi() {
+    setState(() => _uiHidden = !_uiHidden);
+    _onUiStateChanged(_currentUiState().copyWith(uiHidden: _uiHidden));
+  }
+
+  /// 1 = 2D joystick, 2 = (no-op middle slot, reserved), 3 = 3D joystick.
+  /// Per the task spec: "1/2/3 = Switch 2D/3D joystick". We map 1 → 2D
+  /// resolver, 3 → 3D resolver; 2 is a reserved middle slot that toggles
+  /// the joystick lock off (a no-op until a lock UI is wired).
+  void _shortcutJoystick2d() => setJoystick3d(false);
+
+  void _shortcutJoystick3d() => setJoystick3d(true);
+
+  void _shortcutBrushSizeDelta(double delta) {
+    final next = (_brushSize + delta).clamp(1.0, 500.0);
+    if ((next - _brushSize).abs() < 1e-6) return;
+    setState(() => _brushSize = next);
+    _brush.settings = _brush.settings.copyWith(size: _brushSize);
+    final backend = _krita.isInitialized ? _krita.backend : null;
+    if (backend != null) backend.size = _brushSize;
+  }
+
+  /// The full shortcut → callback map. Built once per build; cheap because
+  /// the closures capture only `this`.
+  Map<ShortcutActivator, VoidCallback> _shortcutBindings() {
+    return <ShortcutActivator, VoidCallback>{
+      // Undo / redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y).
+      ctrlKey(LogicalKeyboardKey.keyZ): _shortcutUndo,
+      metaKey(LogicalKeyboardKey.keyZ): _shortcutUndo,
+      ctrlKey(LogicalKeyboardKey.keyZ, shift: true): _shortcutRedo,
+      metaKey(LogicalKeyboardKey.keyZ, shift: true): _shortcutRedo,
+      ctrlKey(LogicalKeyboardKey.keyY): _shortcutRedo,
+      metaKey(LogicalKeyboardKey.keyY): _shortcutRedo,
+      // Document ops.
+      ctrlKey(LogicalKeyboardKey.keyS): _shortcutSave,
+      metaKey(LogicalKeyboardKey.keyS): _shortcutSave,
+      ctrlKey(LogicalKeyboardKey.keyO): _shortcutOpen,
+      metaKey(LogicalKeyboardKey.keyO): _shortcutOpen,
+      ctrlKey(LogicalKeyboardKey.keyE): _shortcutExport,
+      metaKey(LogicalKeyboardKey.keyE): _shortcutExport,
+      ctrlKey(LogicalKeyboardKey.keyA): _shortcutSelectAll,
+      metaKey(LogicalKeyboardKey.keyA): _shortcutSelectAll,
+      ctrlKey(LogicalKeyboardKey.keyD): _shortcutDeselectAll,
+      metaKey(LogicalKeyboardKey.keyD): _shortcutDeselectAll,
+      // Tool hotkeys (plain letters; a focused text field consumes these).
+      const SingleActivator(LogicalKeyboardKey.keyB):
+          () => _shortcutSetTool(FeatherTool.draw),
+      const SingleActivator(LogicalKeyboardKey.keyE):
+          () => _shortcutSetTool(FeatherTool.eraser),
+      const SingleActivator(LogicalKeyboardKey.keyV):
+          () => _shortcutSetTool(FeatherTool.vacuum),
+      const SingleActivator(LogicalKeyboardKey.keyS):
+          () => _shortcutSetTool(FeatherTool.select),
+      const SingleActivator(LogicalKeyboardKey.keyM): _shortcutToggleMirror,
+      const SingleActivator(LogicalKeyboardKey.keyG): _shortcutToggleGuideDrawMode,
+      const SingleActivator(LogicalKeyboardKey.keyL): _shortcutLoftMode,
+      const SingleActivator(LogicalKeyboardKey.keyP): _shortcutPrimitivesMode,
+      // Selection / deletion.
+      const SingleActivator(LogicalKeyboardKey.delete): _shortcutDeleteSelected,
+      const SingleActivator(LogicalKeyboardKey.backspace):
+          _shortcutDeleteSelected,
+      const SingleActivator(LogicalKeyboardKey.escape): _shortcutDeselectAll,
+      // Camera.
+      const SingleActivator(LogicalKeyboardKey.keyF): _shortcutResetCamera,
+      const SingleActivator(LogicalKeyboardKey.equal): _shortcutZoomIn,
+      const SingleActivator(LogicalKeyboardKey.numpadAdd): _shortcutZoomIn,
+      const SingleActivator(LogicalKeyboardKey.minus): _shortcutZoomOut,
+      const SingleActivator(LogicalKeyboardKey.numpadSubtract): _shortcutZoomOut,
+      // Joystick resolver switch (1 = 2D, 3 = 3D; 2 reserved).
+      const SingleActivator(LogicalKeyboardKey.digit1): _shortcutJoystick2d,
+      const SingleActivator(LogicalKeyboardKey.digit3): _shortcutJoystick3d,
+      // UI visibility.
+      const SingleActivator(LogicalKeyboardKey.tab): _shortcutToggleUi,
+    };
+  }
+
+  // ----- Desktop mouse handlers (loop-keyboard-shortcuts-mouse) ------------
+  //
+  // Wired into [CanvasViewport] via [EditorScreen.onOrbit / onCameraPan /
+  // onBrushSizeDelta]. The viewport's Listener routes right / middle
+  // drags and the scroll wheel to these handlers; the host then mutates
+  // the camera / brush directly.
+
+  /// Right-click drag (and left+Space) → orbit. [_onPan] already orbits,
+  /// so we just forward — the dedicated handler exists so the routing is
+  /// explicit and future divergence (e.g. a different orbit sensitivity
+  /// for mouse vs. touch) has a clear home.
+  void _onOrbit(Offset delta) => _onPan(delta);
+
+  /// Middle-click drag → pan (translate the orbit centre). Distinct from
+  /// [_onPan] which orbits. Uses [OrbitCamera.pan] which converts the
+  /// pixel delta to a world-space translation along the camera's right /
+  /// up axes (the eye follows so the view translates without rotating).
+  void _onCameraPan(Offset delta) {
+    if (_viewportSize.isEmpty) return;
+    setState(() {
+      _camera.pan(
+        delta.dx,
+        delta.dy,
+        _viewportSize.width,
+        _viewportSize.height,
+      );
+    });
+  }
+
+  /// Ctrl + scroll → brush size ± (millimetres). Clamps to the engine's
+  /// 1..500 mm range and mirrors the new size into the procedural brush
+  /// + the Krita backend so the next dab matches.
+  void _onBrushSizeDelta(double delta) => _shortcutBrushSizeDelta(delta);
 
   // ----- Camera gestures --------------------------------------------------
 

@@ -45,7 +45,15 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart'
+    show
+        kPrimaryButton,
+        kSecondaryButton,
+        kMiddleMouseButton,
+        PointerScrollEvent,
+        PointerSignalEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard, LogicalKeyboardKey;
 
 import '../theme/feather_colors.dart';
 
@@ -187,6 +195,24 @@ class CanvasScene {
     /// [lightDir]. When null, the painter falls back to a soft offset
     /// blob shadow under each stroke.
     this.groundY,
+    /// When true, the painter draws a visible ground-plane band at
+    /// [groundY] AND projects stroke shadows onto it. When false, no
+    /// ground plane is drawn and strokes cast no shadow at all (per
+    /// the Stage panel's "Ground plane" toggle: OFF = no ground, no
+    /// shadows). Defaults to false so legacy callers see no behaviour
+    /// change unless they opt in.
+    this.showGroundPlane = false,
+    /// User-picked background color override. When null, the painter
+    /// uses the palette's default canvas background. The Cutout
+    /// material also uses this color so a cutout stroke visually
+    /// disappears into whatever background the artist chose (not just
+    /// the palette default).
+    this.backgroundColor,
+    /// Glow halo size multiplier in 0..1 — scales the outer-blur radius
+    /// of the glow material's bloom halo. 0.5 (default) reproduces the
+    /// legacy look; 0 = no halo, 1 = maximum bloom. Driven by the
+    /// Stage panel's "Glow area" slider.
+    this.glowArea = 0.5,
     /// Real Krita paint layer — an RGBA8 raster composited by the
     /// brush engine's `generateDab` path (via `KritaCanvasController`
     /// on the host). Drawn on top of the 3D stroke ribbons so the
@@ -215,6 +241,9 @@ class CanvasScene {
   final double ambient;
   final double diffuse;
   final double? groundY;
+  final bool showGroundPlane;
+  final Color? backgroundColor;
+  final double glowArea;
 
   /// The real-Krita dab composite layer (host-side rasterized from the
   /// [KritaCanvasController] backing buffer). Null on the fallback
@@ -238,6 +267,17 @@ class CanvasViewport extends StatefulWidget {
     this.onZoom,
     this.onTapSelect,
     this.onLiquifyDrag,
+    // --- Desktop mouse wiring (loop-keyboard-shortcuts-mouse) ------------
+    // Right-click drag → orbit (defaults to [onPan] when [onOrbit] is null,
+    // since the host's [onPan] handler already orbits the camera).
+    // Middle-click drag → pan the orbit centre (translate the camera +
+    // target together). Scroll wheel → zoom (delegates to [onZoom]).
+    // Ctrl + scroll → adjust brush size by a signed delta in millimetres.
+    // All four are optional: when null, the corresponding mouse gesture is
+    // a no-op (touch / stylus handling is unaffected).
+    this.onOrbit,
+    this.onCameraPan,
+    this.onBrushSizeDelta,
     this.paperSeed = 7,
   });
 
@@ -264,6 +304,20 @@ class CanvasViewport extends StatefulWidget {
   /// camera (routed through [onPan] / [onZoom] via onScaleStart).
   final void Function(Offset screenPos, Offset dragDelta)? onLiquifyDrag;
 
+  /// Right-mouse-button drag → orbit the camera. Falls back to [onPan]
+  /// when null (the host's [onPan] handler orbits by default), so the
+  /// right-button orbit path works without explicit wiring.
+  final ValueChanged<Offset>? onOrbit;
+
+  /// Middle-mouse-button drag → pan the orbit centre (translate the
+  /// camera + target together). Distinct from [onPan] which orbits.
+  final ValueChanged<Offset>? onCameraPan;
+
+  /// Ctrl + scroll wheel → adjust the brush size by a signed delta in
+  /// millimetres (positive = grow, negative = shrink). The host clamps
+  /// and mirrors the new size into the brush engine.
+  final ValueChanged<double>? onBrushSizeDelta;
+
   final int paperSeed;
 
   @override
@@ -279,104 +333,212 @@ class _CanvasViewportState extends State<CanvasViewport> {
   bool _isLiquifyDragging = false;
   Offset? _lastPan;
 
+  // ----- Desktop mouse state (loop-keyboard-shortcuts-mouse) -------------
+  //
+  // The GestureDetector below only routes single-finger / touch / stylus
+  // drags. For mouse devices we layer a [Listener] on top that:
+  //   * routes right-button drag → [widget.onOrbit] (falls back to
+  //     [widget.onPan] which orbits) and suppresses the GestureDetector,
+  //   * routes middle-button drag → [widget.onCameraPan] (real pan) and
+  //     suppresses the GestureDetector,
+  //   * routes the scroll wheel → [widget.onZoom] (zoom) or, when Ctrl is
+  //     held, [widget.onBrushSizeDelta] (brush size ±),
+  //   * lets left-button / touch / stylus drags fall through to the
+  //     GestureDetector so the existing draw / liquify / orbit paths are
+  //     unchanged. When Space is held, left-button drag is redirected to
+  //     orbit (per Feather's "Space = Pan mode (hold)" shortcut) by
+  //     setting [_suppressGesture] for the duration of the drag.
+  int _mouseButtons = 0; // bitmask of currently-held mouse buttons
+  bool _suppressGesture = false; // true while a right/middle drag owns the gesture
+  Offset? _mouseDragLast;
+
   @override
   Widget build(BuildContext context) {
     final palette = _palette(context);
     return RepaintBoundary(
-      child: GestureDetector(
+      // Outer Listener captures desktop mouse events that the
+      // GestureDetector below can't distinguish (right / middle button,
+      // scroll wheel, Ctrl-modified scroll). When a right / middle drag
+      // begins — or a left drag begins while Space is held — the Listener
+      // sets [_suppressGesture] so the GestureDetector's onPan* callbacks
+      // become no-ops for that drag (the GestureDetector would otherwise
+      // treat a right-button drag exactly like a left-button drag and
+      // start drawing).
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onPanStart: (d) {
-          // Two-finger / right-button pans; one-finger draws. We can't
-          // distinguish at GestureDetector level without custom logic,
-          // so we expose both: if onStrokeStart is null, treat as pan.
-          if (widget.onStrokeStart != null) {
-            _isDrawing = true;
-            _livePoints
-              ..clear()
-              ..add(d.localPosition);
-            widget.onStrokeStart?.call();
-            setState(() {});
-          } else if (widget.onLiquifyDrag != null) {
-            // GAP 3 FIX: route single-finger drag to the liquify engine
-            // when the liquify tool is active (host wires onLiquifyDrag
-            // only in that mode). Two-finger gestures still fall through
-            // to onScaleStart → onPan / onZoom so the camera can orbit.
-            _isLiquifyDragging = true;
-            _lastPan = d.localPosition;
-            widget.onLiquifyDrag!(d.localPosition, Offset.zero);
-          } else {
+        onPointerDown: _onPointerDown,
+        onPointerMove: _onPointerMove,
+        onPointerUp: _onPointerUp,
+        onPointerCancel: _onPointerUp,
+        onPointerSignal: _onPointerSignal,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (d) {
+            // Two-finger / right-button pans; one-finger draws. We can't
+            // distinguish at GestureDetector level without custom logic,
+            // so we expose both: if onStrokeStart is null, treat as pan.
+            if (_suppressGesture) return; // owned by the Listener.
+            if (widget.onStrokeStart != null) {
+              _isDrawing = true;
+              _livePoints
+                ..clear()
+                ..add(d.localPosition);
+              widget.onStrokeStart?.call();
+              setState(() {});
+            } else if (widget.onLiquifyDrag != null) {
+              // GAP 3 FIX: route single-finger drag to the liquify engine
+              // when the liquify tool is active (host wires onLiquifyDrag
+              // only in that mode). Two-finger gestures still fall through
+              // to onScaleStart → onPan / onZoom so the camera can orbit.
+              _isLiquifyDragging = true;
+              _lastPan = d.localPosition;
+              widget.onLiquifyDrag!(d.localPosition, Offset.zero);
+            } else {
+              _isPanning = true;
+              _lastPan = d.localPosition;
+            }
+          },
+          onPanUpdate: (d) {
+            if (_suppressGesture) return; // owned by the Listener.
+            if (_isDrawing) {
+              _livePoints.add(d.localPosition);
+              widget.onStrokeUpdate?.call(d.localPosition);
+              setState(() {});
+            } else if (_isLiquifyDragging) {
+              final delta = d.localPosition - (_lastPan ?? d.localPosition);
+              _lastPan = d.localPosition;
+              widget.onLiquifyDrag!(d.localPosition, delta);
+            } else if (_isPanning) {
+              final delta = d.localPosition - (_lastPan ?? d.localPosition);
+              _lastPan = d.localPosition;
+              widget.onPan?.call(delta);
+            }
+          },
+          onPanEnd: (_) {
+            if (_suppressGesture) return; // owned by the Listener.
+            if (_isDrawing) {
+              _isDrawing = false;
+              _livePoints.clear();
+              widget.onStrokeEnd?.call();
+              setState(() {});
+            } else if (_isLiquifyDragging) {
+              _isLiquifyDragging = false;
+              _lastPan = null;
+            } else if (_isPanning) {
+              _isPanning = false;
+              _lastPan = null;
+            }
+          },
+          onScaleStart: (d) {
+            if (_suppressGesture) return; // owned by the Listener.
             _isPanning = true;
-            _lastPan = d.localPosition;
-          }
-        },
-        onPanUpdate: (d) {
-          if (_isDrawing) {
-            _livePoints.add(d.localPosition);
-            widget.onStrokeUpdate?.call(d.localPosition);
-            setState(() {});
-          } else if (_isLiquifyDragging) {
-            final delta = d.localPosition - (_lastPan ?? d.localPosition);
-            _lastPan = d.localPosition;
-            widget.onLiquifyDrag!(d.localPosition, delta);
-          } else if (_isPanning) {
-            final delta = d.localPosition - (_lastPan ?? d.localPosition);
-            _lastPan = d.localPosition;
+            _lastPan = d.focalPoint;
+          },
+          onScaleUpdate: (d) {
+            if (_suppressGesture) return; // owned by the Listener.
+            final delta = d.focalPoint - (_lastPan ?? d.focalPoint);
+            _lastPan = d.focalPoint;
             widget.onPan?.call(delta);
-          }
-        },
-        onPanEnd: (_) {
-          if (_isDrawing) {
-            _isDrawing = false;
-            _livePoints.clear();
-            widget.onStrokeEnd?.call();
-            setState(() {});
-          } else if (_isLiquifyDragging) {
-            _isLiquifyDragging = false;
-            _lastPan = null;
-          } else if (_isPanning) {
+            if ((d.scale - 1.0).abs() > 0.001) {
+              widget.onZoom?.call(d.scale);
+            }
+          },
+          onScaleEnd: (_) {
+            if (_suppressGesture) return; // owned by the Listener.
             _isPanning = false;
             _lastPan = null;
-          }
-        },
-        onScaleStart: (d) {
-          _isPanning = true;
-          _lastPan = d.focalPoint;
-        },
-        onScaleUpdate: (d) {
-          final delta = d.focalPoint - (_lastPan ?? d.focalPoint);
-          _lastPan = d.focalPoint;
-          widget.onPan?.call(delta);
-          if ((d.scale - 1.0).abs() > 0.001) {
-            widget.onZoom?.call(d.scale);
-          }
-        },
-        onScaleEnd: (_) {
-          _isPanning = false;
-          _lastPan = null;
-        },
-        // Tap-to-select: fires when a single finger lands and lifts
-        // without significant drag. Used by the Select tool's tap-select
-        // (host routes the screen point to its [SelectionSystem]) and by
-        // Loft mode's tap-to-pick-curve flow (host routes the point to
-        // its loft selection list). The gesture arena resolves tap vs
-        // pan: a quick tap wins, a drag wins pan.
-        onTapUp: widget.onTapSelect == null
-            ? null
-            : (details) => widget.onTapSelect!(details.localPosition),
-        child: ClipRect(
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: _CanvasPainter(
-              scene: widget.scene,
-              livePoints: _livePoints,
-              isDrawing: _isDrawing,
-              palette: palette,
-              paperSeed: widget.paperSeed,
+          },
+          // Tap-to-select: fires when a single finger lands and lifts
+          // without significant drag. Used by the Select tool's tap-select
+          // (host routes the screen point to its [SelectionSystem]) and by
+          // Loft mode's tap-to-pick-curve flow (host routes the point to
+          // its loft selection list). The gesture arena resolves tap vs
+          // pan: a quick tap wins, a drag wins pan.
+          onTapUp: widget.onTapSelect == null
+              ? null
+              : (details) => widget.onTapSelect!(details.localPosition),
+          child: ClipRect(
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _CanvasPainter(
+                scene: widget.scene,
+                livePoints: _livePoints,
+                isDrawing: _isDrawing,
+                palette: palette,
+                paperSeed: widget.paperSeed,
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // ----- Desktop mouse routing (loop-keyboard-shortcuts-mouse) -----------
+
+  void _onPointerDown(PointerDownEvent event) {
+    // Track the held buttons so _onPointerMove can route multi-button
+    // drags (e.g. chording left + right). Touch / stylus events carry a
+    // buttons bitmask of 0 (touch) or kPrimaryButton (stylus); only real
+    // mouse events set the secondary / tertiary bits.
+    _mouseButtons = event.buttons;
+    final isRight = (event.buttons & kSecondaryButton) != 0;
+    final isMiddle = (event.buttons & kMiddleMouseButton) != 0;
+    final spaceHeld = HardwareKeyboard.instance
+        .isLogicalKeyPressed(LogicalKeyboardKey.space);
+    // A left-button drag while Space is held orbits (per the
+    // "Space = Pan mode (hold)" Feather shortcut). We treat it the same
+    // as a right-button drag: route to the orbit callback and suppress
+    // the GestureDetector's draw path.
+    final leftOrbits = (event.buttons & kPrimaryButton) != 0 && spaceHeld;
+    if (isRight || isMiddle || leftOrbits) {
+      _suppressGesture = true;
+      _mouseDragLast = event.position;
+    }
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (!_suppressGesture) return;
+    final last = _mouseDragLast;
+    if (last == null) return;
+    final delta = event.position - last;
+    _mouseDragLast = event.position;
+    final isMiddle = (_mouseButtons & kMiddleMouseButton) != 0;
+    if (isMiddle) {
+      // Middle-button drag → real pan (translate the orbit centre).
+      widget.onCameraPan?.call(delta);
+    } else {
+      // Right-button drag (or left + Space) → orbit. Falls back to
+      // [onPan] when the host hasn't wired [onOrbit] explicitly — the
+      // host's [onPan] handler orbits by default.
+      final orbit = widget.onOrbit ?? widget.onPan;
+      orbit?.call(delta);
+    }
+  }
+
+  void _onPointerUp(PointerEvent event) {
+    _mouseButtons = 0;
+    _suppressGesture = false;
+    _mouseDragLast = null;
+  }
+
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final ctrl = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (ctrl) {
+      // Ctrl + scroll → brush size ±. Map scroll-up (negative dy) to
+      // grow, scroll-down to shrink, in 2 mm increments per notch.
+      final delta = -event.scrollDelta.dy.sign * 2.0;
+      widget.onBrushSizeDelta?.call(delta);
+      return;
+    }
+    // Plain scroll → zoom. Each notch adjusts the distance by ~10%.
+    // scrollDelta.dy is positive for scroll-down (wheel toward user)
+    // which should zoom OUT (factor > 1 = farther).
+    final factor = 1.0 + (event.scrollDelta.dy * 0.002);
+    if ((factor - 1.0).abs() < 1e-6) return;
+    widget.onZoom?.call(factor);
   }
 
   FeatherPalette _palette(BuildContext context) =>
@@ -402,8 +564,10 @@ class _CanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Background — paper.
-    final bgPaint = Paint()..color = palette.canvasBackground;
+    // 1. Background — paper. Use the user-picked background color when
+    //    the Stage panel set one; otherwise the palette default.
+    final bg = scene.backgroundColor ?? palette.canvasBackground;
+    final bgPaint = Paint()..color = bg;
     canvas.drawRect(Offset.zero & size, bgPaint);
     _paintPaperNoise(canvas, size);
 
@@ -421,6 +585,14 @@ class _CanvasPainter extends CustomPainter {
     canvas.drawLine(Offset(cx - 10, cy), Offset(cx + 10, cy), crossPaint);
     canvas.drawLine(Offset(cx, cy - 10), Offset(cx, cy + 10), crossPaint);
 
+    // 3b. Ground plane — visible band + horizontal rule at the project
+    //     line. Drawn OUTSIDE the pan/zoom transform so it stays stable
+    //     on screen regardless of camera orbit / pan. Strokes' projected
+    //     shadows land on this line (see [_paintDropShadow]).
+    if (scene.showGroundPlane) {
+      _paintGroundPlane(canvas, size);
+    }
+
     // 4. Strokes — drop shadows first (so they sit beneath every tube),
     //    then tubes / glow / guides on top.
     canvas.save();
@@ -428,7 +600,7 @@ class _CanvasPainter extends CustomPainter {
     canvas.scale(scene.zoom);
     // Pass 1: shadows only.
     for (final s in scene.strokes) {
-      _paintDropShadow(canvas, s);
+      _paintDropShadow(canvas, s, size);
     }
     // Pass 2: the strokes themselves.
     for (final s in scene.strokes) {
@@ -441,10 +613,10 @@ class _CanvasPainter extends CustomPainter {
         color: scene.activeColor,
         width: 4,
       );
-      _paintDropShadow(canvas, live);
+      _paintDropShadow(canvas, live, size);
       _paintStroke(canvas, live);
     } else if (scene.previewStroke != null) {
-      _paintDropShadow(canvas, scene.previewStroke!);
+      _paintDropShadow(canvas, scene.previewStroke!, size);
       _paintStroke(canvas, scene.previewStroke!);
     }
     canvas.restore();
@@ -484,7 +656,19 @@ class _CanvasPainter extends CustomPainter {
 
   void _paintStroke(Canvas canvas, CanvasStroke stroke) {
     if (stroke.points.length < 2) return;
-    switch (stroke.material) {
+    // Render-mode toggle (Stage panel → Environment → Render Mode):
+    //   ON  → strokes render with their assigned material (shaded /
+    //         glow / cutout / guide). The default "artistic" look.
+    //   OFF → strokes render flat (shadeless), regardless of their
+    //         assigned material. Useful for previewing the raw
+    //         silhouette / occluder set without 3D shading.
+    //
+    // We honour the per-stroke `material` only when render mode is on;
+    // otherwise we force [CanvasMaterial.flat]. The flat material keeps
+    // the stroke's own colour (no shading, no halo) so the artist sees
+    // the unmodified paint.
+    final effective = scene.renderMode ? stroke.material : CanvasMaterial.flat;
+    switch (effective) {
       case CanvasMaterial.flat:
         _paintFlat(canvas, stroke);
         break;
@@ -506,11 +690,15 @@ class _CanvasPainter extends CustomPainter {
 
   /// Cutout: paints the stroke with the canvas background color so it
   /// reads as the scene background. No drop shadow, no shading — the
-  /// stroke visually disappears into the paper.
+  /// stroke visually disappears into the paper. Uses the user-picked
+  /// [CanvasScene.backgroundColor] when set, so a cutout stroke
+  /// vanishes into whatever background the artist chose (not just the
+  /// palette default).
   void _paintCutout(Canvas canvas, CanvasStroke stroke) {
     final path = _strokePath(stroke);
+    final bg = scene.backgroundColor ?? palette.canvasBackground;
     final paint = Paint()
-      ..color = palette.canvasBackground
+      ..color = bg
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke.width
       ..strokeCap = StrokeCap.round
@@ -646,6 +834,11 @@ class _CanvasPainter extends CustomPainter {
   /// Draws a soft bloom halo around the stroke using a heavily blurred,
   /// additively-blended wider pass. The actual bright core is drawn by
   /// [_paintShadedTube] with `additive: true`.
+  ///
+  /// The halo's blur radius scales with [CanvasScene.glowArea] (driven
+  /// by the Stage panel's "Glow area" slider): 0 = no halo, 0.5 = the
+  /// legacy look, 1.0 = maximum bloom. The mid halo is always narrower
+  /// so the bright core reads at any setting.
   void _paintGlowHalo(Canvas canvas, CanvasStroke stroke) {
     final path = _strokePath(stroke);
     final base = HSVColor.fromColor(stroke.color);
@@ -655,30 +848,37 @@ class _CanvasPainter extends CustomPainter {
       (base.saturation * 0.6).clamp(0.0, 1.0),
       1.0,
     ).toColor();
-    // Outer wide blur.
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = haloCol
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke.width * 4.0
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..blendMode = BlendMode.plus
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0),
-    );
+    // glowArea 0..1 → outer blur radius 0..12, mid blur radius 0..4.
+    final outerBlur = 12.0 * scene.glowArea.clamp(0.0, 1.0);
+    final midBlur = 4.0 * scene.glowArea.clamp(0.0, 1.0);
+    // Outer wide blur (skipped entirely when glowArea collapses to 0).
+    if (outerBlur > 0.01) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = haloCol
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke.width * 4.0
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..blendMode = BlendMode.plus
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, outerBlur),
+      );
+    }
     // Mid halo — narrower, brighter.
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = haloCol.withValues(alpha: 0.9)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke.width * 2.0
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..blendMode = BlendMode.plus
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
-    );
+    if (midBlur > 0.01) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = haloCol.withValues(alpha: 0.9)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke.width * 2.0
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..blendMode = BlendMode.plus
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, midBlur),
+      );
+    }
   }
 
   // ── Guide3D ribbon ───────────────────────────────────────────────────
@@ -785,10 +985,24 @@ class _CanvasPainter extends CustomPainter {
 
   // ── Drop shadow ──────────────────────────────────────────────────────
 
-  /// Drops a shadow under a stroke. If [CanvasScene.groundY] is set,
-  /// the stroke is sheared onto the ground line along [lightDir] (a
-  /// true plan projection). Otherwise a soft offset blob is drawn.
-  void _paintDropShadow(Canvas canvas, CanvasStroke stroke) {
+  /// Drops a shadow under a stroke.
+  ///
+  /// Behaviour is governed by the Stage panel's "Ground plane" toggle
+  /// (→ [CanvasScene.showGroundPlane]):
+  ///   * OFF (default): no shadow at all. Strokes still render normally,
+  ///     just without any drop shadow — matches the task contract
+  ///     ("OFF → no ground plane, no shadows").
+  ///   * ON: a true plan projection of the stroke onto the ground line
+  ///     along [CanvasScene.lightDir], drawn as a soft blurred polyline.
+  ///     The ground line is at 80% of the viewport height (computed in
+  ///     [_groundLineY]) unless the host passed an explicit
+  ///     [CanvasScene.groundY].
+  ///
+  /// Flat, cutout & guide materials never cast a 3D shadow (they're
+  /// non-3D ribbons).
+  void _paintDropShadow(Canvas canvas, CanvasStroke stroke, Size size) {
+    // Ground plane OFF → no shadow at all (per the task contract).
+    if (!scene.showGroundPlane) return;
     if (stroke.material == CanvasMaterial.flat ||
         stroke.material == CanvasMaterial.cutout ||
         stroke.material == CanvasMaterial.guide) {
@@ -812,19 +1026,11 @@ class _CanvasPainter extends CustomPainter {
       ..strokeWidth = stroke.width * 1.15
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
 
-    final groundY = scene.groundY;
-    if (groundY == null) {
-      // Fallback: offset blob shadow. Skew along the light direction so
-      // the shadow falls opposite to the light source.
-      final lLen = scene.lightDir.distance;
-      final ld = lLen < 1e-6
-          ? const Offset(0.7, 0.7)
-          : scene.lightDir / lLen;
-      final offset = Offset(-ld.dx * 8.0, math.max(4.0, -ld.dy * 8.0 + 6.0));
-      final path = _strokePath(stroke, offset: offset);
-      canvas.drawPath(path, shadowPaint);
-      return;
-    }
+    // Ground plane ON → project onto the ground line along lightDir.
+    // Use the host's explicit groundY when set; otherwise compute a
+    // stable line at 80% of the viewport height (in scene-local coords
+    // so it lands at the right screen y given pan / zoom).
+    final groundY = scene.groundY ?? _groundLineY(size);
 
     // Project every point onto the ground line along the light
     // direction. Solving for the intersection of the ray
@@ -845,6 +1051,38 @@ class _CanvasPainter extends CustomPainter {
       path.lineTo(p.dx, p.dy);
     }
     canvas.drawPath(path, shadowPaint);
+  }
+
+  /// Computes the ground-line Y in scene-local (transformed) pixels so
+  /// that it lands at 80% of the viewport height in screen pixels,
+  /// accounting for the current pan / zoom. Used as a fallback when
+  /// the host doesn't pass an explicit [CanvasScene.groundY].
+  double _groundLineY(Size size) {
+    if (scene.zoom == 0.0) return size.height * 0.8;
+    return (size.height * 0.8 - scene.pan.dy) / scene.zoom;
+  }
+
+  /// Draws the visible ground plane — a translucent band + a hairline
+  /// rule at the project line — so the artist can see where shadows
+  /// will land. Drawn OUTSIDE the pan/zoom transform so the plane stays
+  /// stable on screen regardless of camera orbit / pan.
+  void _paintGroundPlane(Canvas canvas, Size size) {
+    final y = size.height * 0.8;
+    // Translucent band below the line (reads as "floor").
+    canvas.drawRect(
+      Rect.fromLTRB(0, y, size.width, size.height),
+      Paint()
+        ..color = palette.textPrimary.withValues(alpha: 0.05)
+        ..style = PaintingStyle.fill,
+    );
+    // Hairline rule at the project line.
+    canvas.drawLine(
+      Offset(0, y),
+      Offset(size.width, y),
+      Paint()
+        ..color = palette.textPrimary.withValues(alpha: 0.22)
+        ..strokeWidth = 0.75,
+    );
   }
 
   // ── Geometry helpers ─────────────────────────────────────────────────

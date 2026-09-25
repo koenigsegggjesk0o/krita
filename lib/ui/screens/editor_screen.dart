@@ -20,6 +20,8 @@
 // state (active tool, mode, popovers) and emits callbacks; the parent
 // wires them to the real engine via Riverpod.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/feather_animations.dart';
@@ -54,6 +56,20 @@ class EditorUiState {
     this.renderMode = false,
     this.rightCollapsed = false,
     this.uiHidden = false,
+    // --- Environment (Stage panel → host → CanvasScene) ----------------
+    // These mirror the Stage panel's Environment tab. The host
+    // (lib/screens/main_screen.dart) reads them in [_buildCanvasScene]
+    // and projects them onto the [CanvasScene] handed to the viewport
+    // (lightDir as a 2D direction vector, groundY as a screen-pixel
+    // line, backgroundColor as the canvas / cutout material colour,
+    // glowArea as the glow halo blur radius, showGrid / showGroundPlane
+    // as the painter's grid + shadow toggles).
+    this.lightAzimuth = 5 * math.pi / 4,
+    this.lightElevation = math.pi / 4,
+    this.glowArea = 0.5,
+    this.backgroundColor,
+    this.showGrid = true,
+    this.showGroundPlane = false,
   });
 
   final FeatherTool tool;
@@ -70,6 +86,14 @@ class EditorUiState {
   final bool rightCollapsed;
   final bool uiHidden;
 
+  // Environment state — see constructor doc above.
+  final double lightAzimuth; // radians, 0..2π
+  final double lightElevation; // radians, 0..π/2
+  final double glowArea; // 0..1
+  final Color? backgroundColor; // null = palette default
+  final bool showGrid;
+  final bool showGroundPlane;
+
   EditorUiState copyWith({
     FeatherTool? tool,
     FeatherMode? mode,
@@ -84,6 +108,13 @@ class EditorUiState {
     bool? renderMode,
     bool? rightCollapsed,
     bool? uiHidden,
+    double? lightAzimuth,
+    double? lightElevation,
+    double? glowArea,
+    Color? backgroundColor,
+    bool? showGrid,
+    bool? showGroundPlane,
+    bool clearBackgroundColor = false,
   }) =>
       EditorUiState(
         tool: tool ?? this.tool,
@@ -99,6 +130,17 @@ class EditorUiState {
         renderMode: renderMode ?? this.renderMode,
         rightCollapsed: rightCollapsed ?? this.rightCollapsed,
         uiHidden: uiHidden ?? this.uiHidden,
+        lightAzimuth: lightAzimuth ?? this.lightAzimuth,
+        lightElevation: lightElevation ?? this.lightElevation,
+        glowArea: glowArea ?? this.glowArea,
+        // `Color?` is nullable — a regular `??` would never let the
+        // caller clear it back to null. Use the explicit
+        // `clearBackgroundColor` sentinel for that.
+        backgroundColor: clearBackgroundColor
+            ? null
+            : (backgroundColor ?? this.backgroundColor),
+        showGrid: showGrid ?? this.showGrid,
+        showGroundPlane: showGroundPlane ?? this.showGroundPlane,
       );
 }
 
@@ -149,6 +191,13 @@ class EditorScreen extends StatefulWidget {
     // [LiquifyEngine.applyDrag].
     this.onTapSelect,
     this.onLiquifyDrag,
+    // --- Desktop mouse wiring (loop-keyboard-shortcuts-mouse) ------------
+    // Forwarded 1:1 to [CanvasViewport]. See the viewport's doc comments
+    // for the routing policy (right-click = orbit, middle-click = pan,
+    // scroll = zoom, Ctrl+scroll = brush size ±).
+    this.onOrbit,
+    this.onCameraPan,
+    this.onBrushSizeDelta,
   });
 
   final EditorUiState initial;
@@ -226,6 +275,17 @@ class EditorScreen extends StatefulWidget {
   /// [LiquifyEngine.applyDrag].
   final void Function(Offset screenPos, Offset dragDelta)? onLiquifyDrag;
 
+  /// Right-mouse-button drag → orbit. Forwarded to [CanvasViewport.onOrbit].
+  final ValueChanged<Offset>? onOrbit;
+
+  /// Middle-mouse-button drag → pan (translate the orbit centre).
+  /// Forwarded to [CanvasViewport.onCameraPan].
+  final ValueChanged<Offset>? onCameraPan;
+
+  /// Ctrl + scroll wheel → brush size ± delta (millimetres).
+  /// Forwarded to [CanvasViewport.onBrushSizeDelta].
+  final ValueChanged<double>? onBrushSizeDelta;
+
   @override
   State<EditorScreen> createState() => _EditorScreenState();
 }
@@ -255,6 +315,31 @@ class _EditorScreenState extends State<EditorScreen> {
   void _set(EditorUiState next) {
     setState(() => _s = next);
     widget.onUiStateChanged?.call(next);
+  }
+
+  /// Opens a colour-picker dialog (the existing [ColorWheel] in a
+  /// lightweight [AlertDialog]) and writes the picked colour into
+  /// [_s.backgroundColor]. The host picks it up via [onUiStateChanged]
+  /// and projects it onto [CanvasScene.backgroundColor], which the
+  /// painter uses for the canvas background AND the Cutout material.
+  void _pickBackgroundColor() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Background color'),
+        contentPadding: const EdgeInsets.all(8),
+        content: ColorWheel(
+          color: _s.backgroundColor ?? const Color(0xFF1E293B),
+          onChanged: (c) => _set(_s.copyWith(backgroundColor: c)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -509,6 +594,29 @@ class _EditorScreenState extends State<EditorScreen> {
               child: StagePanel(
                 groups: widget.layers,
                 resources: widget.resources,
+                // Environment tab state — mirrored into [_s] (then into
+                // the host via [onUiStateChanged]) so the host can
+                // project it onto [CanvasScene] in [_buildCanvasScene].
+                renderMode: _s.renderMode,
+                lightAzimuth: _s.lightAzimuth,
+                lightElevation: _s.lightElevation,
+                glowArea: _s.glowArea,
+                backgroundColor: _s.backgroundColor,
+                showGrid: _s.showGrid,
+                showGroundPlane: _s.showGroundPlane,
+                onRenderToggle: () =>
+                    _set(_s.copyWith(renderMode: !_s.renderMode)),
+                onLightAzimuth: (v) =>
+                    _set(_s.copyWith(lightAzimuth: v)),
+                onLightElevation: (v) =>
+                    _set(_s.copyWith(lightElevation: v)),
+                onGlowArea: (v) => _set(_s.copyWith(glowArea: v)),
+                onPickBackgroundColor: () => _pickBackgroundColor(),
+                onClearBackgroundColor: () => _set(
+                    _s.copyWith(clearBackgroundColor: true)),
+                onToggleGrid: (v) => _set(_s.copyWith(showGrid: v)),
+                onToggleGroundPlane: (v) =>
+                    _set(_s.copyWith(showGroundPlane: v)),
                 onClose: () => setState(() => _showStage = false),
               ),
               onClose: () => setState(() => _showStage = false),
@@ -591,16 +699,39 @@ class _EditorScreenState extends State<EditorScreen> {
     final start = widget.drawingEnabled ? widget.onStrokeStart : null;
     return Positioned.fill(
       child: CanvasViewport(
+        // Compose the painter's [CanvasScene] from the host's scene
+        // (strokes, pan/zoom, paint layer, overlays) PLUS the local
+        // [_s] env state (preview, active colour, render-mode, grid,
+        // ground plane, lighting, background, glow). The host's scene
+        // already carries the env-derived fields (lightDir, groundY,
+        // backgroundColor, glowArea) — see
+        // [_MainScreenState._buildCanvasScene] — so we pass them
+        // through. The few fields the local UI owns outright (preview,
+        // active colour, render-mode, showGrid, showGroundPlane) are
+        // taken from [_s] so the Stage panel's toggles apply instantly
+        // even before the host's rebuild round-trip completes.
         scene: CanvasScene(
           strokes: _scene.strokes,
           previewStroke: _preview,
           activeColor: _s.color,
           pan: _scene.pan,
           zoom: _scene.zoom,
-          showGrid: _scene.showGrid,
+          showGrid: _s.showGrid,
           renderMode: _s.renderMode,
           selectionBounds: _scene.selectionBounds,
           paintLayer: _scene.paintLayer,
+          // Env-derived fields — passed through from the host's scene
+          // (the host computed them from the mirrored [_s] state in
+          // [_buildCanvasScene]). Falling back to the local [_s] for
+          // the toggles keeps the UI snappy on a toggle tap.
+          lightDir: _scene.lightDir,
+          ambient: _scene.ambient,
+          diffuse: _scene.diffuse,
+          groundY: _scene.groundY,
+          showGroundPlane: _s.showGroundPlane,
+          backgroundColor: _scene.backgroundColor ?? _s.backgroundColor,
+          glowArea: _scene.glowArea,
+          overlayPrimitives: _scene.overlayPrimitives,
         ),
         onStrokeStart: start == null
             ? null
@@ -629,6 +760,9 @@ class _EditorScreenState extends State<EditorScreen> {
         onZoom: widget.onZoom,
         onTapSelect: widget.onTapSelect,
         onLiquifyDrag: widget.onLiquifyDrag,
+        onOrbit: widget.onOrbit,
+        onCameraPan: widget.onCameraPan,
+        onBrushSizeDelta: widget.onBrushSizeDelta,
       ),
     );
   }
