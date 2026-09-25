@@ -28,26 +28,18 @@ jobs:
           pip install aqtinstall
           python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
-      - name: Install zlib (download pre-built Windows binaries)
+      - name: Build zlib from source
         shell: pwsh
         run: |
-          # Download pre-built zlib for Windows from zlib.net
-          Invoke-WebRequest -Uri "https://www.zlib.net/zlib13.zip" -OutFile zlib.zip -ErrorAction SilentlyContinue
-          if (-not (Test-Path zlib.zip)) {
-            # Fallback: GitHub mirror
-            Invoke-WebRequest -Uri "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" -OutFile zlib.tar.gz
-            tar xzf zlib.tar.gz
-            $zlibSrc = (Get-ChildItem "zlib-*" -Directory | Select-Object -First 1).FullName
-            cd $zlibSrc
-            cmake -B build -DCMAKE_INSTALL_PREFIX=C:\zlib-install -DAMD64=ON
-            cmake --build build --target install --config Release
-            cd ..
-          } else {
-            Expand-Archive -Path zlib.zip -DestinationPath C:\zlib-install -Force
-          }
-          # Find the actual lib file
-          $zlibLib = (Get-ChildItem "C:\zlib-install" -Recurse -Filter "*.lib" | Select-Object -First 1).FullName
-          $zlibInc = (Get-ChildItem "C:\zlib-install" -Recurse -Filter "zlib.h" | Select-Object -First 1).DirectoryName
+          # Clone zlib source and compile with MSVC
+          git clone --depth 1 --branch v1.3.1 https://github.com/madler/zlib.git C:\zlib-src
+          cd C:\zlib-src
+          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=C:\zlib-install
+          cmake --build build --target install
+          cd ..
+          # Verify
+          $zlibLib = (Get-ChildItem "C:\zlib-install\lib\*.lib" | Select-Object -First 1).FullName
+          $zlibInc = "C:\zlib-install\include"
           Write-Host "zlib lib: $zlibLib"
           Write-Host "zlib include: $zlibInc"
           echo "ZLIB_LIB=$zlibLib" >> $env:GITHUB_ENV
