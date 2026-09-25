@@ -6,10 +6,69 @@ on:
     branches: [ feather-krita-flutter ]
 
 jobs:
-  build-windows-with-krita:
-    name: Build Windows EXE with Krita Brush Engine
+  compile-krita-bridge:
+    name: Compile krita_bridge.dll
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Qt6 via aqtinstall
+        run: |
+          pip install aqtinstall
+          python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+
+      - name: Install zlib via vcpkg
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install zlib:x64-windows --x-install-root=C:\vcpkg\installed
+
+      - name: Compile krita_bridge.dll
+        shell: cmd
+        run: |
+          set QTDIR=C:\Qt\6.6.3\msvc2019_64
+          set VCPKG=C:\vcpkg\installed\x64-windows
+          cl /nologo /std:c++17 /EHsc /MD /O2 /LD ^
+            -I"native\krita_bridge" ^
+            -I"%QTDIR%\include" ^
+            -I"%QTDIR%\include\QtCore" ^
+            -I"%QTDIR%\include\QtGui" ^
+            -I"%QTDIR%\include\QtWidgets" ^
+            -I"%QTDIR%\include\QtXml" ^
+            -I"%VCPKG%\include" ^
+            /DQT_CORE_LIB /DQT_GUI_LIB /DQT_XML_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES ^
+            native\krita_bridge\krita_bridge.cpp ^
+            /Fe:krita_bridge.dll ^
+            /link /SUBSYSTEM:CONSOLE /MACHINE:X64 ^
+            "%QTDIR%\lib\Qt6Core.lib" ^
+            "%QTDIR%\lib\Qt6Gui.lib" ^
+            "%QTDIR%\lib\Qt6Widgets.lib" ^
+            "%QTDIR%\lib\Qt6Xml.lib" ^
+            "%VCPKG%\lib\zlib.lib"
+
+      - name: Upload krita_bridge.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-bridge-dll
+          path: krita_bridge.dll
+          retention-days: 90
+
+  build-windows-with-krita:
+    name: Build Windows EXE with Krita Engine
+    runs-on: windows-latest
+    needs: compile-krita-bridge
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -18,140 +77,70 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Download Krita portable ZIP (contains all .dll)
+      - name: Download krita_bridge.dll
+        uses: actions/download-artifact@v4
+        with:
+          name: krita-bridge-dll
+          path: .
+
+      - name: Download Krita portable ZIP
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://download.kde.org/stable/krita/6.0.3/krita-x64-6.0.3.zip" -OutFile krita-portable.zip
           Expand-Archive -Path krita-portable.zip -DestinationPath krita-files -Force
-          Write-Host "Krita files extracted"
-
-      - name: Copy Krita DLLs to Flutter project
-        shell: pwsh
-        run: |
-          # Find Krita bin folder (might be different name)
-          $kritaRoot = Get-ChildItem "krita-files" -Directory | Select-Object -First 1
-          $kritaBin = Join-Path $kritaRoot.FullName "bin"
-          Write-Host "Krita bin: $kritaBin"
-          
-          if (-not (Test-Path $kritaBin)) {
-            Write-Host "ERROR: Krita bin folder not found!"
-            Write-Host "Contents of krita-files:"
-            Get-ChildItem "krita-files" -Recurse -Depth 1 | Format-Table FullName
-            exit 1
-          }
-          
-          $destDir = "krita-dlls"
-          New-Item -ItemType Directory -Force -Path $destDir
-          
-          # Copy ALL dlls from Krita bin
-          Get-ChildItem "$kritaBin\*.dll" | ForEach-Object {
-            Copy-Item $_.FullName -Destination $destDir -Force
-            Write-Host "Copied: $($_.Name)"
-          }
-          
-          Write-Host "=== Total DLLs copied ==="
-          (Get-ChildItem $destDir -Filter "*.dll").Count
 
       - name: Build Flutter Windows
-        shell: pwsh
-        run: |
-          flutter build windows --release 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Build failed, trying debug build..."
-            flutter build windows --debug 2>&1
-          }
+        run: flutter build windows --release
 
-      - name: Copy Krita DLLs to build output
+      - name: Copy Krita DLLs + bridge + data to build output
         shell: pwsh
         run: |
           $buildDir = "build\windows\x64\runner\Release"
-          if (-not (Test-Path $buildDir)) {
-            $buildDir = "build\windows\x64\runner\Debug"
-          }
-          
-          # Find Krita root
-          $kritaRoot = Get-ChildItem "krita-files" -Directory | Select-Object -First 1
-          $kritaBin = Join-Path $kritaRoot.FullName "bin"
-          $kritaShare = Join-Path $kritaRoot.FullName "share\krita"
-          
-          Write-Host "Build dir: $buildDir"
-          Write-Host "Krita bin: $kritaBin"
-          
+          $kritaRoot = (Get-ChildItem "krita-files" -Directory | Select-Object -First 1).FullName
+          $kritaBin = Join-Path $kritaRoot "bin"
+          $kritaShare = Join-Path $kritaRoot "share\krita"
+
           # Copy ALL Krita DLLs
           Get-ChildItem "$kritaBin\*.dll" | ForEach-Object {
             Copy-Item $_.FullName -Destination $buildDir -Force
           }
-          
+
           # Copy kritaplugins
           $pluginsSrc = Join-Path $kritaBin "kritaplugins"
           if (Test-Path $pluginsSrc) {
-            $pluginsDst = Join-Path $buildDir "kritaplugins"
-            New-Item -ItemType Directory -Force -Path $pluginsDst
-            Get-ChildItem "$pluginsSrc\*.dll" | ForEach-Object {
-              Copy-Item $_.FullName -Destination $pluginsDst -Force
-            }
+            Copy-Item $pluginsSrc -Destination $buildDir -Recurse -Force
           }
-          
-          # Copy data (brushes, presets, bundles)
+
+          # Copy Krita data (brushes, presets, etc)
           if (Test-Path $kritaShare) {
             $dataDst = Join-Path $buildDir "data\krita"
             New-Item -ItemType Directory -Force -Path $dataDst
             Copy-Item $kritaShare -Destination $dataDst -Recurse -Force
           }
-          
-          # Copy krita-data.zip from assets (727 brush presets)
+
+          # Copy krita_bridge.dll (the compiled C ABI wrapper)
+          if (Test-Path "krita_bridge.dll") {
+            Copy-Item "krita_bridge.dll" -Destination $buildDir -Force
+            Write-Host "Copied krita_bridge.dll"
+          }
+
+          # Copy krita-data.zip (727 brush presets)
           if (Test-Path "assets\krita-data.zip") {
             Copy-Item "assets\krita-data.zip" -Destination $buildDir -Force
             Write-Host "Copied krita-data.zip"
           }
-          
-          # Copy krita_bridge.dll if it was compiled
-          $bridgeDll = "krita_bridge.dll"
-          if (Test-Path $bridgeDll) {
-            Copy-Item $bridgeDll -Destination $buildDir -Force
-            Write-Host "Copied krita_bridge.dll"
-          } else {
-            # Try downloading from the compile-krita-bridge job artifact
-            Write-Host "krita_bridge.dll not found locally, app will use fallback engine"
-          }
-          
-          # Also copy zlib dll
-          $zlibDll = "C:\vcpkg\installed\x64-windows\bin\zlib1.dll"
-          if (Test-Path $zlibDll) {
-            Copy-Item $zlibDll -Destination $buildDir -Force
-            Write-Host "Copied zlib1.dll"
-          }
-          
-          # Calculate total size
+
+          # Total size
           $totalSize = (Get-ChildItem $buildDir -Recurse | Measure-Object -Property Length -Sum).Sum
           Write-Host "=== Total build size: $([math]::Round($totalSize / 1MB, 1)) MB ==="
-          
-          Write-Host "=== Build output ==="
-          Get-ChildItem $buildDir | Format-Table Name, Length
-          Write-Host "=== kritaplugins ==="
-          Get-ChildItem (Join-Path $buildDir "kritaplugins") -ErrorAction SilentlyContinue | Format-Table Name
-          Write-Host "=== data ==="
-          Get-ChildItem (Join-Path $buildDir "data") -ErrorAction SilentlyContinue | Format-Table Name
 
       - name: Package as ZIP
         shell: pwsh
         run: |
-          $buildDir = "build\windows\x64\runner\Release"
-          if (-not (Test-Path $buildDir)) {
-            $buildDir = "build\windows\x64\runner\Debug"
-          }
-          Compress-Archive -Path "$buildDir\*" -DestinationPath feather-krita-krita-engine.zip -Force
-          Write-Host "ZIP created"
-          Get-Item feather-krita-krita-engine.zip | Format-Table Name, Length
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath feather-krita-krita-engine.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -161,9 +150,9 @@ jobs:
           retention-days: 90
 
   build-android-with-krita:
-    name: Build Android APK with Krita Brush Engine
+    name: Build Android APK with Krita Engine
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -189,276 +178,3 @@ jobs:
         with:
           name: feather-krita-android-with-krita-engine
           path: build/app/outputs/flutter-apk/*.apk
-
-  compile-krita-bridge:
-    name: Step 2 - Compile krita_bridge.dll
-    runs-on: windows-latest
-    timeout-minutes: 120
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Qt6 via aqtinstall (fast, pre-built)
-        run: |
-          pip install aqtinstall
-          python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
-          $qtDir = "C:\Qt\6.6.3\msvc2019_64"
-          echo "Qt6_DIR=$qtDir" >> $env:GITHUB_ENV
-          Write-Host "Qt6 installed at: $qtDir"
-          Get-ChildItem "$qtDir\include" -Directory | Select-Object Name
-
-      - name: Install Boost + Eigen via vcpkg (fast, pre-built)
-        run: |
-          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-            C:\vcpkg\bootstrap-vcpkg.bat
-          }
-          C:\vcpkg\vcpkg install boost-system:x64-windows boost-headers:x64-windows boost-algorithm:x64-windows eigen3:x64-windows zlib:x64-windows --x-install-root=C:\vcpkg\installed
-
-      - name: Install extra-cmake-modules
-        run: |
-          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git C:\ecm
-          cd C:\ecm
-          cmake -B build -DCMAKE_INSTALL_PREFIX=C:\ecm-install
-          cmake --build build --target install --config Release
-
-      - name: Build lager + immer + zug + xsimd
-        run: |
-          $deps = "C:\krita-deps"
-          New-Item -ItemType Directory -Force -Path $deps
-          git clone --depth 1 https://github.com/arximboldi/immer.git C:\immer
-          cd C:\immer; cmake -B C:\immer\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build C:\immer\build --target install --config Release
-          git clone --depth 1 https://github.com/arximboldi/zug.git C:\zug
-          cd C:\zug; cmake -B C:\zug\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build C:\zug\build --target install --config Release
-          git clone --depth 1 https://github.com/arximboldi/lager.git C:\lager
-          cd C:\lager; cmake -B C:\lager\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF -Dlager_BUILD_DEBUGGER_EXAMPLES=OFF -Dlager_EMBED_RESOURCES_PATH=OFF; cmake --build C:\lager\build --target install --config Release
-          git clone --depth 1 --branch 13.0.0 https://github.com/xtensor-stack/xsimd.git C:\xsimd
-          cd C:\xsimd; cmake -B C:\xsimd\build -DCMAKE_INSTALL_PREFIX=$deps -DBUILD_TESTING=OFF; cmake --build C:\xsimd\build --target install --config Release
-
-      - name: Download Krita portable ZIP
-        run: |
-          Invoke-WebRequest -Uri "https://download.kde.org/stable/krita/6.0.3/krita-x64-6.0.3.zip" -OutFile krita-portable.zip
-          Expand-Archive -Path krita-portable.zip -DestinationPath C:\krita-portable -Force
-          $kritaRoot = (Get-ChildItem "C:\krita-portable" -Directory | Select-Object -First 1).FullName
-          echo "KRITA_ROOT=$kritaRoot" >> $env:GITHUB_ENV
-
-      - name: Generate .lib import libraries from Krita .dll
-        run: |
-          $kritaBin = Join-Path $env:KRITA_ROOT "bin"
-          $libDir = "C:\krita-libs"
-          New-Item -ItemType Directory -Force -Path $libDir
-          Get-ChildItem "$kritaBin\libkrita*.dll" | ForEach-Object {
-            $defFile = Join-Path $libDir ($_.BaseName + ".def")
-            "EXPORTS" | Out-File -FilePath $defFile -Encoding ASCII
-            & dumpbin /exports $_.FullName 2>$null | Select-String -Pattern '^\s+\d+\s+[0-9A-F]+\s+(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Out-File -FilePath $defFile -Encoding ASCII -Append
-            $libPath = Join-Path $libDir ($_.BaseName + ".lib")
-            & lib /def:$defFile /out:$libPath /machine:x64 2>$null
-            if (Test-Path $libPath) { Write-Host "OK: $($_.BaseName).lib" } else { Write-Host "FAIL: $($_.BaseName).lib" }
-          }
-          # Also Qt6 dlls
-          Get-ChildItem "$kritaBin\Qt6*.dll" | ForEach-Object {
-            $defFile = Join-Path $libDir ($_.BaseName + ".def")
-            "EXPORTS" | Out-File -FilePath $defFile -Encoding ASCII
-            & dumpbin /exports $_.FullName 2>$null | Select-String -Pattern '^\s+\d+\s+[0-9A-F]+\s+(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Out-File -FilePath $defFile -Encoding ASCII -Append
-            $libPath = Join-Path $libDir ($_.BaseName + ".lib")
-            & lib /def:$defFile /out:$libPath /machine:x64 2>$null
-          }
-          Write-Host "=== .lib files ==="
-          Get-ChildItem $libDir -Filter "*.lib" | Format-Table Name
-
-      - name: Clone Krita source (headers)
-        run: git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git C:\krita-src
-
-      - name: Configure Krita (generate config files — NOT full build)
-        run: |
-          $qtDir = $env:Qt6_DIR
-          $vcpkgDir = "C:\vcpkg\installed\x64-windows"
-          $depsDir = "C:\krita-deps"
-          cd C:\krita-src
-          # Configure only — this generates KoConfig.h, export headers, etc.
-          # Use --warn-uninitialized to ignore missing optional deps
-          cmake -B build-configure -G "Ninja" `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DBUILD_TESTING=OFF `
-            -DENABLE_PYTHON=OFF `
-            -DWITH_QT6=ON -DQT_MAJOR_VERSION=6 `
-            -DWITH_HEIF=OFF -DWITH_JPEG=OFF -DWITH_PNG=OFF -DWITH_TIFF=OFF `
-            -DWITH_RAW=OFF -DWITH_GIF=OFF -DWITH_FFTW3=OFF -DWITH_OPENEXR=OFF `
-            -DWITH_KDE=OFF -DWITH_XCF=OFF -DWITH_SOPRANO=OFF -DWITH_HDR=OFF `
-            -DWITH_WEBP=OFF -DWITH_JXL=OFF -DWITH_OCIO=OFF `
-            -DWITH_OPENJPEG=OFF -DWITH_MEDIA=OFF `
-            -DCMAKE_PREFIX_PATH="$qtDir;$depsDir;$vcpkgDir;C:\ecm-install" `
-            -DCMAKE_DISABLE_FIND_PACKAGE_KF5=ON `
-            -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON `
-            2>&1 | Select-Object -Last 30
-          # Even if configure fails, some config files may have been generated
-          # Check for generated files
-          Write-Host "=== Checking for generated config files ==="
-          Get-ChildItem "build-configure\KoConfig.h" -ErrorAction SilentlyContinue
-          Get-ChildItem "build-configure\config-*.h" -ErrorAction SilentlyContinue
-          Get-ChildItem "libs\*\*\*_export.h" -ErrorAction SilentlyContinue | Select-Object -First 5
-        continue-on-error: true
-
-      - name: Collect generated config + export headers
-        continue-on-error: true
-        run: |
-          $stubDir = "C:\krita-stubs"
-          New-Item -ItemType Directory -Force -Path $stubDir
-          $buildDir = "C:\krita-src\build-configure"
-          
-          # Copy generated config files
-          Get-ChildItem "$buildDir\KoConfig.h" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName $stubDir -Force }
-          Get-ChildItem "$buildDir\KoTestConfig.h" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName $stubDir -Force }
-          Get-ChildItem "$buildDir\config-*.h" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName $stubDir -Force }
-          
-          # Copy generated export headers from build tree
-          Get-ChildItem "$buildDir\libs" -Recurse -Filter "*_export.h" -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName $stubDir -Force
-            Write-Host "Copied: $($_.Name)"
-          }
-          
-          # If KoConfig.h wasn't generated, create it manually
-          $koConfig = Join-Path $stubDir "KoConfig.h"
-          if (-not (Test-Path $koConfig)) {
-            Write-Host "KoConfig.h not generated, creating manually"
-            $koConfigContent = "#ifndef KOCONFIG_H`n#define KOCONFIG_H`n#define HAVE_XSIMD 1`n#define HAVE_LCMS24 1`n#define HAVE_GSL 0`n#define HAVE_OPENEXR 0`n#define HAVE_FFTW3 0`n#define HAVE_JPEG 0`n#define HAVE_PNG 0`n#define HAVE_TIFF 0`n#define HAVE_RAW 0`n#define HAVE_HEIF 0`n#define HAVE_WEBP 0`n#define HAVE_GIF 0`n#define HAVE_OPENJPEG 0`n#define HAVE_JXL 0`n#define HAVE_HDR 0`n#define HAVE_MEDIA 0`n#define HAVE_PYTHON 0`n#define HAVE_SEEXPR 0`n#define HAVE_LIBMYPAINT 0`n#define KRITA_VERSION_STRING `"6.0.4`"`n#endif"
-            $koConfigContent | Out-File -FilePath $koConfig -Encoding ASCII
-          }
-          
-          # Create missing config files
-          $configs = @("KoTestConfig.h","config-hdr.h","config-gsl.h","config-hash-table-implementation.h","config-safe-asserts.h","config-use-surface-color-management-api.h","config-mlt.h","config-ocio.h","config-seexpr.h","config-mypaint.h","config-powf.h","config-jpeg.h","config-tiff.h","config-limit-long-tests.h","config-qt-patches-present.h","config-qmdiarea-always-show-subwindow-title.h","config-high-dpi-scale-factor-rounding-policy.h","config-updaters.h","config-android-stdio-forwarding.h","config_convolution.h")
-          foreach ($cfg in $configs) {
-            $cfgPath = Join-Path $stubDir $cfg
-            if (-not (Test-Path $cfgPath)) {
-              $guard = $cfg.ToUpper() -replace '\.H$','_H' -replace '-','_'
-              "#ifndef $guard`n#define $guard`n#endif" | Out-File -FilePath $cfgPath -Encoding ASCII
-            }
-          }
-          
-          # If export headers weren't generated, create stubs
-          $exports = @("kritapigment_export","kritaimage_export","kritabrush_export","kritaui_export","kritaresources_export","kritaglobal_export","kritawidgetutils_export","kritaversion_export","kritamultiarch_export","kritacommand_export","kritaflake_export","kritabasicflakes_export","kritawidgets_export","kritastore_export","kritakoplugin_export","kritametadata_export","kritalibkis_export","kritalibkra_export","kritapsd_export","kritapsdutils_export","kritaimpex_export","kritalibpaintop_export","kritaresourcewidgets_export","kritaqmlwidgets_export","kritaqmicinterface_export","kritacolor_export","kritaexifcommon_export","kritatiffpsd_export")
-          foreach ($exp in $exports) {
-            $expPath = Join-Path $stubDir "$exp.h"
-            if (-not (Test-Path $expPath)) {
-              $macro = ($exp -replace '_export$','').ToUpper() + "_EXPORT"
-              "#ifndef $($exp -replace '\.','_')_H`n#define $($exp -replace '\.','_')_H`n#define $macro`n#endif" | Out-File -FilePath $expPath -Encoding ASCII
-            }
-          }
-          
-          # KDE Frameworks stubs (minimal)
-          # KI18n
-          "#ifndef KLOCALIZEDSTRING_H`n#define KLOCALIZEDSTRING_H`n#include <QString>`nstruct KLocalizedString { QString m; KLocalizedString() {} KLocalizedString(const char* s) : m(QString::fromUtf8(s)) {} QString toString() const { return m; } operator QString() const { return m; } };`ninline KLocalizedString i18n(const char* t, ...) { return KLocalizedString(t); }`ninline KLocalizedString i18nc(const char* c, const char* t, ...) { return KLocalizedString(t); }`ninline KLocalizedString i18np(const char* s, const char* p, ...) { return KLocalizedString(s); }`ninline KLocalizedString i18ncp(const char* c, const char* s, const char* p, ...) { return KLocalizedString(s); }`n#endif" | Out-File -FilePath (Join-Path $stubDir "klocalizedstring.h") -Encoding ASCII
-          
-          # KConfig
-          "#ifndef KCONFIGGROUP_H`n#define KCONFIGGROUP_H`n#include <QSettings>`n#include <QVariant>`nclass KConfigGroup { QSettings* s; QString group; public: KConfigGroup() : s(nullptr) {} template<typename T> KConfigGroup(T*, const QString& g) : s(new QSettings()), group(g) { s->beginGroup(g); } ~KConfigGroup() { if(s) s->endGroup(); } QVariant readEntry(const QString& k, const QVariant& d=QVariant()) const { return s ? s->value(k, d) : d; } void writeEntry(const QString& k, const QVariant& v) { if(s) s->setValue(k, v); } bool hasKey(const QString& k) const { return s ? s->contains(k) : false; } QString name() const { return group; } };`nclass KSharedConfig { public: static KConfigGroup group(const QString&) { return KConfigGroup(); } };`ntypedef QSharedPointer<KSharedConfig> KSharedConfigPtr;`n#endif" | Out-File -FilePath (Join-Path $stubDir "kconfiggroup.h") -Encoding ASCII
-          "#ifndef KCONFIG_H`n#define KCONFIG_H`n#include <QSettings>`n#endif" | Out-File -FilePath (Join-Path $stubDir "kconfig.h") -Encoding ASCII
-          "#ifndef KSHAREDCONFIG_H`n#define KSHAREDCONFIG_H`n#include <kconfiggroup.h>`nclass KSharedConfig { public: static KConfigGroup group(const QString& g) { return KConfigGroup(); } };`ntypedef QSharedPointer<KSharedConfig> KSharedConfigPtr;`ninline KSharedConfigPtr KSharedConfig::openConfig(const QString& = QString()) { return KSharedConfigPtr(); }`n#endif" | Out-File -FilePath (Join-Path $stubDir "ksharedconfig.h") -Encoding ASCII
-          
-          # KCoreAddons
-          "#ifndef KPLUGINFACTORY_H`n#define KPLUGINFACTORY_H`n#include <QObject>`nclass KPluginFactory : public QObject { Q_OBJECT public: KPluginFactory() {} };`n#define K_PLUGIN_FACTORY(name, ...) class name : public KPluginFactory { Q_OBJECT public: name() : KPluginFactory() {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kpluginfactory.h") -Encoding ASCII
-          "#ifndef KPLUGINMETADATA_H`n#define KPLUGINMETADATA_H`n#include <QString>`n#include <QJsonObject>`nclass KPluginMetaData { public: QString name() const { return QString(); } QJsonObject rawData() const { return QJsonObject(); } bool isValid() const { return true; } QString fileName() const { return QString(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kpluginmetadata.h") -Encoding ASCII
-          
-          # KStandardDirs
-          "#ifndef KSTANDARDDIRS_H`n#define KSTANDARDDIRS_H`n#include <QString>`n#include <QStringList>`nclass KStandardDirs { public: static QString installPath(const QString&) { return QString(); } static QStringList resourceDirs(const QString&) { return QStringList(); } static QString locate(const QString&, const QString&) { return QString(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kstandarddirs.h") -Encoding ASCII
-          
-          # KDebug  
-          "#ifndef KDEBUG_H`n#define KDEBUG_H`n#include <QDebug>`n#define qCDebug(category) qDebug()`n#define qCWarning(category) qWarning()`n#define qCCritical(category) qCritical()`n#endif" | Out-File -FilePath (Join-Path $stubDir "kdebug.h") -Encoding ASCII
-          
-          # Other KDE stubs
-          "#ifndef KACTIONCOLLECTION_H`n#define KACTIONCOLLECTION_H`n#include <QObject>`n#include <QAction>`nclass KActionCollection : public QObject { Q_OBJECT public: KActionCollection(QObject* p=nullptr) : QObject(p) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kactioncollection.h") -Encoding ASCII
-          "#ifndef KXMLGUIWINDOW_H`n#define KXMLGUIWINDOW_H`n#include <QMainWindow>`nclass KXmlGuiWindow : public QMainWindow { Q_OBJECT public: KXmlGuiWindow(QWidget* p=nullptr) : QMainWindow(p) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kxmlguiwindow.h") -Encoding ASCII
-          "#ifndef KNOTIFICATION_H`n#define KNOTIFICATION_H`n#include <QString>`nclass KNotification { public: static void event(const QString&, const QString&, const QString& = QString()) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "knotification.h") -Encoding ASCII
-          "#ifndef KCOMPLETION_H`n#define KCOMPLETION_H`n#include <QStringList>`nclass KCompletion { public: QStringList items() const { return QStringList(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kcompletion.h") -Encoding ASCII
-          "#ifndef KSERVICE_H`n#define KSERVICE_H`n#include <QString>`nclass KService { public: QString name() const { return QString(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kservice.h") -Encoding ASCII
-          "#ifndef KICONLOADER_H`n#define KICONLOADER_H`n#include <QIcon>`nclass KIconLoader { public: QIcon loadIcon(const QString&, int=0, int=0) const { return QIcon(); } };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kiconloader.h") -Encoding ASCII
-          "#ifndef KMESSAGEBOX_H`n#define KMESSAGEBOX_H`n#include <QString>`nclass KMessageBox { public: static void information(QWidget*, const QString&, const QString& = QString()) {} static void error(QWidget*, const QString&, const QString& = QString()) {} };`n#endif" | Out-File -FilePath (Join-Path $stubDir "kmessagebox.h") -Encoding ASCII
-          
-          Write-Host "=== Stub headers generated ==="
-          Get-ChildItem $stubDir | Measure-Object | Select-Object Count
-
-      - name: Compile krita_bridge.cpp
-        run: |
-          $kritaSrc = "C:\krita-src"
-          $libDir = "C:\krita-libs"
-          $vcpkgDir = "C:\vcpkg\installed\x64-windows"
-          $depsDir = "C:\krita-deps"
-          
-          # Find Qt6 path from install-qt-action
-          $qtDir = $env:Qt6_DIR -replace '\\lib\\cmake\\Qt6$', ''
-          if (-not $qtDir) { $qtDir = (Get-ChildItem "C:\Qt\6.*\msvc*" -Directory | Select-Object -First 1).FullName }
-          Write-Host "Qt6 dir: $qtDir"
-          
-          $qtInclude = Join-Path $qtDir "include"
-          $qtLib = Join-Path $qtDir "lib"
-          
-          $includePaths = @(
-            "native\krita_bridge", "C:\krita-stubs",
-            "$kritaSrc\libs\brush", "$kritaSrc\libs\image",
-            "$kritaSrc\libs\image\brushengine", "$kritaSrc\libs\pigment",
-            "$kritaSrc\libs\widgetutils", "$kritaSrc\libs\global",
-            "$kritaSrc\libs\resources", "$kritaSrc\libs\command",
-            "$kritaSrc\libs\flake", "$kritaSrc\libs\basicflakes",
-            "$kritaSrc\libs\ui", "$kritaSrc\libs\widgets", "$kritaSrc\libs\store",
-            "$kritaSrc\libs\koplugin", "$kritaSrc\libs\metadata",
-            "$kritaSrc\libs\version", "$kritaSrc\libs\multiarch",
-            "$kritaSrc\libs\psd", "$kritaSrc\libs\psdutils",
-            "$kritaSrc\libs\resourcewidgets", "$kritaSrc\libs\impex",
-            "$kritaSrc\libs\libkis", "$kritaSrc\libs\libkra",
-            "$kritaSrc\krita", "$vcpkgDir\include",
-            "$qtInclude", "$qtInclude\QtCore", "$qtInclude\QtGui",
-            "$qtInclude\QtWidgets", "$qtInclude\QtXml",
-            "$qtInclude\QtSvg", "$qtInclude\QtConcurrent",
-            "$depsDir\include", "C:\ecm-install\include"
-          )
-          $incArgs = ($includePaths | ForEach-Object { "-I`"$_`"" }) -join " "
-          
-          # Collect .lib files (Krita import libs + Qt6 libs)
-          $libFiles = @()
-          Get-ChildItem "$libDir\*.lib" | ForEach-Object { $libFiles += $_.FullName }
-          # Qt6 libs
-          $qtLibs = @("Qt6Core.lib", "Qt6Gui.lib", "Qt6Widgets.lib", "Qt6Xml.lib", "Qt6Svg.lib", "Qt6Concurrent.lib", "Qt6Network.lib")
-          foreach ($ql in $qtLibs) {
-            $qp = Join-Path $qtLib $ql
-            if (Test-Path $qp) { $libFiles += $qp }
-          }
-          # Boost
-          $boostLib = Join-Path $vcpkgDir "lib\libboost_system.lib"
-          if (Test-Path $boostLib) { $libFiles += $boostLib }
-          
-          $libArgs = ($libFiles | ForEach-Object { "`"$_`"" }) -join " "
-          $defines = "/DKRITA_VERSION_STRING=`"6.0.4`" /DGENERIC_KRITA_LIB_VERSION=21 /DGENERIC_KRITA_LIB_SOVERSION=21 /DQT_CORE_LIB /DQT_GUI_LIB /DQT_WIDGETS_LIB /DQT_XML_LIB /DQT_SVG_LIB /DQT_CONCURRENT_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES"
-          
-          Write-Host "=== Compiling krita_bridge.cpp ==="
-          Write-Host "Include paths: $($includePaths.Count)"
-          Write-Host "Lib files: $($libFiles.Count)"
-          
-          # Write compile command to batch file (fix PowerShell quote issue)
-          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
-          $cmd | Out-File -FilePath compile.bat -Encoding ASCII -Force
-          Write-Host "Command: $cmd"
-          cmd /c compile.bat 2>&1
-          
-          if (Test-Path krita_bridge.dll) {
-            Write-Host "SUCCESS: krita_bridge.dll compiled"
-            Get-Item krita_bridge.dll | Format-Table Name, Length
-          } else {
-            Write-Host "FAILED"
-            exit 1
-          }
-
-      - name: Upload krita_bridge.dll
-        uses: actions/upload-artifact@v4
-        with:
-          name: krita-bridge-dll
-          path: krita_bridge.dll
-          retention-days: 90
