@@ -52,15 +52,24 @@
 //     branch in CanvasViewport's gesture handler + [_onLiquifyDrag] in
 //     this host). The brush cursor + drag delta drive a live
 //     [LiquifyRenderer] preview overlay on the canvas.
-//   * The brush preset picker shows UI-only presets (the new
-//     [BrushPreset] from lib/ui/widgets/brush_picker.dart is a visual
-//     placeholder, not a real .kpp). Selecting one updates the brush
-//     color / size visually; loading real .kpp presets through
-//     [KritaBrushController.loadPreset] is the next loop.
+//   * The brush preset picker now wires REAL .kpp loading. At boot the
+//     host scans the feather_presets + feather_resources/paintoppresets
+//     directories for .kpp files and builds UI [BrushPreset] entries
+//     that carry the file path. When the real native Krita backend is
+//     live, picking one feeds the path to
+//     [KritaBrushController.loadPreset] — the native bridge unpacks the
+//     .kpp container (ZIP KoStore / legacy PNG-with-zTXt / bare XML) and
+//     hands the preset XML to Krita's own paintop-settings parser. The
+//     host then reads the parsed scalar params (size / opacity /
+//     hardness / flow / eraser) back via the reflection getters and
+//     mirrors them into the [BrushEngine] + the brush settings panel.
+//     On the fallback engine (or for the bundled visual-only presets
+//     with no .kpp behind them) the picker keeps the legacy visual-hints
+//     behaviour (colour + strokeWidth).
 
 import 'dart:async';
 import 'dart:convert' show jsonDecode;
-import 'dart:io' show File, Platform;
+import 'dart:io' show Directory, File, Platform;
 import 'dart:math' as dmath;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -88,6 +97,8 @@ import 'package:feather_krita/engine/guide3d/primitive_guide.dart';
 import 'package:feather_krita/engine/guide3d/guide3d_primitive.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_canvas_controller.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
+import 'package:feather_krita/engine/krita_bridge/krita_fallback.dart'
+    show KritaBrushBackend;
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
 import 'package:feather_krita/engine/liquify/liquify_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_renderer.dart';
@@ -100,8 +111,9 @@ import 'package:feather_krita/engine/transform/joystick3d.dart';
 import 'package:feather_krita/engine/transform/transform_mode.dart';
 import 'package:feather_krita/engine/transform/transform_resolver.dart';
 import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor, BrushInput;
-import 'package:feather_krita/io/app_dirs.dart' show exportsDir;
+import 'package:feather_krita/io/app_dirs.dart' show exportsDir, presetsDir;
 import 'package:feather_krita/io/gltf_exporter.dart';
+import 'package:feather_krita/io/krita_resources.dart' show KritaResources;
 import 'package:feather_krita/io/obj_exporter.dart';
 import 'package:feather_krita/io/png_exporter.dart';
 import 'package:feather_krita/models/stroke.dart';
@@ -472,6 +484,16 @@ class _MainScreenState extends State<MainScreen>
     );
 
     _presets = _buildDefaultPresets();
+
+    // Scan the preset directories for real .kpp files (the boot-phase
+    // resource import already extracted Krita's stock preset library into
+    // feather_resources/paintoppresets; the user's own .kpp files live in
+    // feather_presets). The scan is best-effort + async: it produces UI
+    // [BrushPreset] entries that carry the file path so [_onPickPreset]
+    // can feed them to the native bridge's loadPreset. Failures (missing
+    // dirs, parse errors) are swallowed — the bundled visual catalog stays
+    // as the fallback tail.
+    _scanDiskPresets();
 
     // Tutorial caption fade controller (forward = visible, reverse = hidden).
     _captionAnim = AnimationController(
@@ -2235,7 +2257,142 @@ class _MainScreenState extends State<MainScreen>
 
   // ----- Brush presets ----------------------------------------------------
 
+  /// Scans the preset search directories (feather_presets +
+  /// feather_resources/paintoppresets) for real .kpp files and rebuilds
+  /// [_presets] so each disk preset is shown in the picker WITH its file
+  /// path attached. The scan is filesystem-only (no .kpp unpacking —
+  /// that happens on the native side at pick time via [loadPreset]), so
+  /// it stays fast even with hundreds of stock presets.
+  ///
+  /// Real disk presets are placed FIRST (so they are the loadable
+  /// entries), followed by the bundled visual-only catalog as a
+  /// fallback tail. Best-effort: any I/O error aborts silently and the
+  /// bundled catalog remains.
+  Future<void> _scanDiskPresets() async {
+    final dirs = <Directory>[];
+    try {
+      dirs.add(presetsDir());
+      final imported = KritaResources.importedPresetsDirPath();
+      if (imported != null) dirs.add(Directory(imported));
+    } catch (_) {
+      return;
+    }
+    final scanned = <BrushPreset>[];
+    try {
+      for (final dir in dirs) {
+        if (!dir.existsSync()) continue;
+        await for (final entity in dir.list(recursive: true)) {
+          if (entity is! File) continue;
+          if (!entity.path.toLowerCase().endsWith('.kpp')) continue;
+          final fileName = entity.uri.pathSegments.last;
+          var stem = fileName.replaceAll('.kpp', '').replaceAll('.KPP', '');
+          stem = stem.replaceAll('_', ' ');
+          if (stem.isEmpty) stem = fileName;
+          // Derive a stable display colour from the file stem so the
+          // picker strip has visual variety without parsing the .kpp.
+          final hue = (stem.hashCode & 0xFFFF) % 360;
+          scanned.add(BrushPreset(
+            id: 'disk_$fileName',
+            name: stem,
+            previewColor: HSLColor.fromAHSL(
+                    1.0, hue.toDouble(), 0.18, 0.28)
+                .toColor(),
+            strokeWidth: 4,
+            filePath: entity.path,
+          ));
+        }
+      }
+    } catch (_) {
+      // Best-effort: keep whatever was scanned so far.
+    }
+    if (!mounted || scanned.isEmpty) return;
+    setState(() {
+      _presets = <BrushPreset>[...scanned, ..._buildDefaultPresets()];
+    });
+  }
+
   void _onPickPreset(BrushPreset preset) {
+    // Real .kpp loading path: when the real native Krita backend is live
+    // AND the picked preset carries a .kpp file path (i.e. it was scanned
+    // from disk at boot), feed the path to
+    // [KritaBrushController.loadPreset]. The native bridge unpacks the
+    // .kpp container (ZIP KoStore / legacy PNG-with-zTXt / bare XML),
+    // hands the preset XML to Krita's own paintop-settings parser, and
+    // records the parsed (name, value) pairs on its param map of record.
+    // We then read the scalar reflection getters (currentSize /
+    // currentOpacity / currentHardness / currentFlow / isEraserPreset)
+    // back and mirror them into the [BrushEngine] + host UI state so the
+    // brush settings panel shows the preset's REAL params, not the
+    // visual-catalog placeholders.
+    //
+    // Fallback path (no native bridge, or preset has no .kpp behind it):
+    // keep the legacy visual-hints behaviour — seed size from the
+    // catalog's strokeWidth and leave opacity / hardness / flow at their
+    // current values. The fallback engine's loadPreset cannot parse a
+    // real .kpp, so reading its scalar getters back would surface engine
+    // defaults rather than the preset's values.
+    final backend = _krita.isInitialized ? _krita.backend : null;
+    final canRealLoad =
+        _realBackendActive && backend != null && preset.filePath != null;
+    if (canRealLoad) {
+      final ok = backend.loadPreset(preset.filePath!);
+      if (ok) {
+        // Read back the engine-parsed scalar params. The backend's size
+        // is in the same mm convention the host uses (the host sets
+        // backend.size = _brushSize directly elsewhere), so no unit
+        // conversion is needed.
+        final size = backend.currentSize.clamp(1.0, 300.0);
+        final opacity = backend.currentOpacity.clamp(0.0, 1.0);
+        final hardness = backend.currentHardness.clamp(0.0, 1.0);
+        final flow = backend.currentFlow.clamp(0.0, 1.0);
+        final isEraser = backend.isEraserPreset;
+        setState(() {
+          _color = preset.previewColor;
+          _brushSize = size;
+          _brushOpacity = opacity;
+          // Auto-switch to the eraser tool when the loaded preset is an
+          // eraser (CompositeOp=erase / Krita/erase / EraserMode). The
+          // native dab path already composites destination-out; this
+          // surfaces it in the UI so the tool dock matches. Non-eraser
+          // presets leave the current tool untouched.
+          if (isEraser) {
+            _tool = FeatherTool.eraser;
+          }
+        });
+        // Mirror into the Feather brush engine. Hardness / flow are NOT
+        // in the brush panel UI, but they drive dab generation so they
+        // must be mirrored too.
+        _brush.color = _color.toARGB32();
+        _brush.settings = _brush.settings.copyWith(
+          size: _brushSize,
+          opacity: _brushOpacity,
+          hardness: hardness,
+          flow: flow,
+          pressureEnabled: _pressure,
+        );
+        // The native backend already has every param from loadPreset;
+        // only push the colour (a session-level setting the .kpp does
+        // not carry) so dabs match the active swatch.
+        backend.color = BrushColor(
+          (_color.r * 255).round(),
+          (_color.g * 255).round(),
+          (_color.b * 255).round(),
+          (_color.a * 255).round(),
+        );
+        return;
+      }
+      // loadPreset failed — fall through to visual hints so the user
+      // still gets feedback. [backend.lastError()] holds the diagnostic.
+    }
+    _applyPresetVisualHints(preset, backend);
+  }
+
+  /// Applies the legacy visual-catalog hints (colour + size from
+  /// [BrushPreset.strokeWidth]) without a real .kpp round-trip. Used for
+  /// the bundled placeholder presets AND as the fallback when the real
+  /// engine is unavailable or [loadPreset] rejects the file.
+  void _applyPresetVisualHints(
+      BrushPreset preset, KritaBrushBackend? backend) {
     setState(() {
       _color = preset.previewColor;
       _brushSize = preset.strokeWidth * 4.0;
@@ -2246,7 +2403,6 @@ class _MainScreenState extends State<MainScreen>
       opacity: _brushOpacity,
       pressureEnabled: _pressure,
     );
-    final backend = _krita.isInitialized ? _krita.backend : null;
     if (backend != null) {
       backend
         ..size = _brushSize

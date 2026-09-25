@@ -317,6 +317,39 @@ class _EditorScreenState extends State<EditorScreen> {
     widget.onUiStateChanged?.call(next);
   }
 
+  /// Host-override channel: when the host pushes a new [widget.initial]
+  /// whose brush-settings fields (size / opacity / colour) or the active
+  /// tool differ from the editor's live [_s], merge them in. This is the
+  /// path the host uses to reflect real .kpp-preset params (parsed by the
+  /// native Krita bridge on [KritaBrushController.loadPreset]) back into
+  /// the brush settings panel + tool dock — without it the panel would
+  /// keep showing the pre-pick values because [_s] is [late]-initialised
+  /// once from [widget.initial] and never re-reads it.
+  ///
+  /// During normal user interaction (slider drags, colour wheel, tool
+  /// dock taps) the host and editor stay in sync via [onUiStateChanged],
+  /// so these fields are equal and the merge is a no-op. The merge ONLY
+  /// fires when the host changes one of these fields outside that loop
+  /// (i.e. after a real preset load in [MainScreen._onPickPreset], which
+  /// updates size / opacity / colour and may auto-switch the tool to
+  /// eraser when the loaded preset is an eraser).
+  @override
+  void didUpdateWidget(covariant EditorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final init = widget.initial;
+    if (init.size != _s.size ||
+        init.opacity != _s.opacity ||
+        init.color != _s.color ||
+        init.tool != _s.tool) {
+      _s = _s.copyWith(
+        size: init.size,
+        opacity: init.opacity,
+        color: init.color,
+        tool: init.tool,
+      );
+    }
+  }
+
   /// Opens a colour-picker dialog (the existing [ColorWheel] in a
   /// lightweight [AlertDialog]) and writes the picked colour into
   /// [_s.backgroundColor]. The host picks it up via [onUiStateChanged]

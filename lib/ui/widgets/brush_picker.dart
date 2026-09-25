@@ -28,6 +28,7 @@ class BrushPreset {
     this.strokeWidth = 4,
     this.tapered = true,
     this.dashed = false,
+    this.filePath,
   });
 
   final String id;
@@ -36,6 +37,16 @@ class BrushPreset {
   final double strokeWidth;
   final bool tapered;
   final bool dashed;
+
+  /// Absolute path to the source .kpp file, when this preset was scanned
+  /// from disk at boot. Null for the bundled visual-only catalog entries
+  /// (no real .kpp behind them). When non-null AND the real native Krita
+  /// backend is live, the editor host feeds this path to
+  /// [KritaBrushController.loadPreset] so the native bridge unpacks the
+  /// .kpp container and parses the real paintop-settings. When null (or
+  /// on the fallback engine) the host falls back to the visual-hints
+  /// path (colour + strokeWidth only).
+  final String? filePath;
 }
 
 class BrushPicker extends StatefulWidget {
