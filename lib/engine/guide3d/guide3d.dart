@@ -1,3 +1,4 @@
+
 // SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
@@ -195,16 +196,16 @@ class Guide3D {
   void markTransformDirty() => _inverseDirty = true;
 
   /// World-space first endpoint of the orange starting line.
-  Vector3 get startLineWorldStart => transform.transform3(startPoint.clone());
+  Vector3 get startLineWorldStart => transform.transform3(Vector3(startPoint.x, startPoint.y, startPoint.z));
 
   /// World-space second endpoint of the orange starting line.
-  Vector3 get startLineWorldEnd => transform.transform3(startEnd.clone());
+  Vector3 get startLineWorldEnd => transform.transform3(Vector3(startEnd.x, startEnd.y, startEnd.z));
 
   /// Local-space centre of the surface mesh.
   Vector3 get localCenter => mesh.bounds.center;
 
   /// World-space centre of the surface mesh.
-  Vector3 get worldCenter => transform.transform3(localCenter.clone());
+  Vector3 get worldCenter => transform.transform3(Vector3(localCenter.x, localCenter.y, localCenter.z));
 
   // ----- Picking --------------------------------------------------------
 
@@ -221,9 +222,9 @@ class Guide3D {
     if (!visible || locked) return null;
     _ensureInverse();
 
-    final localOrigin = _inverse.transform3(ray.origin.clone());
-    final localDir = _inverse.transform3(ray.direction.clone());
-    final localDirN = localDir.normalized();
+    final Vector3 localOrigin = _inverse.transform3(Vector3.copy(ray.origin as dynamic));
+    final Vector3 localDir = _inverse.transform3(Vector3.copy(ray.direction as dynamic));
+    final Vector3 localDirN = localDir.normalized();
 
     var bestT = maxDistance;
     var bestTri = -1;
@@ -271,7 +272,7 @@ class Guide3D {
     final n1 = mesh.normals[i1];
     final n2 = mesh.normals[i2];
     final localNormal = (n0 * b.x + n1 * b.y + n2 * b.z)..normalize();
-    final worldPoint = transform.transform3(localHit.clone());
+    final worldPoint = transform.transform3(Vector3(localHit.x, localHit.y, localHit.z));
     final worldNormal = VectorMathUtils.transformNormal(transform, localNormal)
         .normalized();
     return Guide3DHit(
@@ -304,7 +305,7 @@ class Guide3D {
   /// [maxDistance] from [worldPoint]. Used by the eraser.
   void pruneCurvesNear(Vector3 worldPoint, double maxDistance) {
     _ensureInverse();
-    final local = _inverse.transform3(worldPoint.clone());
+    final local = _inverse.transform3(Vector3(worldPoint.x, worldPoint.y, worldPoint.z));
     drawnCurves.removeWhere((c) {
       for (final p in c.points) {
         if ((p - local).length <= maxDistance) return false;
