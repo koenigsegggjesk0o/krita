@@ -33,29 +33,60 @@ jobs:
         run: |
           # GitHub Windows runners have vcpkg pre-installed at C:\vcpkg
           C:\vcpkg\vcpkg install zlib:x64-windows --x-install-root=C:\vcpkg\installed
+          # Find the actual zlib lib file
+          $zlibLib = Get-ChildItem "C:\vcpkg\installed\x64-windows\lib\*zlib*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($zlibLib) {
+            Write-Host "Found zlib lib: $($zlibLib.FullName)"
+          } else {
+            Write-Host "zlib lib not found, checking alternative paths..."
+            Get-ChildItem "C:\vcpkg\installed" -Recurse -Filter "*zlib*" | ForEach-Object { Write-Host $_.FullName }
+          }
 
       - name: Compile krita_bridge.dll
-        shell: cmd
+        shell: pwsh
         run: |
-          set QTDIR=C:\Qt\6.6.3\msvc2019_64
-          set VCPKG=C:\vcpkg\installed\x64-windows
-          cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD ^
-            -I"native\krita_bridge" ^
-            -I"%QTDIR%\include" ^
-            -I"%QTDIR%\include\QtCore" ^
-            -I"%QTDIR%\include\QtGui" ^
-            -I"%QTDIR%\include\QtWidgets" ^
-            -I"%QTDIR%\include\QtXml" ^
-            -I"%VCPKG%\include" ^
-            /DQT_CORE_LIB /DQT_GUI_LIB /DQT_XML_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES ^
-            native\krita_bridge\krita_bridge.cpp ^
-            /Fe:krita_bridge.dll ^
-            /link /SUBSYSTEM:CONSOLE /MACHINE:X64 ^
-            "%QTDIR%\lib\Qt6Core.lib" ^
-            "%QTDIR%\lib\Qt6Gui.lib" ^
-            "%QTDIR%\lib\Qt6Widgets.lib" ^
-            "%QTDIR%\lib\Qt6Xml.lib" ^
-            "%VCPKG%\lib\zlib.lib"
+          $qtDir = "C:\Qt\6.6.3\msvc2019_64"
+          $vcpkgDir = "C:\vcpkg\installed\x64-windows"
+          
+          # Find zlib lib (could be zlib.lib or zlibd.lib)
+          $zlibLib = (Get-ChildItem "$vcpkgDir\lib\*zlib*.lib" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $zlibLib) { $zlibLib = "" }
+          Write-Host "zlib lib: $zlibLib"
+          
+          $incPaths = @(
+            "native\krita_bridge",
+            "$qtDir\include",
+            "$qtDir\include\QtCore",
+            "$qtDir\include\QtGui",
+            "$qtDir\include\QtWidgets",
+            "$qtDir\include\QtXml",
+            "$vcpkgDir\include"
+          )
+          $incArgs = ($incPaths | ForEach-Object { "-I`"$_`"" }) -join " "
+          
+          $libs = @(
+            "$qtDir\lib\Qt6Core.lib",
+            "$qtDir\lib\Qt6Gui.lib",
+            "$qtDir\lib\Qt6Widgets.lib",
+            "$qtDir\lib\Qt6Xml.lib"
+          )
+          if ($zlibLib) { $libs += $zlibLib }
+          $libArgs = ($libs | ForEach-Object { "`"$_`"" }) -join " "
+          
+          $defines = "/DQT_CORE_LIB /DQT_GUI_LIB /DQT_XML_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES"
+          
+          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+          Write-Host "Command: $cmd"
+          $cmd | Out-File -FilePath compile.bat -Encoding ASCII -Force
+          cmd /c compile.bat 2>&1
+          
+          if (Test-Path krita_bridge.dll) {
+            Write-Host "SUCCESS: krita_bridge.dll compiled"
+            Get-Item krita_bridge.dll | Format-Table Name, Length
+          } else {
+            Write-Host "FAILED"
+            exit 1
+          }
 
       - name: Upload krita_bridge.dll
         uses: actions/upload-artifact@v4
