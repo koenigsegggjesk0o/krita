@@ -28,10 +28,10 @@ jobs:
           pip install aqtinstall
           python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
-      - name: Install zlib via vcpkg
+      - name: Install zlib via vcpkg (pre-installed on GitHub runner)
+        shell: pwsh
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
-          C:\vcpkg\bootstrap-vcpkg.bat
+          # GitHub Windows runners have vcpkg pre-installed at C:\vcpkg
           C:\vcpkg\vcpkg install zlib:x64-windows --x-install-root=C:\vcpkg\installed
 
       - name: Compile krita_bridge.dll
@@ -39,7 +39,7 @@ jobs:
         run: |
           set QTDIR=C:\Qt\6.6.3\msvc2019_64
           set VCPKG=C:\vcpkg\installed\x64-windows
-          cl /nologo /std:c++17 /EHsc /MD /O2 /LD ^
+          cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD ^
             -I"native\krita_bridge" ^
             -I"%QTDIR%\include" ^
             -I"%QTDIR%\include\QtCore" ^
