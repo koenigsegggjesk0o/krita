@@ -52,9 +52,12 @@
 // so v1 documents keep loading after the v2 writer ships.
 
 import 'dart:convert';
+import 'dart:typed_data' show ByteData, Endian, Uint8List;
 
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
+import 'package:feather_krita/data/models/project_model.dart'
+    show ProjectModel;
 import 'package:feather_krita/engine/guide_surface.dart';
 import 'package:feather_krita/engine/stroke_replay.dart';
 import 'package:feather_krita/models/stroke.dart';
@@ -436,4 +439,137 @@ Map<String, num>? _shapeParamsFromJson(dynamic raw) {
     if (v is num && v.isFinite) out[k.toString()] = v;
   });
   return out.isEmpty ? null : out;
+}
+
+// =========================================================================
+// Binary .featherb serialization (feather-state-data-export).
+//
+// The legacy [FeatherProjectDocument] above is a JSON writer/reader. For
+// large projects (many strokes, big thumbnails) the JSON round-trip is
+// slow and verbose; this binary container is the compact alternative.
+//
+// Layout (all integers little-endian, all lengths are uint32):
+//
+//   offset 0   : magic  'FEB1'             (4 bytes)
+//   offset 4   : format version            (uint32, currently 1)
+//   offset 8   : JSON header length        (uint32)
+//   offset 12  : JSON header bytes         (UTF-8, [ProjectModel.toJson] minus
+//                                            thumbnail bytes)
+//   offset N   : thumbnail length          (uint32)
+//   offset N+4 : thumbnail bytes           (raw PNG, optional)
+//
+// The header JSON carries the same logical content as the JSON format
+// (scene + camera + brush + metadata); the thumbnail is the only field
+// that gets its own length-prefixed bin chunk so the JSON stays small.
+//
+// The container is forward-compatible: newer writers may append extra
+// chunks after the thumbnail; older readers stop at the first chunk
+// they don't recognize. [isBinary] is the entry-point sniff used by
+// [ProjectRepository.load] to pick the right reader.
+// =========================================================================
+
+/// 4-byte magic identifying a binary .featherb file.
+const List<int> kFeatherBinaryMagic = [0x46, 0x45, 0x42, 0x31]; // 'FEB1'
+
+/// Binary .featherb serialization. See file header above for the layout.
+class FeatherProjectBinary {
+  FeatherProjectBinary._();
+
+  /// Returns true when [bytes] starts with the binary magic.
+  static bool isBinary(List<int> bytes) {
+    if (bytes.length < 4) return false;
+    return bytes[0] == 0x46 &&
+        bytes[1] == 0x45 &&
+        bytes[2] == 0x42 &&
+        bytes[3] == 0x31;
+  }
+
+  /// Serializes [model] to a binary .featherb byte buffer.
+  static Uint8List toBytes(ProjectModel model) {
+    final headerJson = _jsonEncode(model);
+    final headerBytes = utf8.encode(headerJson);
+    final thumbBytes = model.thumbnail ?? const <int>[];
+    final totalLength = 4 + 4 + 4 + headerBytes.length + 4 + thumbBytes.length;
+    final out = Uint8List(totalLength);
+    final bd = ByteData.sublistView(out);
+    var o = 0;
+    out[o++] = 0x46; // 'F'
+    out[o++] = 0x45; // 'E'
+    out[o++] = 0x42; // 'B'
+    out[o++] = 0x31; // '1'
+    bd.setUint32(o, 1, Endian.little); // format version
+    o += 4;
+    bd.setUint32(o, headerBytes.length, Endian.little);
+    o += 4;
+    out.setRange(o, o + headerBytes.length, headerBytes);
+    o += headerBytes.length;
+    bd.setUint32(o, thumbBytes.length, Endian.little);
+    o += 4;
+    out.setRange(o, o + thumbBytes.length, thumbBytes);
+    return out;
+  }
+
+  /// Parses a binary .featherb buffer back to a [ProjectModel].
+  /// Throws [FormatException] when [bytes] does not start with the
+  /// magic or comes from an incompatible future version.
+  static ProjectModel fromBytes(List<int> bytes) {
+    if (!isBinary(bytes)) {
+      throw const FormatException(
+          'Not a Feather binary project (magic FEB1 missing).');
+    }
+    final data = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    final bd = ByteData.sublistView(data);
+    var o = 4;
+    final version = bd.getUint32(o, Endian.little);
+    o += 4;
+    if (version > 1) {
+      throw FormatException(
+        'Project saved by a newer app version '
+        '(binary v$version, supported v1).',
+      );
+    }
+    final headerLen = bd.getUint32(o, Endian.little);
+    o += 4;
+    final headerBytes = data.sublist(o, o + headerLen);
+    o += headerLen;
+    final headerJson = utf8.decode(headerBytes, allowMalformed: true);
+    final decoded = jsonDecode(headerJson);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException(
+          'Binary project header is not a JSON object.');
+    }
+    final model = ProjectModel.fromJson(decoded);
+    if (o + 4 > data.length) return model;
+    final thumbLen = bd.getUint32(o, Endian.little);
+    o += 4;
+    if (thumbLen > 0 && o + thumbLen <= data.length) {
+      final thumb = Uint8List.fromList(data.sublist(o, o + thumbLen));
+      return model.copyWith(thumbnail: thumb);
+    }
+    return model;
+  }
+
+  /// Reads ONLY the thumbnail chunk from [bytes] without parsing the
+  /// header JSON. Returns `null` when there is no thumbnail.
+  static Uint8List? readThumbnail(List<int> bytes) {
+    if (!isBinary(bytes)) return null;
+    final data = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    final bd = ByteData.sublistView(data);
+    var o = 4;
+    final version = bd.getUint32(o, Endian.little);
+    o += 4;
+    if (version > 1) return null;
+    final headerLen = bd.getUint32(o, Endian.little);
+    o += 4;
+    o += headerLen;
+    if (o + 4 > data.length) return null;
+    final thumbLen = bd.getUint32(o, Endian.little);
+    o += 4;
+    if (thumbLen == 0 || o + thumbLen > data.length) return null;
+    return Uint8List.fromList(data.sublist(o, o + thumbLen));
+  }
+
+  /// Pretty-prints the model's JSON header (used by [toBytes]).
+  static String _jsonEncode(ProjectModel model) =>
+      const JsonEncoder.withIndent('  ').convert(model.toJson());
 }

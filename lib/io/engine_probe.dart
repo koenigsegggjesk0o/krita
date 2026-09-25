@@ -21,11 +21,66 @@
 //
 // The candidate lists mirror `krita_bindings.dart` exactly — the probe
 // must accept exactly what the real loader would accept.
+//
+// Refactor (feather-state-data-export): the probe now returns a
+// [KritaProbeOutcome] that carries the candidate path that loaded (when
+// any) plus a short outcome reason, so the boot screen can surface WHY
+// the engine was skipped instead of just a boolean. The legacy
+// [probeKritaEngine] entry-point stays a boolean for backwards
+// compatibility; the new [probeKritaEngineDetailed] is the richer form.
 
 import 'dart:async';
 import 'dart:ffi' show DynamicLibrary;
 import 'dart:io' show OSError, Platform;
 import 'dart:isolate';
+
+/// Why the probe returned its outcome.
+enum KritaProbeReason {
+  /// The library loaded cleanly on the probe isolate.
+  loaded,
+
+  /// No candidate library was found on this platform.
+  notFound,
+
+  /// A candidate was found but `DynamicLibrary.open` raised an error.
+  openFailed,
+
+  /// The probe isolate did not finish within the timeout. The library
+  /// load is wedged on this machine — the editor should skip the
+  /// native engine for this session.
+  timedOut,
+
+  /// Mobile platforms (Android / iOS) bundle the library inside the
+  /// app package, so the probe short-circuits to `true` without
+  /// touching the filesystem.
+  bundledMobile,
+}
+
+/// Outcome of a [probeKritaEngineDetailed] run.
+class KritaProbeOutcome {
+  const KritaProbeOutcome({
+    required this.success,
+    required this.reason,
+    this.candidatePath,
+    this.error,
+  });
+
+  /// True when the editor may construct the real [KritaBrushEngine]
+  /// on the UI isolate.
+  final bool success;
+
+  /// Why the probe returned this outcome.
+  final KritaProbeReason reason;
+
+  /// The candidate path that loaded (when [reason] == loaded).
+  final String? candidatePath;
+
+  /// The error message when [reason] == openFailed.
+  final String? error;
+
+  /// Legacy boolean view: `true` when [success].
+  bool toBool() => success;
+}
 
 /// Probes whether the native Krita bridge loads cleanly on this machine.
 ///
@@ -36,31 +91,67 @@ import 'dart:isolate';
 /// guards against does not apply to bundled libraries).
 Future<bool> probeKritaEngine(
     {Duration timeout = const Duration(seconds: 12)}) async {
-  if (Platform.isAndroid || Platform.isIOS) return true;
+  return (await probeKritaEngineDetailed(timeout: timeout)).toBool();
+}
+
+/// Richer variant of [probeKritaEngine]: returns a [KritaProbeOutcome]
+/// carrying the reason and the candidate path that loaded.
+Future<KritaProbeOutcome> probeKritaEngineDetailed({
+  Duration timeout = const Duration(seconds: 12),
+}) async {
+  if (Platform.isAndroid || Platform.isIOS) {
+    return const KritaProbeOutcome(
+      success: true,
+      reason: KritaProbeReason.bundledMobile,
+    );
+  }
   if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
-    return false;
+    return const KritaProbeOutcome(
+      success: false,
+      reason: KritaProbeReason.notFound,
+    );
   }
   try {
-    return await Isolate.run(_tryOpen).timeout(timeout);
+    return await Isolate.run(_tryOpenDetailed).timeout(
+      timeout,
+      onTimeout: () => const KritaProbeOutcome(
+        success: false,
+        reason: KritaProbeReason.timedOut,
+      ),
+    );
   } on TimeoutException {
-    return false;
-  } catch (_) {
-    return false;
+    return const KritaProbeOutcome(
+      success: false,
+      reason: KritaProbeReason.timedOut,
+    );
+  } catch (e) {
+    return KritaProbeOutcome(
+      success: false,
+      reason: KritaProbeReason.openFailed,
+      error: e.toString(),
+    );
   }
 }
 
-bool _tryOpen() {
+KritaProbeOutcome _tryOpenDetailed() {
   for (final candidate in _candidates()) {
     try {
       DynamicLibrary.open(candidate);
-      return true;
+      return KritaProbeOutcome(
+        success: true,
+        reason: KritaProbeReason.loaded,
+        candidatePath: candidate,
+      );
     } on ArgumentError {
       continue;
     } on OSError {
       continue;
     }
   }
-  return false;
+  return const KritaProbeOutcome(
+    success: false,
+    reason: KritaProbeReason.notFound,
+  );
 }
 
 List<String> _candidates() {

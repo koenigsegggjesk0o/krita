@@ -907,3 +907,129 @@ class _UndoEntry {
   final String strokes;
   final Uint8List? texture;
 }
+
+// =========================================================================
+// Riverpod-friendly pure-state additions (feather-state-data-export).
+//
+// The legacy [EditorState] above is a [ChangeNotifier] that owns live engine
+// instances (stroke manager, camera, texture painter, brush engine) and is
+// consumed via construction injection. The new Riverpod layer needs POJO
+// state slices that can be exposed through NotifierProvider without dragging
+// the engine singletons into the rebuild graph.
+//
+// [EditorMode] captures the three top-level editor phases (draw / edit /
+// lift) used by the toolbar's mode switcher. [EditorUiState] captures the
+// per-session UI visibility flags. Both are immutable value types so they
+// can be emitted by a [Notifier] and compared with == in select().
+// =========================================================================
+
+/// Top-level editor phase. Coexists with the bottom-bar [Tool] enum:
+/// [Tool] selects the active instrument, [EditorMode] selects the active
+/// interaction mode (e.g. drawing new strokes vs. editing existing ones
+/// vs. lifting strokes off the guide surface).
+enum EditorMode {
+  /// Painting new strokes onto the guide surface.
+  draw,
+
+  /// Selecting / transforming / liquifying existing strokes.
+  edit,
+
+  /// Lifting strokes off the guide surface into free space.
+  lift,
+}
+
+/// Pure UI-visibility state for the editor chrome.
+///
+/// Designed as a Riverpod [Notifier] state: every field is final, and
+/// mutations go through [copyWith] so the notifier can emit a fresh value.
+class EditorUiState {
+  const EditorUiState({
+    this.activeTool = Tool.draw,
+    this.activeGuide = 'Sphere',
+    this.mode = EditorMode.draw,
+    this.showGrid = true,
+    this.showMirrorPlanes = true,
+    this.showToolbar = true,
+    this.showStatusBar = true,
+    this.showGuideList = false,
+    this.showPresetBrowser = false,
+  });
+
+  /// Currently active instrument (bottom-bar [Tool]).
+  final Tool activeTool;
+
+  /// Display name of the active guide surface.
+  final String activeGuide;
+
+  /// Top-level editor phase.
+  final EditorMode mode;
+
+  /// Whether the 3D grid overlay is visible.
+  final bool showGrid;
+
+  /// Whether the X/Y/Z mirror plane indicators are visible.
+  final bool showMirrorPlanes;
+
+  /// Whether the bottom toolbar is visible.
+  final bool showToolbar;
+
+  /// Whether the status bar is visible.
+  final bool showStatusBar;
+
+  /// Whether the side guide-list panel is open.
+  final bool showGuideList;
+
+  /// Whether the brush preset browser overlay is open.
+  final bool showPresetBrowser;
+
+  /// Returns a copy with the given overrides.
+  EditorUiState copyWith({
+    Tool? activeTool,
+    String? activeGuide,
+    EditorMode? mode,
+    bool? showGrid,
+    bool? showMirrorPlanes,
+    bool? showToolbar,
+    bool? showStatusBar,
+    bool? showGuideList,
+    bool? showPresetBrowser,
+  }) =>
+      EditorUiState(
+        activeTool: activeTool ?? this.activeTool,
+        activeGuide: activeGuide ?? this.activeGuide,
+        mode: mode ?? this.mode,
+        showGrid: showGrid ?? this.showGrid,
+        showMirrorPlanes: showMirrorPlanes ?? this.showMirrorPlanes,
+        showToolbar: showToolbar ?? this.showToolbar,
+        showStatusBar: showStatusBar ?? this.showStatusBar,
+        showGuideList: showGuideList ?? this.showGuideList,
+        showPresetBrowser: showPresetBrowser ?? this.showPresetBrowser,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EditorUiState &&
+          other.activeTool == activeTool &&
+          other.activeGuide == activeGuide &&
+          other.mode == mode &&
+          other.showGrid == showGrid &&
+          other.showMirrorPlanes == showMirrorPlanes &&
+          other.showToolbar == showToolbar &&
+          other.showStatusBar == showStatusBar &&
+          other.showGuideList == showGuideList &&
+          other.showPresetBrowser == showPresetBrowser;
+
+  @override
+  int get hashCode => Object.hash(
+        activeTool,
+        activeGuide,
+        mode,
+        showGrid,
+        showMirrorPlanes,
+        showToolbar,
+        showStatusBar,
+        showGuideList,
+        showPresetBrowser,
+      );
+}

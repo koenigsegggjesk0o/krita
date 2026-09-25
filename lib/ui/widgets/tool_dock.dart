@@ -1,0 +1,264 @@
+// SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
+// SPDX-License-Identifier: GPL-2.0-or-later
+//
+// tool_dock.dart — Left vertical tool dock (icon-only, glassmorphism).
+//
+// The Feather 3D tool dock is a narrow (~50 px) floating strip on the
+// *right* of the canvas — but in our redesign we keep the brush panel on
+// the left and the tool dock on the right per the design brief. The icons
+// are outline glyphs (1.75 px stroke) and the active tool glows.
+//
+// Tools (from interfaceandgestures_interface.txt):
+//   Draw / Draw Shape, Erase / Vacuum, Select / Deselect, Mirror,
+//   Clipboard, Stage Panel — plus a top system-menu cluster.
+
+import 'package:flutter/material.dart';
+
+import '../theme/feather_animations.dart';
+import '../theme/feather_colors.dart';
+import 'icon_button.dart';
+
+enum FeatherTool {
+  home,
+  systemMenu,
+  draw,
+  erase,
+  select,
+  mirror,
+  clipboard,
+  stage,
+  liquify,
+  transform,
+}
+
+extension FeatherToolX on FeatherTool {
+  IconData get icon {
+    switch (this) {
+      case FeatherTool.home:
+        return Icons.home_outlined;
+      case FeatherTool.systemMenu:
+        return Icons.menu_rounded;
+      case FeatherTool.draw:
+        return Icons.edit_outlined;
+      case FeatherTool.erase:
+        return Icons.auto_fix_high_outlined;
+      case FeatherTool.select:
+        return Icons.highlight_alt_outlined;
+      case FeatherTool.mirror:
+        return Icons.flip_outlined;
+      case FeatherTool.clipboard:
+        return Icons.attach_file_outlined;
+      case FeatherTool.stage:
+        return Icons.layers_outlined;
+      case FeatherTool.liquify:
+        return Icons.waves_outlined;
+      case FeatherTool.transform:
+        return Icons.open_with_outlined;
+    }
+  }
+
+  String get tooltip {
+    switch (this) {
+      case FeatherTool.home:
+        return 'Home';
+      case FeatherTool.systemMenu:
+        return 'System menu';
+      case FeatherTool.draw:
+        return 'Draw / Shape';
+      case FeatherTool.erase:
+        return 'Erase / Vacuum';
+      case FeatherTool.select:
+        return 'Select / Deselect';
+      case FeatherTool.mirror:
+        return 'Mirror';
+      case FeatherTool.clipboard:
+        return 'Clipboard';
+      case FeatherTool.stage:
+        return 'Stage panel';
+      case FeatherTool.liquify:
+        return 'Liquify';
+      case FeatherTool.transform:
+        return 'Transform';
+    }
+  }
+
+  Color color(FeatherPalette palette) {
+    switch (this) {
+      case FeatherTool.draw:
+        return FeatherColors.toolDraw;
+      case FeatherTool.erase:
+        return FeatherColors.toolErase;
+      case FeatherTool.select:
+        return FeatherColors.toolSelect;
+      case FeatherTool.mirror:
+        return FeatherColors.toolMirror;
+      case FeatherTool.liquify:
+        return FeatherColors.toolLiquify;
+      case FeatherTool.stage:
+        return FeatherColors.toolStage;
+      default:
+        return palette.accent;
+    }
+  }
+}
+
+class ToolDock extends StatelessWidget {
+  const ToolDock({
+    super.key,
+    required this.active,
+    required this.onSelect,
+    this.extra = const [],
+    this.onHome,
+    this.onSystemMenu,
+  });
+
+  final FeatherTool active;
+  final ValueChanged<FeatherTool> onSelect;
+  final List<FeatherTool> extra;
+  final VoidCallback? onHome;
+  final VoidCallback? onSystemMenu;
+
+  static const List<FeatherTool> _core = [
+    FeatherTool.draw,
+    FeatherTool.erase,
+    FeatherTool.select,
+    FeatherTool.mirror,
+    FeatherTool.clipboard,
+    FeatherTool.stage,
+    FeatherTool.liquify,
+    FeatherTool.transform,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _palette(context);
+    final tools = [..._core, ...extra];
+
+    return Container(
+      width: 56,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      decoration: BoxDecoration(
+        color: palette.panelFill,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.panelBorder, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadow,
+            blurRadius: 18,
+            offset: const Offset(2, 0),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FeatherIconButton(
+            icon: FeatherTool.home.icon,
+            tooltip: FeatherTool.home.tooltip,
+            size: 44,
+            iconSize: 20,
+            onTap: onHome,
+          ),
+          const SizedBox(height: 6),
+          FeatherIconButton(
+            icon: FeatherTool.systemMenu.icon,
+            tooltip: FeatherTool.systemMenu.tooltip,
+            size: 44,
+            iconSize: 20,
+            onTap: onSystemMenu,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+            child: Container(
+              height: 1,
+              color: palette.divider,
+            ),
+          ),
+          for (final t in tools) ...[
+            _DockButton(
+              tool: t,
+              selected: t == active,
+              onSelect: () => onSelect(t),
+            ),
+            if (t != tools.last) const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
+
+  FeatherPalette _palette(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? FeatherColors.dark
+          : FeatherColors.light;
+}
+
+class _DockButton extends StatefulWidget {
+  const _DockButton({
+    required this.tool,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final FeatherTool tool;
+  final bool selected;
+  final VoidCallback onSelect;
+
+  @override
+  State<_DockButton> createState() => _DockButtonState();
+}
+
+class _DockButtonState extends State<_DockButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _glow;
+
+  @override
+  void initState() {
+    super.initState();
+    _glow = AnimationController(
+      vsync: this,
+      duration: FeatherDurations.medium,
+    );
+    if (widget.selected) _glow.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(_DockButton old) {
+    super.didUpdateWidget(old);
+    if (old.selected != widget.selected) {
+      if (widget.selected) {
+        _glow.forward();
+      } else {
+        _glow.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _glow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _palette(context);
+    final accent = widget.tool.color(palette);
+    return FeatherIconButton(
+      icon: widget.tool.icon,
+      tooltip: widget.tool.tooltip,
+      isSelected: widget.selected,
+      size: 44,
+      iconSize: 20,
+      color: widget.selected ? accent : palette.textSecondary,
+      activeColor: accent,
+      glowColor: accent,
+      onTap: widget.onSelect,
+    );
+  }
+
+  FeatherPalette _palette(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? FeatherColors.dark
+          : FeatherColors.light;
+}

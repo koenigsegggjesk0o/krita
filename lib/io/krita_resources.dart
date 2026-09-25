@@ -91,6 +91,41 @@ class KritaResources {
   static File _markerFile() =>
       File(_join(rootPath(), '.krita_resources_v$importVersion'));
 
+  /// Path of the version marker file written when the payload for the
+  /// current [importVersion] is fully extracted. Exposed for tests and
+  /// for the settings UI (so it can show "imported at version X").
+  static String markerPath() => _markerFile().path;
+
+  /// Validates that the extracted payload is current: the marker file
+  /// exists AND its first line matches `v<importVersion>`. Returns
+  /// `false` when the marker is missing or stale (older version) —
+  /// callers should re-run [ensureImported] then.
+  static bool validateImport() {
+    final file = _markerFile();
+    if (!file.existsSync()) return false;
+    try {
+      final firstLine = file
+          .readAsLinesSync()
+          .firstWhere((l) => l.isNotEmpty, orElse: () => '');
+      return firstLine == 'v$importVersion';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Counts the imported files (recursive) under [rootPath]. Returns 0
+  /// when the directory is missing. Used by the settings UI to show
+  /// "727 files imported" rather than just a boolean.
+  static int importedFileCount() {
+    final root = Directory(rootPath());
+    if (!root.existsSync()) return 0;
+    var count = 0;
+    for (final entity in root.listSync(recursive: true)) {
+      if (entity is File) count++;
+    }
+    return count;
+  }
+
   /// Extracts the payload on first run. Safe to call on every boot: an
   /// already-imported payload returns immediately.
   ///
