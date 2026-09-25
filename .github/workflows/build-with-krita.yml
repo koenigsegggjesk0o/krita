@@ -28,30 +28,40 @@ jobs:
           pip install aqtinstall
           python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
 
-      - name: Install zlib via vcpkg (pre-installed on GitHub runner)
+      - name: Install zlib (download pre-built Windows binaries)
         shell: pwsh
         run: |
-          # GitHub Windows runners have vcpkg pre-installed at C:\vcpkg
-          C:\vcpkg\vcpkg install zlib:x64-windows --x-install-root=C:\vcpkg\installed
-          # Find the actual zlib lib file
-          $zlibLib = Get-ChildItem "C:\vcpkg\installed\x64-windows\lib\*zlib*" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($zlibLib) {
-            Write-Host "Found zlib lib: $($zlibLib.FullName)"
+          # Download pre-built zlib for Windows from zlib.net
+          Invoke-WebRequest -Uri "https://www.zlib.net/zlib13.zip" -OutFile zlib.zip -ErrorAction SilentlyContinue
+          if (-not (Test-Path zlib.zip)) {
+            # Fallback: GitHub mirror
+            Invoke-WebRequest -Uri "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" -OutFile zlib.tar.gz
+            tar xzf zlib.tar.gz
+            $zlibSrc = (Get-ChildItem "zlib-*" -Directory | Select-Object -First 1).FullName
+            cd $zlibSrc
+            cmake -B build -DCMAKE_INSTALL_PREFIX=C:\zlib-install -DAMD64=ON
+            cmake --build build --target install --config Release
+            cd ..
           } else {
-            Write-Host "zlib lib not found, checking alternative paths..."
-            Get-ChildItem "C:\vcpkg\installed" -Recurse -Filter "*zlib*" | ForEach-Object { Write-Host $_.FullName }
+            Expand-Archive -Path zlib.zip -DestinationPath C:\zlib-install -Force
           }
+          # Find the actual lib file
+          $zlibLib = (Get-ChildItem "C:\zlib-install" -Recurse -Filter "*.lib" | Select-Object -First 1).FullName
+          $zlibInc = (Get-ChildItem "C:\zlib-install" -Recurse -Filter "zlib.h" | Select-Object -First 1).DirectoryName
+          Write-Host "zlib lib: $zlibLib"
+          Write-Host "zlib include: $zlibInc"
+          echo "ZLIB_LIB=$zlibLib" >> $env:GITHUB_ENV
+          echo "ZLIB_INC=$zlibInc" >> $env:GITHUB_ENV
 
       - name: Compile krita_bridge.dll
         shell: pwsh
         run: |
           $qtDir = "C:\Qt\6.6.3\msvc2019_64"
-          $vcpkgDir = "C:\vcpkg\installed\x64-windows"
+          $zlibLib = $env:ZLIB_LIB
+          $zlibInc = $env:ZLIB_INC
           
-          # Find zlib lib (could be zlib.lib or zlibd.lib)
-          $zlibLib = (Get-ChildItem "$vcpkgDir\lib\*zlib*.lib" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          if (-not $zlibLib) { $zlibLib = "" }
           Write-Host "zlib lib: $zlibLib"
+          Write-Host "zlib include: $zlibInc"
           
           $incPaths = @(
             "native\krita_bridge",
@@ -59,9 +69,9 @@ jobs:
             "$qtDir\include\QtCore",
             "$qtDir\include\QtGui",
             "$qtDir\include\QtWidgets",
-            "$qtDir\include\QtXml",
-            "$vcpkgDir\include"
+            "$qtDir\include\QtXml"
           )
+          if ($zlibInc) { $incPaths += $zlibInc }
           $incArgs = ($incPaths | ForEach-Object { "-I`"$_`"" }) -join " "
           
           $libs = @(
