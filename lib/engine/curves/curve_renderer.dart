@@ -3,6 +3,13 @@
 //
 // curve_renderer.dart — Builds triangle meshes from [Curve3D]s.
 //
+// Export-only: used by glTF/OBJ exporters for tube mesh generation.
+// Not used in real-time rendering — the canvas viewport's CustomPainter
+// handles live stroke rendering via faux-3D tube polylines, which is
+// cheaper than tessellating a real mesh at 30 fps. This module is kept
+// for the export pipeline (glTF/OBJ) and for future headless render
+// paths (e.g. the software rasterizer in lib/core/rendering/).
+//
 // Curves by themselves have no volume — to render them as lit 3D
 // geometry (with thickness, pressure variation, and a real surface
 // normal that responds to the LightRig) we tessellate them into

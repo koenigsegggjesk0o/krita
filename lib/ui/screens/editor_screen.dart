@@ -288,6 +288,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 injector: _s.injector,
                 material: _s.material,
                 pattern: _s.pattern,
+                canUndo: widget.canUndo,
+                canRedo: widget.canRedo,
                 onBrushType: () => setState(() => _showPresets = true),
                 onColor: (c) => _set(_s.copyWith(color: c)),
                 onSize: (v) => _set(_s.copyWith(size: v)),
@@ -299,6 +301,10 @@ class _EditorScreenState extends State<EditorScreen> {
                     setState(() => _showColor = !_showColor),
                 onOpenMaterial: () =>
                     setState(() => _showMaterial = !_showMaterial),
+                onOpenPattern: () =>
+                    setState(() => _showMaterial = !_showMaterial),
+                onUndo: widget.onUndo,
+                onRedo: widget.onRedo,
               ),
             ),
           ),
@@ -312,18 +318,33 @@ class _EditorScreenState extends State<EditorScreen> {
               child: ToolDock(
                 active: _s.tool,
                 onSelect: (t) {
-                  if (t == FeatherTool.erase) {
-                    // Cycle: draw -> eraser -> vacuum -> draw (per
-                    // Feather's Draw-and-Erase docs). Tapping the Erase
-                    // dock button while already in an erase sub-mode
-                    // advances to the next; tapping it from any other
-                    // tool enters the eraser sub-mode.
+                  if (t == FeatherTool.draw) {
+                    // Cycle: draw -> drawShape -> draw (per Feather's
+                    // interface docs: "Draw and Draw Shape — switches
+                    // with each tap").
+                    final next = _s.tool == FeatherTool.draw
+                        ? FeatherTool.drawShape
+                        : FeatherTool.draw;
+                    _set(_s.copyWith(tool: next));
+                  } else if (t == FeatherTool.erase) {
+                    // Cycle: eraser -> vacuum -> eraser (per Feather's
+                    // interface docs: "Erase and Vacuum — switches with
+                    // each tap"). Tapping the Erase dock button while
+                    // already in an erase sub-mode advances to the
+                    // next; tapping it from any other tool enters the
+                    // eraser sub-mode.
                     final next = switch (_s.tool) {
-                      FeatherTool.draw => FeatherTool.eraser,
                       FeatherTool.eraser => FeatherTool.vacuum,
-                      FeatherTool.vacuum => FeatherTool.draw,
+                      FeatherTool.vacuum => FeatherTool.eraser,
                       _ => FeatherTool.eraser,
                     };
+                    _set(_s.copyWith(tool: next));
+                  } else if (t == FeatherTool.select) {
+                    // Cycle: select -> deselect -> select (per Feather's
+                    // interface docs: "Select and Deselect").
+                    final next = _s.tool == FeatherTool.select
+                        ? FeatherTool.deselect
+                        : FeatherTool.select;
                     _set(_s.copyWith(tool: next));
                   } else {
                     _set(_s.copyWith(tool: t));
@@ -481,6 +502,8 @@ class _EditorScreenState extends State<EditorScreen> {
             Positioned.fill(
               child: RadialMenu(
                 items: [
+                  // Default items (per interfaceandgestures_squeezemenu.txt
+                  // "Default Menu"): Undo, Redo, Find Group.
                   RadialMenuItem(
                     icon: Icons.undo_rounded,
                     label: 'Undo',
@@ -495,17 +518,41 @@ class _EditorScreenState extends State<EditorScreen> {
                     icon: Icons.search_rounded,
                     label: 'Find Group',
                   ),
-                  if (_s.tool == FeatherTool.draw)
+                  // Contextual items (per squeezemenu.txt "Contextual Menu"):
+                  //   Draw → Add New Group, Quick Brush Panel, Recall
+                  //          Recent Guide.
+                  //   Select → Select All, Stamp.
+                  if (_s.tool == FeatherTool.draw ||
+                      _s.tool == FeatherTool.drawShape) ...[
                     RadialMenuItem(
                       icon: Icons.add_rounded,
                       label: 'New Group',
                     ),
-                  if (_s.tool == FeatherTool.select)
+                    RadialMenuItem(
+                      icon: Icons.brush_outlined,
+                      label: 'Quick Brush',
+                      onTap: () => setState(() {
+                        _showRadial = false;
+                        _showPresets = true;
+                      }),
+                    ),
+                    RadialMenuItem(
+                      icon: Icons.history_rounded,
+                      label: 'Recall Guide',
+                    ),
+                  ],
+                  if (_s.tool == FeatherTool.select ||
+                      _s.tool == FeatherTool.deselect) ...[
                     RadialMenuItem(
                       icon: Icons.select_all_rounded,
                       label: 'Select All',
                       onTap: widget.onSelectAll,
                     ),
+                    RadialMenuItem(
+                      icon: Icons.content_copy_rounded,
+                      label: 'Stamp',
+                    ),
+                  ],
                 ],
                 onDismiss: () =>
                     setState(() => _showRadial = false),
@@ -572,16 +619,24 @@ class _EditorScreenState extends State<EditorScreen> {
   List<TopBarAction> _contextualActions() {
     switch (_s.tool) {
       case FeatherTool.draw:
+      case FeatherTool.drawShape:
         return [
           TopBarAction(
               icon: Icons.edit_outlined,
               label: 'Free',
-              active: true,
+              active: _s.tool == FeatherTool.draw,
+              onTap: () =>
+                  _set(_s.copyWith(tool: FeatherTool.draw))),
+          TopBarAction(
+              icon: Icons.show_chart_rounded,
+              label: 'Straight',
               onTap: () {}),
           TopBarAction(
-              icon: Icons.show_chart_rounded, label: 'Straight', onTap: () {}),
-          TopBarAction(
-              icon: Icons.hexagon_outlined, label: 'Shape', onTap: () {}),
+              icon: Icons.hexagon_outlined,
+              label: 'Shape',
+              active: _s.tool == FeatherTool.drawShape,
+              onTap: () =>
+                  _set(_s.copyWith(tool: FeatherTool.drawShape))),
         ];
       case FeatherTool.erase:
       case FeatherTool.eraser:
@@ -601,7 +656,20 @@ class _EditorScreenState extends State<EditorScreen> {
                   _set(_s.copyWith(tool: FeatherTool.vacuum))),
         ];
       case FeatherTool.select:
+      case FeatherTool.deselect:
         return [
+          TopBarAction(
+              icon: Icons.highlight_alt_outlined,
+              label: 'Select',
+              active: _s.tool == FeatherTool.select,
+              onTap: () =>
+                  _set(_s.copyWith(tool: FeatherTool.select))),
+          TopBarAction(
+              icon: Icons.highlight_remove_outlined,
+              label: 'Deselect',
+              active: _s.tool == FeatherTool.deselect,
+              onTap: () =>
+                  _set(_s.copyWith(tool: FeatherTool.deselect))),
           TopBarAction(
               icon: Icons.copy_all_rounded, label: 'Duplicate', onTap: () {}),
           TopBarAction(

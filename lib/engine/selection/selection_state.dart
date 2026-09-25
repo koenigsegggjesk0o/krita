@@ -130,6 +130,9 @@ class SelectionModel extends ChangeNotifier {
   /// True if nothing is selected.
   bool get isEmpty => _state.isEmpty;
 
+  /// True if at least one stroke is selected.
+  bool get isNotEmpty => !isEmpty;
+
   /// Replaces the entire state. Notifies listeners.
   void replace(SelectionState next) {
     if (next == _state) return;

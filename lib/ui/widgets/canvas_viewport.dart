@@ -49,6 +49,74 @@ import 'package:flutter/material.dart';
 
 import '../theme/feather_colors.dart';
 
+// ── Overlay primitives ───────────────────────────────────────────────────
+//
+// Engine subsystems ([GizmoRenderer], [SelectionRenderer], [LiquifyRenderer])
+// emit screen-space draw-lists of pure-data primitives (lines, polylines,
+// circles, triangles) so the engine stays decoupled from a paint backend.
+// The host adapts those draw-lists into the [CanvasOverlay] value type
+// below and hands them to [CanvasScene.overlayPrimitives]; the painter
+// draws them on top of the strokes / selection bounds.
+//
+// Mirroring the engine's primitive kinds here (rather than importing the
+// engine) keeps the UI package hermetic — the same architecture the rest
+// of [CanvasScene] follows.
+
+/// One drawable overlay primitive, in canvas pixel space.
+abstract class CanvasOverlay {
+  /// ARGB colour of the primitive.
+  int get color;
+  /// Stroke width for lines / outlines (ignored for filled shapes).
+  double get strokeWidth;
+}
+
+/// A line segment overlay.
+class CanvasOverlayLine implements CanvasOverlay {
+  const CanvasOverlayLine(this.a, this.b, this.color, {this.strokeWidth = 2.0});
+  final Offset a;
+  final Offset b;
+  @override
+  final int color;
+  @override
+  final double strokeWidth;
+}
+
+/// A polyline (chain of segments) overlay.
+class CanvasOverlayPolyline implements CanvasOverlay {
+  const CanvasOverlayPolyline(this.points, this.color, {this.strokeWidth = 2.0});
+  final List<Offset> points;
+  @override
+  final int color;
+  @override
+  final double strokeWidth;
+}
+
+/// A filled or outlined circle overlay.
+class CanvasOverlayCircle implements CanvasOverlay {
+  const CanvasOverlayCircle(this.center, this.radius, this.color,
+      {this.filled = false, this.strokeWidth = 2.0});
+  final Offset center;
+  final double radius;
+  final bool filled;
+  @override
+  final int color;
+  @override
+  final double strokeWidth;
+}
+
+/// A filled triangle overlay.
+class CanvasOverlayTriangle implements CanvasOverlay {
+  const CanvasOverlayTriangle(this.a, this.b, this.c, this.color,
+      {this.strokeWidth = 0.0});
+  final Offset a;
+  final Offset b;
+  final Offset c;
+  @override
+  final int color;
+  @override
+  final double strokeWidth;
+}
+
 /// Material kind for 3D stroke shading.
 enum CanvasMaterial {
   /// Flat solid color (legacy behaviour, no shading).
@@ -126,6 +194,13 @@ class CanvasScene {
     /// unavailable (the procedural / fallback path keeps using the
     /// 3D polyline rendering only).
     this.paintLayer,
+    /// Overlay primitives rendered on top of the strokes (gizmo handles,
+    /// selection highlight, liquify brush preview). Built by the host
+    /// from the engine's [GizmoRenderer] / [SelectionRenderer] /
+    /// [LiquifyRenderer] draw-lists and adapted into [CanvasOverlay]
+    /// values so the UI package stays decoupled from the engine. Empty by
+    /// default (no overlay to draw).
+    this.overlayPrimitives = const [],
   });
 
   final List<CanvasStroke> strokes;
@@ -145,6 +220,11 @@ class CanvasScene {
   /// [KritaCanvasController] backing buffer). Null on the fallback
   /// engine or before the first dab is painted.
   final ui.Image? paintLayer;
+
+  /// Overlay primitives drawn on top of the strokes (gizmo / selection /
+  /// liquify preview). Drawn after [selectionBounds] in screen space
+  /// (no pan / zoom — they're already in canvas pixels).
+  final List<CanvasOverlay> overlayPrimitives;
 }
 
 class CanvasViewport extends StatefulWidget {
@@ -174,10 +254,14 @@ class CanvasViewport extends StatefulWidget {
   /// stroke / scale gestures. Plumbing the tap detection is a follow-up.
   final ValueChanged<Offset>? onTapSelect;
 
-  /// Fired on every pan-update while the Liquify tool is active.
-  /// Accepted but not yet routed — the host wires it to its liquify drag
-  /// handler, but the viewport currently only emits pan / stroke / scale
-  /// gestures. Plumbing a dedicated liquify drag mode is a follow-up.
+  /// Fired on every pan-update while the Liquify tool is active. The
+  /// host (lib/screens/main_screen.dart) routes the screen position +
+  /// drag delta to its [_onLiquifyDrag] handler, which forwards the drag
+  /// to [LiquifyEngine.applyDrag] AND tracks the cursor so a live
+  /// [LiquifyRenderer] brush preview can be drawn on top of the strokes
+  /// (see [CanvasScene.overlayPrimitives]). Single-finger drag in the
+  /// Liquify tool = liquify drag; two-finger pinch still orbits the
+  /// camera (routed through [onPan] / [onZoom] via onScaleStart).
   final void Function(Offset screenPos, Offset dragDelta)? onLiquifyDrag;
 
   final int paperSeed;
@@ -192,6 +276,7 @@ class _CanvasViewportState extends State<CanvasViewport> {
   final List<Offset> _livePoints = <Offset>[];
   bool _isDrawing = false;
   bool _isPanning = false;
+  bool _isLiquifyDragging = false;
   Offset? _lastPan;
 
   @override
@@ -211,6 +296,14 @@ class _CanvasViewportState extends State<CanvasViewport> {
               ..add(d.localPosition);
             widget.onStrokeStart?.call();
             setState(() {});
+          } else if (widget.onLiquifyDrag != null) {
+            // GAP 3 FIX: route single-finger drag to the liquify engine
+            // when the liquify tool is active (host wires onLiquifyDrag
+            // only in that mode). Two-finger gestures still fall through
+            // to onScaleStart → onPan / onZoom so the camera can orbit.
+            _isLiquifyDragging = true;
+            _lastPan = d.localPosition;
+            widget.onLiquifyDrag!(d.localPosition, Offset.zero);
           } else {
             _isPanning = true;
             _lastPan = d.localPosition;
@@ -221,6 +314,10 @@ class _CanvasViewportState extends State<CanvasViewport> {
             _livePoints.add(d.localPosition);
             widget.onStrokeUpdate?.call(d.localPosition);
             setState(() {});
+          } else if (_isLiquifyDragging) {
+            final delta = d.localPosition - (_lastPan ?? d.localPosition);
+            _lastPan = d.localPosition;
+            widget.onLiquifyDrag!(d.localPosition, delta);
           } else if (_isPanning) {
             final delta = d.localPosition - (_lastPan ?? d.localPosition);
             _lastPan = d.localPosition;
@@ -233,6 +330,9 @@ class _CanvasViewportState extends State<CanvasViewport> {
             _livePoints.clear();
             widget.onStrokeEnd?.call();
             setState(() {});
+          } else if (_isLiquifyDragging) {
+            _isLiquifyDragging = false;
+            _lastPan = null;
           } else if (_isPanning) {
             _isPanning = false;
             _lastPan = null;
@@ -368,6 +468,15 @@ class _CanvasPainter extends CustomPainter {
     // 6. Selection bounds.
     if (scene.selectionBounds != null) {
       _paintSelection(canvas, scene.selectionBounds!);
+    }
+
+    // 7. Overlay primitives (gizmo / selection / liquify brush preview).
+    //    These come from the host's adaptation of the engine renderers'
+    //    draw-lists (see [GizmoRenderer], [SelectionRenderer],
+    //    [LiquifyRenderer]). They're already in canvas pixels — drawn
+    //    outside the pan/zoom transform.
+    if (scene.overlayPrimitives.isNotEmpty) {
+      _paintOverlays(canvas, scene.overlayPrimitives);
     }
   }
 
@@ -929,6 +1038,45 @@ class _CanvasPainter extends CustomPainter {
         ..color = palette.accent.withValues(alpha: 0.2)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
+  }
+
+  /// Paints the overlay primitives (gizmo / selection highlight / liquify
+  /// brush preview) on top of the strokes. The host adapts the engine
+  /// renderers' draw-lists into [CanvasOverlay] values; this method just
+  /// dispatches on the concrete subtype and draws each primitive with a
+  /// fresh [Paint] (no shared mutable state).
+  void _paintOverlays(Canvas canvas, List<CanvasOverlay> overlays) {
+    for (final o in overlays) {
+      final paint = Paint()
+        ..color = Color(o.color)
+        ..strokeWidth = o.strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
+      if (o is CanvasOverlayLine) {
+        canvas.drawLine(o.a, o.b, paint);
+      } else if (o is CanvasOverlayPolyline) {
+        if (o.points.length < 2) continue;
+        final path = Path()..moveTo(o.points.first.dx, o.points.first.dy);
+        for (final p in o.points.skip(1)) {
+          path.lineTo(p.dx, p.dy);
+        }
+        canvas.drawPath(path, paint);
+      } else if (o is CanvasOverlayCircle) {
+        if (o.filled) {
+          paint.style = PaintingStyle.fill;
+        }
+        canvas.drawCircle(o.center, o.radius, paint);
+      } else if (o is CanvasOverlayTriangle) {
+        final path = Path()
+          ..moveTo(o.a.dx, o.a.dy)
+          ..lineTo(o.b.dx, o.b.dy)
+          ..lineTo(o.c.dx, o.c.dy)
+          ..close();
+        paint.style = PaintingStyle.fill;
+        canvas.drawPath(path, paint);
+      }
+    }
   }
 
   @override

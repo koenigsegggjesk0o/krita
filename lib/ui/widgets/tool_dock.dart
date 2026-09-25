@@ -22,15 +22,27 @@ enum FeatherTool {
   home,
   systemMenu,
   draw,
+  // Sub-mode of [draw] reached by tapping the Draw dock button again
+  // (per Feather's interface docs: "Draw and Draw Shape — switches
+  // with each tap"). The dock still shows a single "draw" button; the
+  // active sub-mode is tracked by the host's `_tool` field and surfaced
+  // to the dock via [_drawIsSelected].
+  drawShape,
   erase,
   // Sub-modes of [erase] reached by tapping the Erase dock button
-  // again (per Feather's Draw-and-Erase docs: draw -> eraser -> vacuum
-  // -> draw). The dock still shows a single "erase" button; the active
-  // sub-mode is tracked by the host's `_tool` field and surfaced to the
-  // dock via [_eraseIsSelected].
+  // again (per Feather's interface docs: "Erase and Vacuum — switches
+  // with each tap"). The dock still shows a single "erase" button; the
+  // active sub-mode is tracked by the host's `_tool` field and surfaced
+  // to the dock via [_eraseIsSelected].
   eraser,
   vacuum,
   select,
+  // Sub-mode of [select] reached by tapping the Select dock button
+  // again (per Feather's interface docs: "Select and Deselect"). The
+  // dock still shows a single "select" button; the active sub-mode is
+  // tracked by the host's `_tool` field and surfaced to the dock via
+  // [_selectIsSelected].
+  deselect,
   mirror,
   clipboard,
   stage,
@@ -38,12 +50,22 @@ enum FeatherTool {
   transform,
 }
 
+/// True when [active] should highlight the dock's single Draw button
+/// (i.e. the user is in the draw or drawShape state).
+bool _drawIsSelected(FeatherTool active) =>
+    active == FeatherTool.draw || active == FeatherTool.drawShape;
+
 /// True when [active] should highlight the dock's single Erase button
 /// (i.e. the user is in the eraser, vacuum, or pending-erase state).
 bool _eraseIsSelected(FeatherTool active) =>
     active == FeatherTool.erase ||
     active == FeatherTool.eraser ||
     active == FeatherTool.vacuum;
+
+/// True when [active] should highlight the dock's single Select button
+/// (i.e. the user is in the select or deselect state).
+bool _selectIsSelected(FeatherTool active) =>
+    active == FeatherTool.select || active == FeatherTool.deselect;
 
 extension FeatherToolX on FeatherTool {
   IconData get icon {
@@ -54,6 +76,8 @@ extension FeatherToolX on FeatherTool {
         return Icons.menu_rounded;
       case FeatherTool.draw:
         return Icons.edit_outlined;
+      case FeatherTool.drawShape:
+        return Icons.hexagon_outlined;
       case FeatherTool.erase:
       case FeatherTool.eraser:
         return Icons.auto_fix_high_outlined;
@@ -61,6 +85,8 @@ extension FeatherToolX on FeatherTool {
         return Icons.delete_sweep_outlined;
       case FeatherTool.select:
         return Icons.highlight_alt_outlined;
+      case FeatherTool.deselect:
+        return Icons.highlight_remove_outlined;
       case FeatherTool.mirror:
         return Icons.flip_outlined;
       case FeatherTool.clipboard:
@@ -81,14 +107,18 @@ extension FeatherToolX on FeatherTool {
       case FeatherTool.systemMenu:
         return 'System menu';
       case FeatherTool.draw:
-        return 'Draw / Shape';
+        return 'Draw (free)';
+      case FeatherTool.drawShape:
+        return 'Draw Shape';
       case FeatherTool.erase:
       case FeatherTool.eraser:
         return 'Erase (partial)';
       case FeatherTool.vacuum:
         return 'Vacuum (whole curves)';
       case FeatherTool.select:
-        return 'Select / Deselect';
+        return 'Select';
+      case FeatherTool.deselect:
+        return 'Deselect';
       case FeatherTool.mirror:
         return 'Mirror';
       case FeatherTool.clipboard:
@@ -105,12 +135,14 @@ extension FeatherToolX on FeatherTool {
   Color color(FeatherPalette palette) {
     switch (this) {
       case FeatherTool.draw:
+      case FeatherTool.drawShape:
         return FeatherColors.toolDraw;
       case FeatherTool.erase:
       case FeatherTool.eraser:
       case FeatherTool.vacuum:
         return FeatherColors.toolErase;
       case FeatherTool.select:
+      case FeatherTool.deselect:
         return FeatherColors.toolSelect;
       case FeatherTool.mirror:
         return FeatherColors.toolMirror;
@@ -199,11 +231,16 @@ class ToolDock extends StatelessWidget {
           for (final t in tools) ...[
             _DockButton(
               tool: t,
-              // The Erase dock button stays highlighted for both eraser
-              // and vacuum sub-modes (single button, cycled state).
-              selected: t == FeatherTool.erase
-                  ? _eraseIsSelected(active)
-                  : t == active,
+              // The Draw / Erase / Select dock buttons stay highlighted
+              // for both of their respective sub-modes (single button,
+              // cycled state per Feather's interface docs).
+              selected: t == FeatherTool.draw
+                  ? _drawIsSelected(active)
+                  : t == FeatherTool.erase
+                      ? _eraseIsSelected(active)
+                      : t == FeatherTool.select
+                          ? _selectIsSelected(active)
+                          : t == active,
               onSelect: () => onSelect(t),
             ),
             if (t != tools.last) const SizedBox(height: 6),

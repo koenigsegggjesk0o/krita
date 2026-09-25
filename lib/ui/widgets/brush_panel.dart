@@ -10,7 +10,11 @@
 //   4. Opacity circular slider          — 0–100 %,
 //   5. Pressure sensitivity toggle,
 //   6. Injector toggle,
-//   7. Brush Preset quick-open button.
+//   7. Brush Preset quick-open button,
+//   8. Material quick-open button,
+//   9. Pattern quick-open button,
+//  10. History cluster (Undo / Redo)   — per brushes_interface.txt
+//                                      History Panel.
 //
 // All circular sliders are 96 px diameter to fit the narrow ~140 px wide
 // sidebar without crowding. Tap a slider to expand the inline numpad.
@@ -37,6 +41,8 @@ class BrushPanel extends StatefulWidget {
     this.injector = false,
     this.material = FeatherMaterial.shaded,
     this.pattern = FeatherPattern.none,
+    this.canUndo = false,
+    this.canRedo = false,
     this.onBrushType,
     this.onColor,
     this.onSize,
@@ -46,6 +52,9 @@ class BrushPanel extends StatefulWidget {
     this.onOpenPresets,
     this.onOpenColor,
     this.onOpenMaterial,
+    this.onOpenPattern,
+    this.onUndo,
+    this.onRedo,
   });
 
   final IconData brushType;
@@ -56,6 +65,8 @@ class BrushPanel extends StatefulWidget {
   final bool injector;
   final FeatherMaterial material;
   final FeatherPattern pattern;
+  final bool canUndo;
+  final bool canRedo;
 
   final VoidCallback? onBrushType;
   final ValueChanged<Color>? onColor;
@@ -66,6 +77,9 @@ class BrushPanel extends StatefulWidget {
   final VoidCallback? onOpenPresets;
   final VoidCallback? onOpenColor;
   final VoidCallback? onOpenMaterial;
+  final VoidCallback? onOpenPattern;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
 
   @override
   State<BrushPanel> createState() => _BrushPanelState();
@@ -147,7 +161,7 @@ class _BrushPanelState extends State<BrushPanel> {
             onTap: () => widget.onInjector?.call(!widget.injector),
           ),
           const Divider(),
-          // 7. Presets quick-open + material.
+          // 7. Presets quick-open + material + pattern.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -165,7 +179,24 @@ class _BrushPanelState extends State<BrushPanel> {
                 iconSize: 18,
                 onTap: widget.onOpenMaterial,
               ),
+              FeatherIconButton(
+                icon: Icons.pattern_outlined,
+                tooltip: 'Pattern',
+                size: 40,
+                iconSize: 18,
+                onTap: widget.onOpenPattern,
+              ),
             ],
+          ),
+          const Divider(),
+          // 8. History cluster (Undo / Redo) — per brushes_interface.txt
+          // History Panel.
+          _HistoryRow(
+            canUndo: widget.canUndo,
+            canRedo: widget.canRedo,
+            palette: palette,
+            onUndo: widget.onUndo,
+            onRedo: widget.onRedo,
           ),
         ],
       ),
@@ -432,6 +463,109 @@ class _ToggleRow extends StatelessWidget {
               color: active ? palette.accent : palette.textTertiary,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// History cluster (Undo / Redo) — mirrors Feather's left-sidebar
+/// History Panel (per brushes_interface.txt §13). Two side-by-side
+/// icon buttons; disabled when the host reports `canUndo` / `canRedo`
+/// as false.
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({
+    required this.canUndo,
+    required this.canRedo,
+    required this.palette,
+    this.onUndo,
+    this.onRedo,
+  });
+
+  final bool canUndo;
+  final bool canRedo;
+  final FeatherPalette palette;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _HistoryButton(
+            icon: Icons.undo_rounded,
+            label: 'Undo',
+            enabled: canUndo,
+            palette: palette,
+            onTap: onUndo,
+          ),
+          _HistoryButton(
+            icon: Icons.redo_rounded,
+            label: 'Redo',
+            enabled: canRedo,
+            palette: palette,
+            onTap: onRedo,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryButton extends StatelessWidget {
+  const _HistoryButton({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    required this.palette,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final FeatherPalette palette;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? palette.accent : palette.textTertiary;
+    return Tooltip(
+      message: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: 56,
+          height: 36,
+          decoration: BoxDecoration(
+            color: enabled
+                ? palette.accent.withValues(alpha: 0.16)
+                : palette.panelFill,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: enabled ? palette.accent : palette.panelBorder,
+              width: enabled ? 1.2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: FeatherTypography.micro.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -34,6 +34,9 @@ class StagePanel extends StatefulWidget {
     this.renderMode = false,
     this.lightDirection = 0.0,
     this.glowArea = 0.5,
+    this.backgroundImage,
+    this.showGrid = true,
+    this.showGroundPlane = false,
     this.onAddGroup,
     this.onDeleteGroup,
     this.onRenameGroup,
@@ -43,6 +46,9 @@ class StagePanel extends StatefulWidget {
     this.onRenderToggle,
     this.onLightDirection,
     this.onGlowArea,
+    this.onPickBackground,
+    this.onToggleGrid,
+    this.onToggleGroundPlane,
     this.onClose,
   });
 
@@ -53,6 +59,9 @@ class StagePanel extends StatefulWidget {
   final bool renderMode;
   final double lightDirection;
   final double glowArea;
+  final String? backgroundImage;
+  final bool showGrid;
+  final bool showGroundPlane;
   final VoidCallback? onAddGroup;
   final ValueChanged<String>? onDeleteGroup;
   final void Function(String id, String name)? onRenameGroup;
@@ -62,6 +71,9 @@ class StagePanel extends StatefulWidget {
   final VoidCallback? onRenderToggle;
   final ValueChanged<double>? onLightDirection;
   final ValueChanged<double>? onGlowArea;
+  final VoidCallback? onPickBackground;
+  final ValueChanged<bool>? onToggleGrid;
+  final ValueChanged<bool>? onToggleGroundPlane;
   final VoidCallback? onClose;
 
   @override
@@ -130,9 +142,15 @@ class _StagePanelState extends State<StagePanel> {
           renderMode: widget.renderMode,
           lightDirection: widget.lightDirection,
           glowArea: widget.glowArea,
+          backgroundImage: widget.backgroundImage,
+          showGrid: widget.showGrid,
+          showGroundPlane: widget.showGroundPlane,
           onRenderToggle: widget.onRenderToggle,
           onLightDirection: widget.onLightDirection,
           onGlowArea: widget.onGlowArea,
+          onPickBackground: widget.onPickBackground,
+          onToggleGrid: widget.onToggleGrid,
+          onToggleGroundPlane: widget.onToggleGroundPlane,
         );
     }
   }
@@ -411,7 +429,26 @@ class _GroupRow extends StatelessWidget {
   }
 }
 
-class _ResourceTab extends StatelessWidget {
+/// Resource-kind filter chips (per stagepanel.txt Resource Tab:
+/// imported images, 3D models, saved guides).
+enum ResourceKindFilter { all, image, model, guide }
+
+extension ResourceKindFilterX on ResourceKindFilter {
+  String get label {
+    switch (this) {
+      case ResourceKindFilter.all:
+        return 'All';
+      case ResourceKindFilter.image:
+        return 'Images';
+      case ResourceKindFilter.model:
+        return '3D Models';
+      case ResourceKindFilter.guide:
+        return 'Saved Guides';
+    }
+  }
+}
+
+class _ResourceTab extends StatefulWidget {
   const _ResourceTab({
     super.key,
     required this.palette,
@@ -426,9 +463,48 @@ class _ResourceTab extends StatelessWidget {
   final ValueChanged<String>? onDelete;
 
   @override
+  State<_ResourceTab> createState() => _ResourceTabState();
+}
+
+class _ResourceTabState extends State<_ResourceTab> {
+  ResourceKindFilter _filter = ResourceKindFilter.all;
+
+  FeatherPalette get palette => widget.palette;
+
+  /// Map a ResourceItem's free-form `kind` string onto one of the
+  /// three documented resource categories. Anything we can't classify
+  /// lands in `image` (the historical default).
+  ResourceKindFilter _classify(ResourceItem r) {
+    final k = r.kind.toLowerCase();
+    if (k.contains('model') || k.contains('obj') || k.contains('gltf')) {
+      return ResourceKindFilter.model;
+    }
+    if (k.contains('guide') || k.contains('saved')) {
+      return ResourceKindFilter.guide;
+    }
+    return ResourceKindFilter.image;
+  }
+
+  IconData _iconFor(ResourceKindFilter k) {
+    switch (k) {
+      case ResourceKindFilter.model:
+        return Icons.view_in_ar_outlined;
+      case ResourceKindFilter.guide:
+        return Icons.route_outlined;
+      case ResourceKindFilter.image:
+        return Icons.image_outlined;
+      case ResourceKindFilter.all:
+        return Icons.apps_outlined;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final visible = _filter == ResourceKindFilter.all
+        ? widget.resources
+        : widget.resources.where(_classifyFilter).toList();
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 320),
+      constraints: const BoxConstraints(maxHeight: 360),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -448,17 +524,37 @@ class _ResourceTab extends StatelessWidget {
                   size: 32,
                   iconSize: 16,
                   activeColor: palette.accent,
-                  onTap: onImport,
+                  onTap: widget.onImport,
                 ),
               ],
             ),
           ),
+          // Kind filter chips.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final f in ResourceKindFilter.values)
+                  _FilterChip(
+                    label: f.label,
+                    active: _filter == f,
+                    palette: palette,
+                    onTap: () => setState(() => _filter = f),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
           Flexible(
-            child: resources.isEmpty
+            child: visible.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.all(20),
                     child: Text(
-                      'Import images or 3D resources for your scene.',
+                      widget.resources.isEmpty
+                          ? 'Import images, 3D models or saved guides.'
+                          : 'No resources in this category.',
                       style: FeatherTypography.caption
                           .copyWith(color: palette.textTertiary),
                     ),
@@ -466,10 +562,11 @@ class _ResourceTab extends StatelessWidget {
                 : ListView.separated(
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: resources.length,
+                    itemCount: visible.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 4),
                     itemBuilder: (_, i) {
-                      final r = resources[i];
+                      final r = visible[i];
+                      final k = _classify(r);
                       return Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 8),
@@ -480,7 +577,7 @@ class _ResourceTab extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.image_outlined,
+                            Icon(_iconFor(k),
                                 size: 16, color: palette.textSecondary),
                             const SizedBox(width: 10),
                             Expanded(
@@ -493,7 +590,7 @@ class _ResourceTab extends StatelessWidget {
                                         .copyWith(color: palette.textPrimary),
                                   ),
                                   Text(
-                                    r.kind,
+                                    k.label,
                                     style: FeatherTypography.micro
                                         .copyWith(color: palette.textTertiary),
                                   ),
@@ -501,7 +598,7 @@ class _ResourceTab extends StatelessWidget {
                               ),
                             ),
                             GestureDetector(
-                              onTap: () => onDelete?.call(r.id),
+                              onTap: () => widget.onDelete?.call(r.id),
                               child: Icon(Icons.delete_outline_rounded,
                                   size: 14,
                                   color: FeatherColors.toolErase
@@ -517,6 +614,53 @@ class _ResourceTab extends StatelessWidget {
       ),
     );
   }
+
+  bool _classifyFilter(ResourceItem r) => _classify(r) == _filter;
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.active,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final FeatherPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: FeatherDurations.quick,
+        curve: FeatherCurves.toggle,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active
+              ? palette.accent.withValues(alpha: 0.22)
+              : palette.panelFill,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? palette.accent : palette.panelBorder,
+            width: active ? 1.2 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: FeatherTypography.micro.copyWith(
+            color: active ? palette.textPrimary : palette.textTertiary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _EnvironmentTab extends StatelessWidget {
@@ -526,18 +670,30 @@ class _EnvironmentTab extends StatelessWidget {
     required this.renderMode,
     required this.lightDirection,
     required this.glowArea,
+    this.backgroundImage,
+    this.showGrid = true,
+    this.showGroundPlane = false,
     this.onRenderToggle,
     this.onLightDirection,
     this.onGlowArea,
+    this.onPickBackground,
+    this.onToggleGrid,
+    this.onToggleGroundPlane,
   });
 
   final FeatherPalette palette;
   final bool renderMode;
   final double lightDirection;
   final double glowArea;
+  final String? backgroundImage;
+  final bool showGrid;
+  final bool showGroundPlane;
   final VoidCallback? onRenderToggle;
   final ValueChanged<double>? onLightDirection;
   final ValueChanged<double>? onGlowArea;
+  final VoidCallback? onPickBackground;
+  final ValueChanged<bool>? onToggleGrid;
+  final ValueChanged<bool>? onToggleGroundPlane;
 
   @override
   Widget build(BuildContext context) {
@@ -546,6 +702,10 @@ class _EnvironmentTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Lighting section (per stagepanel.txt Environment Tab:
+          // lighting direction).
+          _SectionLabel(palette: palette, text: 'LIGHTING'),
+          const SizedBox(height: 6),
           _Row(
             label: 'Render Mode',
             icon: Icons.wb_incandescent_outlined,
@@ -553,7 +713,7 @@ class _EnvironmentTab extends StatelessWidget {
             palette: palette,
             onTap: onRenderToggle,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           _Slider(
             label: 'Light direction',
             value: (lightDirection / (2 * 3.14159265)).clamp(0.0, 1.0),
@@ -569,7 +729,99 @@ class _EnvironmentTab extends StatelessWidget {
             formatter: (v) => '${(v * 100).round()}%',
             onChanged: onGlowArea,
           ),
+          const SizedBox(height: 18),
+          // Background section (per stagepanel.txt Environment Tab:
+          // background).
+          _SectionLabel(palette: palette, text: 'BACKGROUND'),
+          const SizedBox(height: 6),
+          _BackgroundRow(
+            palette: palette,
+            backgroundImage: backgroundImage,
+            onTap: onPickBackground,
+          ),
+          const SizedBox(height: 18),
+          // World settings (per stagepanel.txt Environment Tab:
+          // world settings).
+          _SectionLabel(palette: palette, text: 'WORLD'),
+          const SizedBox(height: 6),
+          _Row(
+            label: 'Grid',
+            icon: Icons.grid_on_outlined,
+            active: showGrid,
+            palette: palette,
+            onTap: () => onToggleGrid?.call(!showGrid),
+          ),
+          const SizedBox(height: 8),
+          _Row(
+            label: 'Ground plane',
+            icon: Icons.horizontal_distribute_outlined,
+            active: showGroundPlane,
+            palette: palette,
+            onTap: () => onToggleGroundPlane?.call(!showGroundPlane),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.palette, required this.text});
+  final FeatherPalette palette;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: FeatherTypography.micro
+          .copyWith(color: palette.textTertiary, letterSpacing: 1.4),
+    );
+  }
+}
+
+class _BackgroundRow extends StatelessWidget {
+  const _BackgroundRow({
+    required this.palette,
+    required this.backgroundImage,
+    this.onTap,
+  });
+
+  final FeatherPalette palette;
+  final String? backgroundImage;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: palette.panelFill,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: palette.panelBorder),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.landscape_outlined,
+                size: 16, color: palette.textSecondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                backgroundImage ?? 'Pick background image',
+                style: FeatherTypography.bodyStrong.copyWith(
+                  color: backgroundImage != null
+                      ? palette.textPrimary
+                      : palette.textTertiary,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: palette.textTertiary),
+          ],
+        ),
       ),
     );
   }

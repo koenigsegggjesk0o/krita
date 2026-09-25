@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// bottom_bar.dart — Bottom floating pill (mode switcher).
+// bottom_bar.dart — Bottom floating pill (3D-guide mode switcher).
 //
-// Per Feather 3D's design research:
+// Per Feather 3D's interface docs (interfaceandgestures_interface.txt
+// §11 “3D Guide Tap”):
 //   * a single floating pill anchored at the bottom-center,
-//   * 3 primary modes — Draw / Edit / Lift — switch the contextual UI,
+//   * 3 primary modes — Draw 3D Guide / Loft / Primitives — switch the
+//     contextual UI based on the active 3D-guide context,
 //   * the pill is glassmorphism + a smooth animated selection pill behind
 //     the active label,
 //   * contextual right-side actions: undo/redo, apply, settings.
@@ -22,17 +24,17 @@ import '../theme/feather_typography.dart';
 import '../theme/glassmorphism.dart';
 import 'glass_panel.dart';
 
-enum FeatherMode { draw, edit, lift }
+enum FeatherMode { draw, loft, primitives }
 
 extension FeatherModeX on FeatherMode {
   String get label {
     switch (this) {
       case FeatherMode.draw:
         return 'Draw';
-      case FeatherMode.edit:
-        return 'Edit';
-      case FeatherMode.lift:
-        return 'Lift';
+      case FeatherMode.loft:
+        return 'Loft';
+      case FeatherMode.primitives:
+        return 'Primitives';
     }
   }
 
@@ -40,10 +42,10 @@ extension FeatherModeX on FeatherMode {
     switch (this) {
       case FeatherMode.draw:
         return Icons.draw_outlined;
-      case FeatherMode.edit:
-        return Icons.tune_rounded;
-      case FeatherMode.lift:
-        return Icons.arrow_upward_rounded;
+      case FeatherMode.loft:
+        return Icons.view_in_ar_outlined;
+      case FeatherMode.primitives:
+        return Icons.category_outlined;
     }
   }
 
@@ -51,9 +53,9 @@ extension FeatherModeX on FeatherMode {
     switch (this) {
       case FeatherMode.draw:
         return FeatherColors.toolDraw;
-      case FeatherMode.edit:
+      case FeatherMode.loft:
         return FeatherColors.toolSelect;
-      case FeatherMode.lift:
+      case FeatherMode.primitives:
         return FeatherColors.toolLight;
     }
   }
@@ -201,8 +203,9 @@ class _ModeSwitcher extends StatelessWidget {
     final idx = _modes.indexOf(mode);
     return LayoutBuilder(
       builder: (context, c) {
-        // Each button is 76 px wide; the indicator slides between them.
-        const w = 76.0;
+        // Each button is 88 px wide; the indicator slides between them.
+        // Wide enough for "Primitives" (the longest label) + icon.
+        const w = 88.0;
         return SizedBox(
           width: w * _modes.length,
           height: 36,

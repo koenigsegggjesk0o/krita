@@ -48,9 +48,10 @@
 //     distinct tap gesture; the current CanvasViewport only emits pan /
 //     stroke gestures. Selecting via the radial-menu "Select All" works;
 //     individual tap-select is wired but not gesture-routed yet.
-//   * Liquify drag-on-canvas is the same story: the panel buttons work,
-//     a canvas drag during the liquify tool is not yet forwarded into
-//     [LiquifyEngine.applyDrag]. The engine itself is fully live.
+//   * Liquify drag-on-canvas is now routed (see the [_isLiquifyDragging]
+//     branch in CanvasViewport's gesture handler + [_onLiquifyDrag] in
+//     this host). The brush cursor + drag delta drive a live
+//     [LiquifyRenderer] preview overlay on the canvas.
 //   * The brush preset picker shows UI-only presets (the new
 //     [BrushPreset] from lib/ui/widgets/brush_picker.dart is a visual
 //     placeholder, not a real .kpp). Selecting one updates the brush
@@ -83,8 +84,11 @@ import 'package:feather_krita/engine/krita_bridge/krita_canvas_controller.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
 import 'package:feather_krita/engine/liquify/liquify_engine.dart';
+import 'package:feather_krita/engine/liquify/liquify_renderer.dart';
 import 'package:feather_krita/engine/selection/selection.dart';
+import 'package:feather_krita/engine/selection/selection_renderer.dart';
 import 'package:feather_krita/engine/selection/selection_state.dart';
+import 'package:feather_krita/engine/transform/gizmo_renderer.dart';
 import 'package:feather_krita/engine/transform/joystick2d.dart';
 import 'package:feather_krita/engine/transform/joystick3d.dart';
 import 'package:feather_krita/engine/transform/transform_mode.dart';
@@ -106,7 +110,15 @@ import 'package:feather_krita/ui/widgets/tool_dock.dart' show FeatherTool;
 import 'package:feather_krita/ui/widgets/liquify_panel.dart'
     show LiquifyMode;
 import 'package:feather_krita/ui/widgets/canvas_viewport.dart'
-    show CanvasMaterial, CanvasScene, CanvasStroke;
+    show
+        CanvasMaterial,
+        CanvasScene,
+        CanvasStroke,
+        CanvasOverlay,
+        CanvasOverlayLine,
+        CanvasOverlayPolyline,
+        CanvasOverlayCircle,
+        CanvasOverlayTriangle;
 
 /// The production editor host. Owns the new engine and composes the
 /// [EditorScreen] layout shell around it.
@@ -299,6 +311,23 @@ class _MainScreenState extends State<MainScreen>
   /// world Z). Exposed for future UI wiring (e.g. a "2D/3D Joystick"
   /// toggle on the joystick panel).
   bool _joystick3d = false;
+
+  /// Lock state for the 2D joystick (off by default). When on, the
+  /// gizmo's per-axis scale handles collapse to a single uniform handle
+  /// and the stick snap to cardinal directions. Exposed for future UI
+  /// wiring (a "Lock" toggle on the joystick panel).
+  final JoystickLock _joystickLock = JoystickLock.off;
+
+  /// Last-known screen position of the liquify brush cursor, in canvas
+  /// pixels. Set on every liquify drag update; cleared when the liquify
+  /// tool is exited. Used by [LiquifyRenderer] to draw the brush preview
+  /// (inner circle + outer range ring + drag arrow).
+  Offset? _liquifyCursor;
+
+  /// Live liquify drag delta in screen pixels, or `null` when no drag is
+  /// in progress. Drives the arrow drawn by [LiquifyRenderer] so the
+  /// user can see the drag direction + magnitude at a glance.
+  Vector2? _liquifyDragDelta;
 
   /// Stateless resolver instances. Constructed once; both are safe to
   /// reuse across calls (they hold no per-drag state).
@@ -572,7 +601,164 @@ class _MainScreenState extends State<MainScreen>
       // fallback engine — the viewport's painter skips drawing it and
       // falls back to the 3D polyline renderer only (current behaviour).
       paintLayer: _paintLayerImage,
+      // Overlay primitives (gizmo / selection highlight / liquify brush
+      // preview). Built from the engine renderers' draw-lists — see
+      // [_buildOverlayPrimitives]. Empty when no overlay applies (e.g.
+      // the Draw tool with no active selection).
+      overlayPrimitives: _buildOverlayPrimitives(vp),
     );
+  }
+
+  /// Builds the overlay primitives for the current frame, adapting the
+  /// engine renderers' draw-lists into [CanvasOverlay] values the
+  /// viewport's painter can draw. Returns an empty list when no overlay
+  /// applies.
+  ///
+  /// Order (back → front, matching how the painter draws them):
+  ///   1. Selection highlight (active strokes' outlines + bounding box +
+  ///      corner handles) — drawn by [SelectionRenderer] when the
+  ///      selection is non-empty in the Select / Transform / Liquify
+  ///      tools. Skipped in Draw / Eraser / Vacuum to keep those tools'
+  ///      cursors clean.
+  ///   2. Transform gizmo (2D stick + handles OR 3D cones + arcs) —
+  ///      drawn by [Joystick2dGizmoRenderer] / [Joystick3dGizmoRenderer]
+  ///      when the Transform tool is active AND there's a selection.
+  ///   3. Liquify brush preview (inner circle + outer range ring + drag
+  ///      arrow) — drawn by [LiquifyRenderer] when the Liquify tool is
+  ///      active AND the cursor has been reported (i.e. the user has
+  ///      started a drag).
+  List<CanvasOverlay> _buildOverlayPrimitives(Matrix4 vp) {
+    final out = <CanvasOverlay>[];
+    final hasSelection = _selectionModel.state.isNotEmpty;
+    final showSelection = hasSelection &&
+        (_tool == FeatherTool.select ||
+            _tool == FeatherTool.transform ||
+            _tool == FeatherTool.liquify);
+    if (showSelection) {
+      out.addAll(_buildSelectionOverlay(vp));
+    }
+    if (hasSelection && _tool == FeatherTool.transform) {
+      out.addAll(_buildGizmoOverlay(vp));
+    }
+    if (_tool == FeatherTool.liquify && _liquifyCursor != null) {
+      out.addAll(_buildLiquifyOverlay());
+    }
+    return out;
+  }
+
+  /// Adapts [SelectionRenderer]'s draw-list into [CanvasOverlay] values.
+  /// The renderer needs a `Map<int, dynamic>` lookup (it duck-types on
+  /// `isVisible` / `transform` / `points`) — we build it from the live
+  /// [Stroke] list.
+  List<CanvasOverlay> _buildSelectionOverlay(Matrix4 vp) {
+    final strokesById = <int, dynamic>{
+      for (final s in _strokes) s.id: s,
+    };
+    final renderer = SelectionRenderer(
+      strokesById: strokesById,
+      state: _selectionModel.state,
+      viewProjection: vp,
+      viewportWidth: _viewportSize.width,
+      viewportHeight: _viewportSize.height,
+    );
+    return _adaptGizmoPrimitives(renderer.build().primitives);
+  }
+
+  /// Adapts the appropriate gizmo renderer's draw-list (2D or 3D based
+  /// on [_joystick3d]) into [CanvasOverlay] values. The gizmo is
+  /// centred at the selection pivot projected to screen, with a fixed
+  /// 80-pixel radius (matches the on-screen joystick widget's default
+  /// size — kept in pixels so the gizmo doesn't shrink with zoom).
+  List<CanvasOverlay> _buildGizmoOverlay(Matrix4 vp) {
+    const radius = 80.0;
+    final selected = _selectedStrokes();
+    if (selected.isEmpty) return const [];
+    final pivotWorld = _selectionPivot(selected);
+    final ndc = vp.transform3(pivotWorld.clone());
+    if (ndc.z <= -1.0 || ndc.z >= 1.0) return const [];
+    final sx = (ndc.x * 0.5 + 0.5) * _viewportSize.width;
+    final sy = (1.0 - (ndc.y * 0.5 + 0.5)) * _viewportSize.height;
+    final centre = Vector2(sx, sy);
+    final frame = _viewFrame(selected);
+    final drawList = _joystick3d
+        ? Joystick3dGizmoRenderer(
+            centre: centre,
+            radius: radius,
+            frame: frame,
+            usableAxes: _joy3d.usableAxes(frame),
+          ).build()
+        : Joystick2dGizmoRenderer(
+            centre: centre,
+            radius: radius,
+            lock: _joystickLock,
+          ).build();
+    return _adaptGizmoPrimitives(drawList.primitives);
+  }
+
+  /// Adapts [LiquifyRenderer]'s draw-list into [CanvasOverlay] values.
+  /// The brush centre is the last-reported liquify cursor; the radii
+  /// come from the active [LiquifySettings] scaled by the camera's
+  /// world-to-pixel factor at the cursor's depth.
+  List<CanvasOverlay> _buildLiquifyOverlay() {
+    final cursor = _liquifyCursor;
+    if (cursor == null) return const [];
+    // Compute pixels-per-world-unit at the camera distance (matches the
+    // formula in [OrbitCamera.pan]).
+    final viewportH = _viewportSize.height;
+    if (viewportH <= 0) return const [];
+    final worldPerPixel =
+        2.0 * _camera.distance * dmath.tan(_camera.fovYRadians * 0.5) /
+            viewportH;
+    final pixelsPerWorld = worldPerPixel <= 0 ? 1.0 : 1.0 / worldPerPixel;
+    final renderer = LiquifyRenderer(
+      centre: Vector2(cursor.dx, cursor.dy),
+      settings: _liquify.settings,
+      brushType: _liquify.brushType,
+      dragDelta: _liquifyDragDelta,
+      worldToScreen: pixelsPerWorld,
+    );
+    return _adaptGizmoPrimitives(renderer.build().primitives);
+  }
+
+  /// Translates the engine's pure-data [GizmoPrimitive] hierarchy into
+  /// the UI's [CanvasOverlay] hierarchy. The two mirror each other
+  /// (lines, polylines, circles, triangles) — this adapter keeps the UI
+  /// package decoupled from the engine (no `package:feather_krita/engine`
+  /// import in `canvas_viewport.dart`).
+  List<CanvasOverlay> _adaptGizmoPrimitives(List<GizmoPrimitive> prims) {
+    final out = <CanvasOverlay>[];
+    for (final p in prims) {
+      if (p is GizmoLine) {
+        out.add(CanvasOverlayLine(
+          Offset(p.a.x, p.a.y),
+          Offset(p.b.x, p.b.y),
+          p.color,
+          strokeWidth: p.strokeWidth,
+        ));
+      } else if (p is GizmoPolyline) {
+        out.add(CanvasOverlayPolyline(
+          p.points.map((v) => Offset(v.x, v.y)).toList(growable: false),
+          p.color,
+          strokeWidth: p.strokeWidth,
+        ));
+      } else if (p is GizmoCircle) {
+        out.add(CanvasOverlayCircle(
+          Offset(p.center.x, p.center.y),
+          p.radius,
+          p.color,
+          filled: p.filled,
+          strokeWidth: p.strokeWidth,
+        ));
+      } else if (p is GizmoTriangle) {
+        out.add(CanvasOverlayTriangle(
+          Offset(p.a.x, p.a.y),
+          Offset(p.b.x, p.b.y),
+          Offset(p.c.x, p.c.y),
+          p.color,
+        ));
+      }
+    }
+    return out;
   }
 
   /// Maps the UI-side [FeatherMaterial] enum (emitted by the
@@ -670,6 +856,13 @@ class _MainScreenState extends State<MainScreen>
   void _onUiStateChanged(EditorUiState s) {
     setState(() {
       if (_tool != s.tool) {
+        // Exiting the liquify tool clears the brush cursor + drag delta
+        // so the preview doesn't linger on the canvas after the user
+        // switches tools.
+        if (_tool == FeatherTool.liquify && s.tool != FeatherTool.liquify) {
+          _liquifyCursor = null;
+          _liquifyDragDelta = null;
+        }
         _tool = s.tool;
         // Entering the liquify tool begins a liquify session on the
         // current selection; leaving it applies the session.
@@ -1562,8 +1755,16 @@ class _MainScreenState extends State<MainScreen>
   // GAP 3 FIX: Forward canvas drag to LiquifyEngine.
   void _onLiquifyDrag(Offset screenPos, Offset dragDelta) {
     if (!_liquify.isEditing) return;
+    // Track the brush cursor + drag so the LiquifyRenderer preview can
+    // be drawn on the next canvas rebuild (see [_buildOverlayPrimitives]).
+    _liquifyCursor = screenPos;
+    _liquifyDragDelta =
+        dragDelta == Offset.zero ? null : Vector2(dragDelta.dx, dragDelta.dy);
     final world = _screenToWorld(screenPos);
-    if (world == null) return;
+    if (world == null) {
+      setState(() {});
+      return;
+    }
     final right = _camera.right;
     final up = _camera.up;
     final worldDelta = right * (dragDelta.dx * 0.5) + up * (-dragDelta.dy * 0.5);

@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
+// Export-only: software rasterizer for high-quality PNG export.
+// Not used in real-time (too slow for 30 fps); the canvas viewport's
+// CustomPainter handles live rendering. This subsystem is reserved
+// for the export pipeline (rasterize scene -> framebuffer -> PNG)
+// and for future headless render paths.
+//
 // anti_alias.dart — MSAA coverage + FXAA post-process.
 //
 // Two complementary anti-aliasing strategies:

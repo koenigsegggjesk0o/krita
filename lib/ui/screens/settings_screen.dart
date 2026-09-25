@@ -3,8 +3,8 @@
 //
 // settings_screen.dart — Settings screen.
 //
-// Per home_settings.txt:
-//   * Preference  — color mode (dark / light), activate rendering when
+// Per interfaceandgestures_interface.txt "Options" + home_settings.txt:
+//   * Preference  — dark mode, hide UI, activate rendering when
 //                   opening notes,
 //   * Cursor      — show touch cursor, show pen cursor, color, hover,
 //   * Language    — picker (restarts app on change),
@@ -30,6 +30,7 @@ import '../widgets/icon_button.dart';
 class SettingsState {
   const SettingsState({
     this.darkMode = true,
+    this.hideUi = false,
     this.activateRenderOnOpen = false,
     this.showTouchCursor = false,
     this.showPenCursor = true,
@@ -41,6 +42,7 @@ class SettingsState {
   });
 
   final bool darkMode;
+  final bool hideUi;
   final bool activateRenderOnOpen;
   final bool showTouchCursor;
   final bool showPenCursor;
@@ -52,6 +54,7 @@ class SettingsState {
 
   SettingsState copyWith({
     bool? darkMode,
+    bool? hideUi,
     bool? activateRenderOnOpen,
     bool? showTouchCursor,
     bool? showPenCursor,
@@ -63,6 +66,7 @@ class SettingsState {
   }) =>
       SettingsState(
         darkMode: darkMode ?? this.darkMode,
+        hideUi: hideUi ?? this.hideUi,
         activateRenderOnOpen: activateRenderOnOpen ?? this.activateRenderOnOpen,
         showTouchCursor: showTouchCursor ?? this.showTouchCursor,
         showPenCursor: showPenCursor ?? this.showPenCursor,
@@ -150,6 +154,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     label: 'Dark mode',
                     active: _s.darkMode,
                     onChanged: (v) => _update(_s.copyWith(darkMode: v)),
+                  ),
+                  _Divider(palette: palette),
+                  _SwitchRow(
+                    palette: palette,
+                    icon: Icons.visibility_off_outlined,
+                    label: 'Hide UI',
+                    active: _s.hideUi,
+                    onChanged: (v) => _update(_s.copyWith(hideUi: v)),
                   ),
                   _Divider(palette: palette),
                   _SwitchRow(
