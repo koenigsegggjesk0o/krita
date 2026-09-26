@@ -7,6 +7,34 @@
 // snapping, and tessellation passes: normal, area, centroid,
 // barycentric coordinates, closest point (Ericson), containment test,
 // and ray intersection (Möller-Trumbore).
+//
+// v0.57-D runtime-wiring status (honest):
+// ----------------------------------------
+// This class is fully unit-tested (16 tests in test/core/math/triangle_test.dart:
+// normal/area/centroid, barycentric coords, containsPoint, closestPoint, ray
+// intersection including parallel/behind/cullBackfaces) and is re-exported by
+// the core/math barrel (lib/core/math/math.dart), but it has NO runtime
+// consumer in the v0.57-D in-scope files (lib/screens/main_screen.dart +
+// lib/io/krita_resources.dart). The Triangle( occurrences in main_screen.dart
+// are CanvasOverlayTriangle — a DIFFERENT overlay-primitive class, not this
+// engine Triangle.
+//
+// The natural consumers for Triangle.intersectRay (ray-triangle stroke
+// picking) + Triangle.closestPoint (snap-to-triangle) live in directories
+// that were OUT OF SCOPE for the v0.57-D task:
+//   - lib/core/interaction/  (camera/stroke raycast picking)
+//   - lib/engine/selection/  (tap-select raycast)
+//   - lib/engine/guide3d/    (guide-surface triangle meshes — guide_snap.dart
+//     already has a private _closestPointOnTriangle helper that DUPLICATES
+//     Ericson's algorithm; a future task could swap it for Triangle.closestPoint)
+//   - lib/core/rendering/    (rasteriser triangle setup)
+//
+// A future in-scope wiring would be: when a tap-select raycast in
+// main_screen.dart needs to hit-test against a tessellated stroke ribbon
+// (triangles, not just the polyline points), call Triangle.intersectRay on
+// each ribbon triangle. The current _onLoftTap / _screenToWorld path uses
+// point-distance + plane intersection (not triangle raycast), so there is no
+// natural in-scope consumer today. Left as a tested math library scaffold.
 
 import 'math_utils.dart';
 import 'ray.dart';
