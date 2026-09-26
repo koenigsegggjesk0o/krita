@@ -113,10 +113,14 @@ void main() {
       );
       final out = renderer.projectStroke(s, cam);
       expect(out.length, 2);
-      // World (1, 0, -1) → ((1*0.5+0.5)*800, (1-(0*0.5+0.5))*600) = (600, 300).
-      expect(out[0], const Offset(600, 300));
-      // World (2, 0, -1) → ((2*0.5+0.5)*800, 300) = (800, 300).
-      expect(out[1], const Offset(800, 300));
+      // World (1, 0, -1) → ((1*0.5+0.5)*800, (1-(0*0.5+0.5))*600) = (800, 300).
+      // WITHOUT the transform, local (0, 0, -1) would project to (400, 300),
+      // so this assertion verifies the transform was actually applied.
+      expect(out[0], const Offset(800, 300));
+      // World (2, 0, -1) → ((2*0.5+0.5)*800, 300) = (1200, 300).
+      // WITHOUT the transform, local (1, 0, -1) would project to (800, 300),
+      // so this assertion verifies the transform was actually applied.
+      expect(out[1], const Offset(1200, 300));
     });
 
     test('all points behind camera → empty list', () {
