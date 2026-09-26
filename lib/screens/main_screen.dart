@@ -92,14 +92,17 @@ import 'package:feather_krita/engine/assistance/assistance_wiring.dart';
 import 'package:feather_krita/engine/assistance/mirror_assist.dart';
 import 'package:feather_krita/engine/assistance/stable_strokes.dart';
 import 'package:feather_krita/engine/brush/brush_engine.dart';
+import 'package:feather_krita/engine/brush/brush_renderer.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/engine/brush/eraser_engine.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
+import 'package:feather_krita/core/math/plane.dart' as math show Plane;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/guide3d/guide3d_type.dart';
 import 'package:feather_krita/engine/guide3d/guide_snap.dart';
+import 'package:feather_krita/engine/guide3d/guide_renderer.dart';
 import 'package:feather_krita/engine/guide3d/drawn_guide.dart';
 import 'package:feather_krita/engine/guide3d/lofted_guide.dart';
 import 'package:feather_krita/engine/guide3d/bent_guide.dart';
@@ -212,6 +215,20 @@ class MainScreen extends StatefulWidget {
   /// init). Mirrors the [effectiveMaxUndoFor] pattern from v56-B.
   @visibleForTesting
   static const double kGuideSnapMaxDistance = 0.25;
+
+  /// v0.57-B: ARGB colour used for the translucent guide-surface triangles
+  /// emitted by [_MainScreenState._buildGuideRibbonOverlay]. Pinned as a
+  /// @visibleForTesting constant so [test/guide_renderer_wiring_test.dart]
+  /// can assert the wiring without pumping the full [MainScreen] widget.
+  /// Matches [Guide3DRenderer.defaultSurfaceColor] (0xFF8FB8FF).
+  @visibleForTesting
+  static const int kGuideRibbonSurfaceColor = 0xFF8FB8FF;
+
+  /// v0.57-B: ARGB colour used for the orange guide starting-line segment
+  /// emitted by [_MainScreenState._buildGuideRibbonOverlay]. Matches
+  /// [Guide3DRenderer.orangeStartColor] (0xFFFF8A00).
+  @visibleForTesting
+  static const int kGuideRibbonStartLineColor = 0xFFFF8A00;
 
   /// Effective undo depth for a document with [strokeCount] strokes.
   ///
@@ -1397,6 +1414,82 @@ class _MainScreenState extends State<MainScreen>
     // at full alpha so the artist can still tell strokes apart.
     if (_wireframeOverlay) {
       out.addAll(_buildWireframeOverlay(vp));
+    }
+    // v0.57-B: guide ribbon overlay — when the GuidePanel's "Show guide
+    // ribbon" toggle ([_guideRibbon]) is ON, project every active guide
+    // through [Guide3DRenderer.renderAll] and adapt the resulting world-
+    // space triangle / line batches into screen-space [CanvasOverlay]
+    // primitives (translucent surface triangles + grid line segments +
+    // the orange starting line). See [_buildGuideRibbonOverlay].
+    if (_guideRibbon) {
+      out.addAll(_buildGuideRibbonOverlay(vp));
+    }
+    return out;
+  }
+
+  /// v0.57-B: adapts [Guide3DRenderer.renderAll]'s world-space batches
+  /// into screen-space [CanvasOverlay] primitives so the canvas viewport
+  /// can draw guide ribbons without importing the engine (the viewport's
+  /// file doc explicitly states "We don't import the engine to keep the
+  /// UI package hermetic — the parent editor screen adapts the engine
+  /// state into [CanvasScene]"). This mirrors the existing
+  /// [_buildSelectionOverlay] / [_buildGizmoOverlay] / [_buildWireframeOverlay]
+  /// adaptation pattern: the host owns the engine → canvas-pixel bridge.
+  ///
+  /// Surface triangles become [CanvasOverlayTriangle] (translucent, drawn
+  /// with the engine's [Guide3DRenderer.defaultSurfaceColor]); grid line
+  /// segments + the orange starting line become [CanvasOverlayLine]. The
+  /// view-projection [vp] is the same matrix the stroke-projection loop
+  /// in [_buildCanvasScene] uses, so guides and strokes share the same
+  /// screen space. Vertices behind the camera (NDC.z outside [-1, 1))
+  /// are skipped per-triangle / per-segment.
+  List<CanvasOverlay> _buildGuideRibbonOverlay(Matrix4 vp) {
+    if (_guides.guides.isEmpty) return const <CanvasOverlay>[];
+    final renderer = Guide3DRenderer();
+    final renderData = renderer.renderAll(_guides.guides);
+    final out = <CanvasOverlay>[];
+    final w = _viewportSize.width;
+    final h = _viewportSize.height;
+    if (w == 0 || h == 0) return const <CanvasOverlay>[];
+
+    Offset? project(Vector3 world) {
+      final ndc = vp.transform3(world.clone());
+      if (ndc.z <= -1.0 || ndc.z >= 1.0) return null;
+      final sx = (ndc.x * 0.5 + 0.5) * w;
+      final sy = (1.0 - (ndc.y * 0.5 + 0.5)) * h;
+      return Offset(sx, sy);
+    }
+
+    for (final data in renderData) {
+      // Surface: triangles. Skip a triangle when any vertex is behind
+      // the camera (cheap cull — a proper clip plane would split the
+      // triangle, but for guide ribbons a per-vertex cull is good
+      // enough and avoids emitting degenerate screen triangles).
+      final sVerts = data.surface.vertices;
+      if (data.surface.mode == GuideBatchMode.triangles) {
+        for (var i = 0; i + 2 < data.surface.indices.length; i += 3) {
+          final a = project(sVerts[data.surface.indices[i]].position);
+          final b = project(sVerts[data.surface.indices[i + 1]].position);
+          final c = project(sVerts[data.surface.indices[i + 2]].position);
+          if (a == null || b == null || c == null) continue;
+          out.add(CanvasOverlayTriangle(a, b, c,
+              MainScreen.kGuideRibbonSurfaceColor));
+        }
+      }
+      // Grid + start line: line segments.
+      for (final batch in [data.grid, data.startLine]) {
+        if (batch.mode != GuideBatchMode.lines) continue;
+        final bVerts = batch.vertices;
+        for (var i = 0; i + 1 < batch.indices.length; i += 2) {
+          final a = project(bVerts[batch.indices[i]].position);
+          final b = project(bVerts[batch.indices[i + 1]].position);
+          if (a == null || b == null) continue;
+          final color = batch == data.startLine
+              ? MainScreen.kGuideRibbonStartLineColor
+              : Guide3DRenderer.gridLineColor;
+          out.add(CanvasOverlayLine(a, b, color, strokeWidth: 1.2));
+        }
+      }
     }
     return out;
   }
@@ -3033,10 +3126,24 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
-    // Fallback: ground plane (y = 0).
-    final t = -ray.origin.y / ray.direction.y;
-    if (t.isFinite && t > 0 && t < 1000) {
-      return ray.origin + ray.direction * t;
+    // Fallback: ground plane (y = 0). v0.57-D: uses the engine [Plane]
+    // (lib/core/math/plane.dart) for the ray-plane intersection instead
+    // of an inline `t = -origin.y / dir.y` calc. The plane is the
+    // canonical y=0 ground: normal=(0,1,0), distance=0. A max-distance
+    // guard (1000 world units) is kept so a ray grazing the horizon
+    // does not project a stroke to an absurdly far point. The engine
+    // Ray is built from the vector_math _CamRay via the same
+    // Vec3<->Vector3 bridge used for the Guide3D path above.
+    const groundPlane = math.Plane(Vec3.unitY(), 0.0);
+    final engineOrigin = Vec3(ray.origin.x, ray.origin.y, ray.origin.z);
+    final engineDir = Vec3(ray.direction.x, ray.direction.y, ray.direction.z);
+    final engineRay = math.Ray.normalized(engineOrigin, engineDir);
+    final hit = groundPlane.intersectRay(engineRay);
+    if (hit != null) {
+      final dist = (hit - engineOrigin).length;
+      if (dist.isFinite && dist < 1000) {
+        return Vector3(hit.x, hit.y, hit.z);
+      }
     }
     return null;
   }
