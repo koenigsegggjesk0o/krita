@@ -193,6 +193,9 @@ class EditorScreen extends StatefulWidget {
     // onShare: fires the platform share sheet for the last export.
     this.onExport,
     this.onShare,
+    // v0.55-A: About / Help — opens the FeatherAboutDialog (engine
+    // status, native lib path, crash log path, GitHub Releases link).
+    this.onAbout,
     // --- Gesture wiring (feather-integration gap 2 + 3) ------------------
     // onTapSelect: fired when the canvas receives a tap (single-finger,
     // no drag) while the Select tool is active. The host routes the
@@ -294,6 +297,13 @@ class EditorScreen extends StatefulWidget {
   /// last exported file (or kicks off a PNG snapshot first when none
   /// exists yet). The host owns the share_plus wiring.
   final VoidCallback? onShare;
+
+  /// v0.55-A: Top-bar About / Help button. Opens the host's
+  /// FeatherAboutDialog (version, engine status, native lib path,
+  /// crash log path, GitHub Releases re-download link). The host owns
+  /// the dialog construction (it knows the live engine + crash-log
+  /// path state).
+  final VoidCallback? onAbout;
 
   /// Canvas tap (select tool). The host runs [SelectionSystem.tapSelectSync]
   /// against the screen position to pick the nearest stroke within the
@@ -560,6 +570,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 onHideUI: () => _set(_s.copyWith(uiHidden: true)),
                 onExport: widget.onExport,
                 onShare: widget.onShare,
+                onAbout: widget.onAbout,
                 contextualActions: _contextualActions(),
               ),
             ),

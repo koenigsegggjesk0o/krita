@@ -39,6 +39,10 @@ class TopBar extends StatelessWidget {
     this.onFit,
     this.onExport,
     this.onShare,
+    // v0.55-A: About / Help button — opens the FeatherAboutDialog so a
+    // first-run Windows user can self-diagnose engine status + native
+    // lib path + crash log path + GitHub Releases URL.
+    this.onAbout,
     this.contextualActions = const [],
   });
 
@@ -65,6 +69,11 @@ class TopBar extends StatelessWidget {
   /// (or, if none exists, kicks off a PNG snapshot then shares it). Wired
   /// by [MainScreen._shareLastExport].
   final VoidCallback? onShare;
+
+  /// v0.55-A: About / Help — opens the FeatherAboutDialog (version,
+  /// engine status, native lib path, crash log path, GitHub Releases
+  /// link). Wired by [MainScreen._showAboutDialog].
+  final VoidCallback? onAbout;
   final List<TopBarAction> contextualActions;
 
   @override
@@ -159,6 +168,17 @@ class TopBar extends StatelessWidget {
             size: 38,
             iconSize: 18,
             onTap: onShare,
+          ),
+          const SizedBox(width: 4),
+          // v0.55-A: About / Help button — self-diagnosis for first-run
+          // Windows installs (engine status, native lib path, crash log,
+          // GitHub Releases re-download link).
+          FeatherIconButton(
+            icon: Icons.help_outline_rounded,
+            tooltip: 'About / Help',
+            size: 38,
+            iconSize: 18,
+            onTap: onAbout,
           ),
           _divider(palette),
           // Status chip.

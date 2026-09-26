@@ -138,6 +138,8 @@ import 'package:feather_krita/ui/widgets/right_panel.dart'
 import 'package:feather_krita/ui/widgets/tool_dock.dart' show FeatherTool;
 import 'package:feather_krita/ui/widgets/liquify_panel.dart'
     show LiquifyMode;
+import 'package:feather_krita/ui/widgets/render_mode_toggle.dart'
+    show RenderModeState, RenderModeToggle;
 import 'package:feather_krita/utils/app_version.dart';
 import 'package:feather_krita/utils/crash_log.dart';
 import 'package:feather_krita/utils/paint_perf.dart';
@@ -226,6 +228,25 @@ class _MainScreenState extends State<MainScreen>
   bool _renderMode = false;
   bool _uiHidden = false;
   String _groupName = 'Group 1';
+
+  // ----- Render mode state (v55-B Feather 3D parity) ----------------------
+  //
+  // The prominent 3-state top-bar toggle ([RenderModeToggle]) exposes the
+  // three Feather 3D render modes: Shaded / Shadeless / Wireframe. The
+  // engine's [CanvasScene.renderMode] is a boolean (shaded vs flat), so
+  // [_renderModeState] is the canonical UI state and the host projects it
+  // onto [_renderMode] (shaded → true; shadeless/wireframe → false) plus
+  // a host-side [_wireframeOverlay] flag (true only in wireframe). The
+  // wireframe overlay draws each stroke's screen points as a
+  // [CanvasOverlayPolyline] on top of the flat render — see
+  // [_buildOverlayPrimitives]. HONESTY NOTE: this is a visual overlay,
+  // NOT a real wireframe material pass (which would require touching
+  // lib/core/rendering — out of scope). The old single-button toggle in
+  // [TopBar] stays for legacy parity and toggles shaded ↔ shadeless
+  // (clearing wireframe if active); the new 3-button cluster is the
+  // prominent Feather 3D-style toggle the brief asks for.
+  RenderModeState _renderModeState = RenderModeState.shaded;
+  bool _wireframeOverlay = false;
 
   // ----- Environment state (Stage panel → CanvasScene) -------------------
   //
@@ -924,6 +945,23 @@ class _MainScreenState extends State<MainScreen>
                     child: _buildAssistPanel(),
                   ),
                 ),
+
+              // ----- Render mode toggle (v55-B) — prominent Feather 3D-style
+              // 3-button cluster (Shaded / Shadeless / Wireframe). Mounted
+              // just below the top bar on the right side so it reads as the
+              // prominent top-bar toggle the brief asks for, without
+              // disturbing the existing single-button toggle in [TopBar]
+              // (which stays for legacy parity + is kept in sync via
+              // [_onRenderModeChanged]). The rose/pink gradient matches the
+              // GuidePanel + AssistPanel family.
+              Positioned(
+                right: 16,
+                top: 70,
+                child: RenderModeToggle(
+                  mode: _renderModeState,
+                  onChanged: _onRenderModeChanged,
+                ),
+              ),
             ],
           ),
         );
@@ -1116,6 +1154,45 @@ class _MainScreenState extends State<MainScreen>
     }
     if (_tool == FeatherTool.liquify && _liquifyCursor != null) {
       out.addAll(_buildLiquifyOverlay());
+    }
+    // v55-B: wireframe overlay — when the render-mode toggle is in the
+    // wireframe state, draw each stroke's screen-projected points as a
+    // [CanvasOverlayPolyline] on top of the flat (shadeless) render. This
+    // is a visual overlay, NOT a real wireframe material pass (which
+    // would require touching lib/core/rendering — out of scope for this
+    // UI feature-parity task). The polylines use the stroke's own colour
+    // at full alpha so the artist can still tell strokes apart.
+    if (_wireframeOverlay) {
+      out.addAll(_buildWireframeOverlay(vp));
+    }
+    return out;
+  }
+
+  /// Builds the wireframe overlay — one [CanvasOverlayPolyline] per
+  /// visible stroke, drawn with the stroke's own colour. Mirrors the
+  /// screen-projection loop in [_buildCanvasScene] (world → view-proj →
+  /// NDC → screen pixels) but emits a polyline instead of a [CanvasStroke].
+  /// Strokes with fewer than 2 visible screen points are skipped (no
+  /// polyline to draw).
+  List<CanvasOverlay> _buildWireframeOverlay(Matrix4 vp) {
+    final out = <CanvasOverlay>[];
+    for (final stroke in _strokes) {
+      if (!stroke.isVisible) continue;
+      final points = <Offset>[];
+      for (final p in stroke.points) {
+        final world = stroke.transform.transform3(p.position.clone());
+        final ndc = vp.transform3(world.clone());
+        if (ndc.z <= -1.0 || ndc.z >= 1.0) continue;
+        final sx = (ndc.x * 0.5 + 0.5) * _viewportSize.width;
+        final sy = (1.0 - (ndc.y * 0.5 + 0.5)) * _viewportSize.height;
+        points.add(Offset(sx, sy));
+      }
+      if (points.length < 2) continue;
+      out.add(CanvasOverlayPolyline(
+        points,
+        stroke.color,
+        strokeWidth: 1.4,
+      ));
     }
     return out;
   }
@@ -1380,6 +1457,22 @@ class _MainScreenState extends State<MainScreen>
       _material = s.material;
       _pattern = s.pattern;
       _renderMode = s.renderMode;
+      // v55-B sync: when the legacy [TopBar] single render-mode button
+      // toggles the boolean, mirror it into the new 3-state UI. The old
+      // button flips shaded ↔ shadeless; if the host was in wireframe,
+      // the old button clears wireframe + lands on the new state.
+      if (s.renderMode) {
+        _renderModeState = RenderModeState.shaded;
+        _wireframeOverlay = false;
+      } else if (_renderModeState == RenderModeState.shaded) {
+        // Was shaded, the old button just flipped to false → shadeless.
+        _renderModeState = RenderModeState.shadeless;
+        _wireframeOverlay = false;
+      }
+      // If the new 3-state toggle was already in shadeless or wireframe,
+      // the old button's flip-to-false is a no-op on the new state
+      // (stays shadeless / wireframe — both already have _renderMode
+      // == false). Flip-to-true always wins (lands on shaded).
       _uiHidden = s.uiHidden;
       _groupName = s.groupName;
       // Mirror the Stage panel's Environment tab into the host's env
@@ -1412,6 +1505,39 @@ class _MainScreenState extends State<MainScreen>
           (_color.a * 255).round(),
         );
     }
+  }
+
+  // ----- Render mode state (v55-B) ----------------------------------------
+  //
+  // Handler for the prominent 3-state [RenderModeToggle]. Maps the new
+  // 3-state enum onto the engine's existing boolean [CanvasScene.renderMode]
+  // (shaded → true; shadeless / wireframe → false) plus the host-side
+  // [_wireframeOverlay] flag (true only in wireframe — drives the polyline
+  // overlay in [_buildOverlayPrimitives]). The setState rebuild propagates
+  // both flags into [_buildCanvasScene] + the overlay primitives list so
+  // the next frame paints the right render mode.
+  void _onRenderModeChanged(RenderModeState next) {
+    setState(() {
+      _renderModeState = next;
+      switch (next) {
+        case RenderModeState.shaded:
+          _renderMode = true;
+          _wireframeOverlay = false;
+          break;
+        case RenderModeState.shadeless:
+          _renderMode = false;
+          _wireframeOverlay = false;
+          break;
+        case RenderModeState.wireframe:
+          // Wireframe = flat render + polyline overlay on top. Honest
+          // scope note: a real wireframe material pass would require
+          // touching lib/core/rendering (out of scope); this overlay
+          // gives the artist the visual affordance (curve skeleton).
+          _renderMode = false;
+          _wireframeOverlay = true;
+          break;
+      }
+    });
   }
 
   // ----- Keyboard shortcuts (loop-keyboard-shortcuts-mouse) --------------

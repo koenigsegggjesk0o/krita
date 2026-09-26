@@ -24,10 +24,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
+  // Window title is the user-facing brand "Feather-Krita" (v0.55-A:
+  // was the lowercase-underscore binary name "feather_krita" which read
+  // as a debug build to first-time Windows users). Initial size matches
+  // the editor's designed 1280x800 layout (was 1280x720 — too short for
+  // the bottom-bar cluster on first run).
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
-  if (!window.Create(L"feather_krita", origin, size)) {
+  Win32Window::Size size(1280, 800);
+  if (!window.Create(L"Feather-Krita", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

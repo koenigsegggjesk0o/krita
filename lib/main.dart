@@ -30,9 +30,31 @@ import 'screens/main_screen.dart';
 import 'ui/screens/splash_screen.dart' as new_splash;
 import 'ui/theme/app_theme.dart' as new_theme;
 import 'utils/app_version.dart';
+import 'utils/crash_log.dart';
 
 void main() {
+  // WidgetsFlutterBinding MUST be initialized before any FFI probe +
+  // before runApp. This was already true pre-v0.55-A; the comment is
+  // here to enforce it as an invariant of the boot sequence.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // v0.55-A: route Flutter framework errors (widget-tree exceptions,
+  // build failures, layout overflow in debug) into the crash log AND
+  // the default presenter (red error screen in debug, silent in
+  // release). The crash log is best-effort — see CrashLog.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    CrashLog.write('FlutterError: ${details.exceptionAsString()}\n'
+        '${details.stack ?? StackTrace.current}');
+  };
+
+  // Override the default ErrorWidget so unhandled errors in the widget
+  // tree render a tappable red screen with a Copy button instead of the
+  // terse default grey box. A first-run Windows user who hits a layout
+  // exception now sees the trace and can paste it into a GitHub issue.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return _CrashErrorWidget(details: details);
+  };
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -49,11 +71,26 @@ void main() {
     DeviceOrientation.portraitUp,
   ]);
 
-  runApp(
-    const ProviderScope(
-      child: FeatherKritaApp(),
-    ),
-  );
+  // v0.55-A: wrap the runApp call in runZonedGuarded so async errors,
+  // FFI callback errors, and isolate-handler errors that escape the
+  // Flutter framework's reach are STILL caught — logged to the crash
+  // file and re-surfaced via FlutterError.reportError so the
+  // ErrorWidget builder picks them up on the next frame. Without this,
+  // a native crash inside an async callback silently kills the process.
+  runZonedGuarded(() {
+    runApp(
+      const ProviderScope(
+        child: FeatherKritaApp(),
+      ),
+    );
+  }, (error, stack) {
+    CrashLog.write('ZoneError: $error\n$stack');
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: error,
+      stack: stack,
+      library: 'feather_krita.zone',
+    ));
+  });
 }
 
 /// Root app. Uses the new UI package theme (Feather glassmorphism palette).
@@ -108,11 +145,20 @@ class _BootShellState extends State<_BootShell> {
       engineReal: engineOk,
     ));
 
+    // v0.55-A: surface the fallback state on the splash itself when the
+    // probe did NOT load the real bridge. The MainScreen host ALSO shows
+    // a first-run info dialog (see _MainScreenState.initState), but the
+    // splash warning gives the user immediate feedback during boot.
+    final engineWarning = engineOk
+        ? null
+        : 'Real Krita engine not loaded — using fallback (reduced features)';
+
     // ---- Phase 2: first-run resource import (0.16 → 0.92) ------------
     _setPhase(new_splash.BootPhase(
       progress: 0.16,
       label: 'Importing real Krita resources…',
       engineReal: engineOk,
+      warning: engineWarning,
     ));
     final summary = await KritaResources.ensureImported(
       onProgress: (done, total) {
@@ -135,9 +181,7 @@ class _BootShellState extends State<_BootShell> {
       progress: 0.92,
       label: 'Scanning brush presets…',
       engineReal: engineOk,
-      warning: _resourcesMissing
-          ? 'Resource payload unavailable — using bundled presets'
-          : null,
+      warning: _combinedWarning(engineWarning, _resourcesMissing),
     ));
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
@@ -147,9 +191,7 @@ class _BootShellState extends State<_BootShell> {
       progress: 0.97,
       label: 'Ready',
       engineReal: engineOk,
-      warning: _resourcesMissing
-          ? 'Resource payload unavailable — using bundled presets'
-          : null,
+      warning: _combinedWarning(engineWarning, _resourcesMissing),
     ));
     await Future<void>.delayed(const Duration(milliseconds: 240));
     if (!mounted) return;
@@ -157,9 +199,7 @@ class _BootShellState extends State<_BootShell> {
       progress: 1.0,
       label: 'Ready',
       engineReal: engineOk,
-      warning: _resourcesMissing
-          ? 'Resource payload unavailable — using bundled presets'
-          : null,
+      warning: _combinedWarning(engineWarning, _resourcesMissing),
     ));
     await Future<void>.delayed(const Duration(milliseconds: 200));
     if (!mounted) return;
@@ -180,6 +220,18 @@ class _BootShellState extends State<_BootShell> {
   void _setPhase(new_splash.BootPhase phase) {
     if (!mounted) return;
     setState(() => _phase = phase);
+  }
+
+  /// Combine the engine-fallback warning + the resource-missing warning
+  /// into a single splash banner line (v0.55-A).
+  String? _combinedWarning(String? engineWarning, bool resourcesMissing) {
+    if (engineWarning == null && !resourcesMissing) return null;
+    final parts = <String>[
+      if (engineWarning != null) engineWarning,
+      if (resourcesMissing)
+        'Resource payload unavailable — using bundled presets',
+    ];
+    return parts.join(' · ');
   }
 
   @override
@@ -212,3 +264,152 @@ class _BootShellState extends State<_BootShell> {
     );
   }
 }
+
+/// v0.55-A: Custom ErrorWidget rendered in place of the default grey
+/// box when an unhandled exception escapes the widget tree (or is
+/// re-reported by the runZonedGuarded handler in [main]).
+///
+/// Layout:
+///   * full-screen dark red backdrop (so the user immediately sees
+///     something went wrong),
+///   * centered Material card with the exception + stack trace,
+///   * "Copy error" button (writes the trace to the clipboard + the
+///     crash log file so it can be pasted into a GitHub issue),
+///   * "Restart" hint (close + relaunch — Flutter does not expose a
+///     clean hot-restart for desktop apps, so we just tell the user).
+///
+/// This widget is constructed by [ErrorWidget.builder] from a
+/// [FlutterErrorDetails]; it must NOT throw or depend on the rest of
+/// the app's runtime state (it renders when the app is already
+/// broken). All operations inside the build are best-effort.
+class _CrashErrorWidget extends StatefulWidget {
+  const _CrashErrorWidget({required this.details});
+
+  final FlutterErrorDetails details;
+
+  @override
+  State<_CrashErrorWidget> createState() => _CrashErrorWidgetState();
+}
+
+class _CrashErrorWidgetState extends State<_CrashErrorWidget> {
+  bool _copied = false;
+
+  String get _traceText {
+    final d = widget.details;
+    final ex = d.exceptionAsString();
+    final st = d.stack?.toString() ?? '';
+    return 'Feather-Krita $kAppVersionLabel ($kAppVersion)\n'
+        'Platform: ${_platformLine()}\n'
+        'Library: ${d.library ?? "(unknown)"}\n'
+        'Exception: $ex\n'
+        'Stack:\n$st';
+  }
+
+  String _platformLine() {
+    try {
+      return 'default'; // Platform.pathSeparator etc. intentionally not
+      // surfaced — keeps the trace PII-free for the GitHub issue.
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  Future<void> _copy() async {
+    final text = _traceText;
+    await Clipboard.setData(ClipboardData(text: text));
+    await CrashLog.write(text);
+    if (!mounted) return;
+    setState(() => _copied = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF1A0B0B),
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          color: Color(0xFFEF4444), size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Feather-Krita hit an unexpected error',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                color: const Color(0xFFFCA5A5),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'The app is still running but a part of the UI has '
+                    'crashed. Copy the error below and attach it to a '
+                    'GitHub issue so we can fix it. Restart the app to '
+                    'clear this screen.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFFFCA5A5),
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F0808),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: const Color(0x33EF4444), width: 1),
+                      ),
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          _traceText,
+                          style: const TextStyle(
+                            color: Color(0xFFE5E7EB),
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 11,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _copied ? null : _copy,
+                        icon: Icon(_copied
+                            ? Icons.check_rounded
+                            : Icons.copy_rounded),
+                        label: Text(_copied
+                            ? 'Copied to clipboard + crash log'
+                            : 'Copy error'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
