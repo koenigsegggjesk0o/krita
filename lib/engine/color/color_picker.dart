@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// color_picker.dart — HSV color-wheel model.
+// color_picker.dart — HSV color-wheel DATA model (pure, no Flutter widget).
 //
 // Docs (brushes_color.txt + brushes_interface.txt):
 //   - Color Wheel: "Spin the wheel to change the Hue (H), and use the
@@ -12,10 +12,25 @@
 //     current color's saturation and brightness."
 //
 // This is the pure DATA model behind the wheel — no Flutter widget (the
-// widget lives in lib/ui/widgets/color_wheel.dart). It owns the HSV
-// state, the wheel-angle ↔ hue mapping, the SV-square ↔ (S, V) mapping,
-// and the hex-code ↔ ARGB conversions. Real HSV↔RGB math (no Flutter
+// wheel/square widget lives in lib/ui/widgets/color_wheel.dart, which
+// uses Flutter's built-in [HSVColor] for the wheel/square drag math).
+// This file owns the HSV↔ARGB↔hex conversions + the wheel-angle ↔ hue
+// and SV-square ↔ (S, V) mapping helpers. Real HSV↔RGB math (no Flutter
 // HSVColor dependency) so the model is unit-testable in isolation.
+//
+// v0.57-C wiring (honest status): the wheel widget does NOT use this
+// model — it uses Flutter's HSVColor directly, so the model is partially
+// redundant for basic HSV state. The non-redundant surface is the
+// HEX CODE INPUT PAD contract: `fromHex` accepts "#RRGGBB" / "#AARRGGBB"
+// / "RRGGBB" / "AARRGGBB" and returns a sentinel with alpha=0 on
+// parse failure — Flutter's HSVColor has no equivalent. The host
+// (lib/screens/main_screen.dart `_setActiveColorFromHex`) wires this
+// contract as the entry point for the future hex-input pad (per
+// brushes_color.txt), parsing a typed hex string → ARGB → active
+// colour + brush-engine colour. The wheel/square drag, eyedropper,
+// and ARGB32 round-trips all stay on the existing paths.
+//
+// Tests: test/engine/color/color_picker_test.dart.
 
 import 'dart:math' as math;
 
@@ -155,13 +170,19 @@ class HsvColorModel {
   }
 
   /// Parses "#RRGGBB", "#AARRGGBB", "RRGGBB", or "AARRGGBB".
+  ///
+  /// On unparseable input, returns a sentinel with `alpha = 0` (so
+  /// `toArgb() >> 24 == 0`) — this lets callers (e.g. the host's
+  /// `_setActiveColorFromHex` in lib/screens/main_screen.dart) detect
+  /// failure without a nullable return type. The other channels are
+  /// zeroed (black) so the sentinel is `0x00000000`.
   factory HsvColorModel.fromHex(String input) {
     var s = input.trim();
     if (s.startsWith('#')) s = s.substring(1);
     if (s.length == 6) s = 'FF$s';
     final parsed = int.tryParse(s, radix: 16);
     if (parsed == null) {
-      return HsvColorModel(hue: 0, saturation: 0, value: 0);
+      return HsvColorModel(hue: 0, saturation: 0, value: 0, alpha: 0);
     }
     return HsvColorModel.fromArgb(parsed);
   }

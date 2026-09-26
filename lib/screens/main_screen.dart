@@ -95,6 +95,7 @@ import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_renderer.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/engine/brush/eraser_engine.dart';
+import 'package:feather_krita/engine/color/color_picker.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/core/math/plane.dart' as math show Plane;
@@ -3595,6 +3596,30 @@ class _MainScreenState extends State<MainScreen>
       _selectionModel.toggle(nearestId);
       setState(() {});
     }
+  }
+
+  // v0.57-C: Wire lib/engine/color/color_picker.dart (HsvColorModel) —
+  // the host's hex-input entry point. The wheel widget
+  // (lib/ui/widgets/color_wheel.dart) uses Flutter's HSVColor for the
+  // wheel/square drag, but the hex-code input pad (per brushes_color.txt
+  // "Tap the hex code to open the input pad for entering a hex code")
+  // needs a parser that accepts "#RRGGBB", "#AARRGGBB", "RRGGBB", or
+  // "AARRGGBB" — exactly HsvColorModel.fromHex's contract. The parsed
+  // ARGB drives the same _color + _brush.color path as the eyedropper
+  // above, so the brush panel swatch + next dab reflect the new colour.
+  // Returns false (without mutating state) on a malformed hex string so
+  // callers can show inline validation; returns true on success.
+  bool _setActiveColorFromHex(String hex) {
+    final argb = HsvColorModel.fromHex(hex).toArgb();
+    // HsvColorModel.fromHex returns a black-fallback (alpha=0) for
+    // unparseable input — treat alpha=0 as "invalid" so empty/garbage
+    // input doesn't silently paint transparent black.
+    if ((argb >> 24) == 0) return false;
+    setState(() {
+      _color = Color(argb);
+      _brush.color = argb;
+    });
+    return true;
   }
 
   // ----- Brush presets ----------------------------------------------------
