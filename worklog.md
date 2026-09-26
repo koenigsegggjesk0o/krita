@@ -3463,3 +3463,49 @@ Stage Summary:
   * b36dcad5 — v0.55-B (4/5): tutorial captions — first-run 4-hint sequence (SharedPreferences-gated). 12 tests pass.
   * f51460ed — v0.55-B (5/5): 3D strokes list panel — per-stroke visibility/delete/reorder. 9 tests pass.
   * (this commit) — v0.55-B: Feather 3D feature parity — material picker, render mode toggle, light dial, tutorial captions, 3D stroke list. 50 tests pass, 0 errors.
+
+---
+Task ID: v56-A-dll-probe-path
+Agent: Opus (general-purpose)
+Task: Fix Windows DLL probe — add Platform.resolvedExecutable candidate so app finds krita_bridge.dll regardless of CWD.
+
+Work Log:
+- Mandatory first steps: `export PATH="/home/z/flutter/bin:$PATH"`; `git pull --rebase origin feather-krita-flutter` (Already up to date at ecec2b9a — HEAD matches the brief). Read worklog.md last 50 lines (v0.55-B feature parity + v0.55-C ndk.abiFilters — context only, no overlap with this task).
+- Verified gap: `grep -n "_candidates" lib/io/engine_probe.dart` returned matches at lines 137 (call site in `_tryOpenDetailed`) + 157 (definition). Read lines 1-179 of the file in full. The original `_candidates()` at lib/io/engine_probe.dart:157 returned (exact list):
+  * Windows (lib/io/engine_probe.dart:159-163): `'krita_bridge.dll'`, `'lib\\krita_bridge.dll'`, `'.\\krita_bridge.dll'` — all 3 RELATIVE to CWD. Brief verified.
+  * Linux (lib/io/engine_probe.dart:166-173): 6 candidates, all CWD-relative.
+  * macOS (lib/io/engine_probe.dart:176): `'libkrita_bridge.dylib'` — CWD-relative.
+  All 3 platforms' candidates fail when the launched app's CWD is not the install directory (common on Windows when launched from a Start Menu shortcut, which sets CWD to system32 or the user's home).
+- Path-package check: `grep -n "^\s*path\s*:" pubspec.yaml` → NO match (only `path_provider: ^2.1.0` at line 32 is present, which is a different package). Per the brief's fallback instruction, used `dart:io`'s `Platform.resolvedExecutable` + string manipulation (no new dependency added).
+- Applied fix at lib/io/engine_probe.dart:157-204 (rewrote `_candidates()`):
+  * Added a doc comment (lines 158-173) explaining WHY the resolvedExecutable candidate is now first — Start Menu shortcut CWD mismatch, no CWD dependence, install-dir wins over stray CWD-relative copy, package:path NOT a dependency hence string manipulation.
+  * Implementation (lines 174-177): `final exePath = Platform.resolvedExecutable;` → `final lastSep = exePath.lastIndexOf(RegExp(r'[/\\]'));` (handles both `/` POSIX and `\` Windows separators in a single regex character class) → `final exeDir = lastSep >= 0 ? exePath.substring(0, lastSep) : exePath;` → `final sep = Platform.isWindows ? r'\' : '/';` (native separator per platform).
+  * Windows list (lines 178-185): prepended `'$exeDir${sep}krita_bridge.dll'` as FIRST candidate; kept the original 3 relative candidates as fallback.
+  * Linux list (lines 186-196): prepended `'$exeDir${sep}libkrita_bridge.so'` as FIRST candidate; kept the original 6 relative candidates as fallback.
+  * macOS list (lines 197-202): prepended `'$exeDir${sep}libkrita_bridge.dylib'` as FIRST candidate; kept the original `libkrita_bridge.dylib` as fallback. Also promoted the macOS list from `const <String>['libkrita_bridge.dylib']` to a runtime-built list (string interpolation is not a const expression).
+  * Removed `const` from the Windows + Linux list literals (string interpolation produces runtime values); kept `const <String>[]` for the no-platform fallback.
+  * No new imports needed — `dart:io` already imported at line 34 with `show OSError, Platform;` (Platform is in scope).
+- Validation:
+  * `flutter analyze lib/io/engine_probe.dart` → "No issues found! (ran in 0.4s)" — 0 errors, 0 warnings, 0 infos.
+  * `flutter test test/io/` → "All tests passed!" — 28 tests pass (8 gltf_tube_export + 11 gltf_exporter + 9 obj_exporter). test/io/ exists; ran the suite as instructed. No test directly covers engine_probe.dart's `_candidates()` (verified with `grep -rn "engine_probe|_candidates|probeKritaEngine" test/` → No matches found), so this fix has no dedicated regression test — the 28 io/ tests confirm no collateral damage to the io/ module.
+- Git workflow:
+  * Pre-commit check: `git status --short` showed 2 modified files — mine (lib/io/engine_probe.dart) + a concurrent agent's (lib/engine/material/material_type.dart, v0.56-C work). Staged ONLY my file via `git add lib/io/engine_probe.dart` so the concurrent agent's WIP is NOT swept into my commit.
+  * Committed: `v0.56-A: fix Windows DLL probe — add Platform.resolvedExecutable candidate first (install-dir resolution). Closes v55-A flagged gap. 28 tests pass, 0 errors.` (commit 345370fa, 1 file changed, 28 insertions(+), 3 deletions(-)).
+  * `git pull --rebase origin feather-krita-flutter` initially failed with "You have unstaged changes" because 2 other files (lib/engine/material/material_type.dart, lib/screens/main_screen.dart) had concurrent-agent WIP. Stashed both (with descriptive stash messages) → rebase clean (Already up to date, my commit on top of ecec2b9a) → restored both stashes via `git stash pop` (twice). The untracked lib/engine/material/metallic_material.dart from v0.56-C was left untouched.
+  * `git push origin feather-krita-flutter` → `ecec2b9a..345370fa feather-krita-flutter -> feather-krita-flutter` — pushed cleanly.
+
+Stage Summary:
+- Files modified (1 — STRICTLY within SCOPE):
+  * lib/io/engine_probe.dart (+28 lines, -3 lines): rewrote `_candidates()` to prepend a `Platform.resolvedExecutable`-derived install-dir candidate as the FIRST entry on Windows, Linux, and macOS. Doc comment explains the CWD-independence rationale + the no-package:path-dependency implementation choice. Existing CWD-relative candidates retained as fallback (dev runs where CWD == repo root still work).
+- New candidate order (Windows): `<exeDir>\krita_bridge.dll` (NEW, first), `krita_bridge.dll`, `lib\krita_bridge.dll`, `.\krita_bridge.dll`.
+- New candidate order (Linux): `<exeDir>/libkrita_bridge.so` (NEW, first), `lib/libkrita_bridge.so`, `libkrita_bridge.so`, `./libkrita_bridge.so`, `assets/native/linux/libkrita_bridge.so`, `assets/native/libkrita_bridge.so`, `../assets/native/linux/libkrita_bridge.so`.
+- New candidate order (macOS): `<exeDir>/libkrita_bridge.dylib` (NEW, first), `libkrita_bridge.dylib`.
+- Test results: 28 pass (test/io/: 8 gltf_tube_export + 11 gltf_exporter + 9 obj_exporter), 0 fail. `flutter analyze lib/io/engine_probe.dart` → 0 errors / 0 warnings / 0 infos.
+- Commit: 345370fa (pushed to origin/feather-krita-flutter).
+- HONEST remaining / UNVERIFIED:
+  * No dedicated unit test for `_candidates()` exists in the repo (grep-verified). The fix is validated by `flutter analyze` + the 28 io/ tests (no regression). A real regression test would require a way to mock `Platform.resolvedExecutable` (dart:io does not expose it for monkey-patching); skipped per the brief's TIME BOX (small fix, ~15 lines).
+  * The fix is NOT verified end-to-end on a real Windows install (this Linux sandbox cannot run a Windows .exe or measure DynamicLibrary.open behaviour). The candidate-order logic is straightforward string manipulation that `flutter analyze` confirms compiles + types-check; the runtime claim — "the install-dir candidate loads when CWD is wrong" — is logically sound (resolvedExecutable is the .exe path; dirname + dll name is the install-dir path; DynamicLibrary.open accepts absolute paths on all 3 desktop platforms) but is UNVERIFIED by execution on Windows.
+  * The Linux install-dir candidate (`<exeDir>/libkrita_bridge.so`) assumes a flat layout (lib next to exe). A typical Linux package install (e.g. `/opt/feather_krita/bin/exe` + `/opt/feather_krita/lib/libkrita_bridge.so`) would NOT match this candidate — but the legacy `lib/libkrita_bridge.so` (CWD-relative) and `../assets/native/linux/libkrita_bridge.so` candidates below still cover those layouts when CWD is set correctly. The brief explicitly specified `p.join(exeDir, 'libkrita_bridge.so')` for Linux, so this matches the brief; the layout concern is documented for a future Linux-packaging task.
+  * macOS bundle layout (.app bundle's `Contents/MacOS/<exe>` + `Contents/Frameworks/libkrita_bridge.dylib`) is NOT covered by the new candidate (the dylib is typically in `../Frameworks/` relative to the exe, not next to it). The brief specified `p.join(exeDir, 'libkrita_bridge.dylib')` for macOS which I followed; the .app bundle case is left for a future macOS-packaging task. UNVERIFIED on macOS.
+  * Did NOT touch pubspec.yaml (path package absent — used string manipulation as the brief's fallback path).
+  * Did NOT touch any file outside SCOPE.
