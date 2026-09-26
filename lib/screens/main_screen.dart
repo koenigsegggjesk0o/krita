@@ -126,6 +126,7 @@ import 'package:feather_krita/engine/material/light_rig.dart';
 import 'package:feather_krita/engine/selection/selection.dart';
 import 'package:feather_krita/engine/selection/selection_renderer.dart';
 import 'package:feather_krita/engine/selection/selection_state.dart';
+import 'package:feather_krita/engine/selection/duplicate.dart';
 import 'package:feather_krita/engine/transform/gizmo_renderer.dart';
 import 'package:feather_krita/engine/transform/joystick2d.dart';
 import 'package:feather_krita/engine/transform/joystick3d.dart';
@@ -323,6 +324,14 @@ class _MainScreenState extends State<MainScreen>
   late final LiquifyEngine _liquify;
   late final SelectionModel _selectionModel;
   late final SelectionSystem _selection;
+
+  // v0.57-C: DuplicateEngine — wraps the duplicate / duplicate-by-view /
+  // duplicate-by-mirror operations on the current selection. The engine
+  // itself is stateless across calls (only `nextId` mutates); the host
+  // syncs nextId with _nextStrokeId before each call so duplicate stroke
+  // IDs stay unique across the session. Wired to Ctrl+D via
+  // [_shortcutDuplicate].
+  late final DuplicateEngine _duplicateEngine;
 
   // v0.57-B: snap-to-guide helper. Stateless engine object — constructed
   // once at boot and reused per stroke sample. The snap toggle itself is
@@ -978,6 +987,10 @@ class _MainScreenState extends State<MainScreen>
       model: _selectionModel,
       strokes: () => _strokes,
     );
+    // v0.57-C: DuplicateEngine for the duplicate selection action (Ctrl+D).
+    // Stateless across calls — nextId is synced with the host's
+    // _nextStrokeId before each call so duplicate IDs stay unique.
+    _duplicateEngine = DuplicateEngine();
 
     _presets = _buildDefaultPresets();
 
@@ -2148,6 +2161,46 @@ class _MainScreenState extends State<MainScreen>
     setState(() {});
   }
 
+  /// v0.57-C: Ctrl+D — duplicate the current selection in place via
+  /// [DuplicateEngine.duplicate]. Per docs/selection_duplicate.txt:
+  /// "duplicated curves are in the same position as the original" — the
+  /// plain [DuplicateEngine.duplicate] mode is the right call (no
+  /// offset, no mirror). The freshly-created strokes get new IDs
+  /// (synced from [_nextStrokeId] before the call), are appended to
+  /// [_strokes], and become the new active selection so the user can
+  /// immediately move / transform them. Per the doc: "A message will
+  /// appear with the number of duplicated curves" — the [DuplicateResult
+  /// .message] is captured for a future toast (currently unused; the
+  /// selection change is the visible feedback).
+  ///
+  /// Replaces the previous Ctrl+D = deselect-all binding (deselect-all
+  /// is still reachable via Escape, which remains bound to
+  /// [_shortcutDeselectAll]). This matches Figma / Photoshop duplicate-
+  /// in-place conventions (Ctrl+D = duplicate); the deselect-all
+  /// convention (browser / OS) is preserved on Escape.
+  void _shortcutDuplicate() {
+    final selected = _selectedStrokes();
+    if (selected.isEmpty) return;
+    _pushUndo();
+    // Sync the engine's ID counter with the host's so duplicate IDs stay
+    // unique across the session (the host hands out IDs via
+    // _nextStrokeId for new strokes + mirror copies; DuplicateEngine
+    // uses its own nextId for duplicate copies).
+    _duplicateEngine.nextId = _nextStrokeId;
+    final result = _duplicateEngine.duplicate(selected);
+    // Adopt the engine's bumped counter back into the host so the next
+    // new stroke / mirror copy doesn't collide with a duplicate ID.
+    _nextStrokeId = _duplicateEngine.nextId;
+    if (result.strokes.isEmpty) return;
+    _strokes.addAll(result.strokes);
+    // Make the duplicates the new active selection so the user can
+    // immediately move / transform them (per the Feather 3D doc: the
+    // duplicates are pre-selected for further manipulation).
+    _selectionModel.setActive(result.strokes.map((s) => s.id).toList());
+    _rebuildStroke3Ds();
+    setState(() {});
+  }
+
   void _shortcutExport() => _showExportSheet();
 
   /// Ctrl+S — quick-save the current document as a `.feather` JSON file
@@ -2311,8 +2364,11 @@ class _MainScreenState extends State<MainScreen>
       metaKey(LogicalKeyboardKey.keyE): _shortcutExport,
       ctrlKey(LogicalKeyboardKey.keyA): _shortcutSelectAll,
       metaKey(LogicalKeyboardKey.keyA): _shortcutSelectAll,
-      ctrlKey(LogicalKeyboardKey.keyD): _shortcutDeselectAll,
-      metaKey(LogicalKeyboardKey.keyD): _shortcutDeselectAll,
+      // v0.57-C: Ctrl/Cmd+D = duplicate selection (was: deselect all).
+      // Deselect-all is still reachable via Escape (bound below). This
+      // matches Figma / Photoshop duplicate-in-place conventions.
+      ctrlKey(LogicalKeyboardKey.keyD): _shortcutDuplicate,
+      metaKey(LogicalKeyboardKey.keyD): _shortcutDuplicate,
       // Tool hotkeys (plain letters; a focused text field consumes these).
       const SingleActivator(LogicalKeyboardKey.keyB):
           () => _shortcutSetTool(FeatherTool.draw),
