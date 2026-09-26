@@ -3,9 +3,14 @@ name: Build Feather-Krita with Krita Engine
 # =============================================================================
 # v0.58-CI — COMPILE KRITA ENGINE FROM SOURCE.
 # =============================================================================
-# This workflow compiles the Krita engine (krita-source/ — 12,325 files,
-# 5,942 C++ files from KDE/krita tag v6.0.4) FROM SOURCE on a windows-latest
-# runner. It does NOT download any pre-compiled Krita binaries from krita.org.
+# This workflow compiles the Krita engine (krita-source/ — 12,331 files,
+# official release tarball) FROM SOURCE on a windows-latest runner.
+# SOURCE ORIGIN (user-required, verified): official krita-6.0.4.tar.xz
+# downloaded from download.kde.org/stable/krita/6.0.4/ — the host linked
+# from krita.org's download page. sha256 verified:
+#   ef73e57fe20fa5bd896d53d4af6eb254e5ade83e6a39b47273dd320f9823ab4b
+# See KRITA-SOURCE-PROVENANCE.md for full provenance proof. It does NOT
+# download any pre-compiled Krita binaries.
 #
 # Honest binary-dep inventory (see worklog v58-compile-krita-source):
 #   * Qt             = PRE-BUILT binary via aqtinstall (compiling Qt from
@@ -224,8 +229,9 @@ jobs:
       # --------------------------------------------------------------------------
       # Step 2: Configure Krita source with CMake.
       #
-      # Sources: krita-source/ (12,325 files, 5,942 C++ — KDE/krita tag
-      # v6.0.4). We build ONLY the lib targets needed by
+      # Sources: krita-source/ (12,331 files — official krita-6.0.4.tar.xz
+      # from krita.org's download host, sha256-verified, see
+      # KRITA-SOURCE-PROVENANCE.md). We build ONLY the lib targets needed by
       # native/krita_bridge/krita_bridge_real.cpp (the REAL bridge, 2,200 LOC,
       # 28 real Krita #includes). UI and plugins are NOT built (saves RAM +
       # build time). Configure still scans all subdirs (Krita's
