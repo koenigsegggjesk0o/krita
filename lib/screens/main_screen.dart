@@ -175,6 +175,41 @@ class MainScreen extends StatefulWidget {
   /// backend, so painting is unaffected).
   final bool engineReal;
 
+  // ----- v56-B: undo stack OOM mitigation --------------------------------
+  //
+  // The host stores a deep-copy snapshot of the whole stroke list per undo
+  // step (see [_MainScreenState._pushUndo]). At 1000 strokes × 40 snapshots
+  // that was ~40 000 Stroke copies in memory (≈200 MB) — a real OOM risk on
+  // Android that v0.55-C flagged honestly.
+  //
+  // Fix (conservative, no behaviour gimmick):
+  //   * Halve the base undo depth 40 → 20 ([kBaseMaxUndo]).
+  //   * On large documents (> [kLargeDocStrokeThreshold] strokes) further
+  //     halve it to 10 ([kLargeDocMaxUndo]) because each snapshot is big.
+  //   * The redo stack needs no explicit cap: it is cleared on every
+  //     [_MainScreenState._pushUndo] and can only grow to the depth of a
+  //     prior undo run, so it is implicitly bounded by this cap.
+  /// Base undo depth. Was 40; halved to 20 in v56-B to bound snapshot memory.
+  @visibleForTesting
+  static const int kBaseMaxUndo = 20;
+
+  /// Reduced undo depth applied to large documents.
+  @visibleForTesting
+  static const int kLargeDocMaxUndo = 10;
+
+  /// Stroke count above which the undo depth is reduced to [kLargeDocMaxUndo].
+  @visibleForTesting
+  static const int kLargeDocStrokeThreshold = 200;
+
+  /// Effective undo depth for a document with [strokeCount] strokes.
+  ///
+  /// Memory-aware: halves the cap on large docs to bound peak memory. This is
+  /// a pure function of the stroke count so it is unit-testable without
+  /// pumping the full [MainScreen] (which needs engine + FFI init).
+  @visibleForTesting
+  static int effectiveMaxUndoFor(int strokeCount) =>
+      strokeCount > kLargeDocStrokeThreshold ? kLargeDocMaxUndo : kBaseMaxUndo;
+
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
@@ -202,7 +237,22 @@ class _MainScreenState extends State<MainScreen>
 
   final List<List<Stroke>> _undoStack = <List<Stroke>>[];
   final List<List<Stroke>> _redoStack = <List<Stroke>>[];
-  static const int _maxUndo = 40;
+  // v56-B: was 40 — halved to 20 to bound snapshot memory. Aliases the
+  // testable [MainScreen.kBaseMaxUndo] so there is one source of truth for
+  // the base cap. The effective cap is further reduced on large documents;
+  // see [_effectiveMaxUndo].
+  static const int _maxUndo = MainScreen.kBaseMaxUndo;
+
+  /// v56-B: memory-aware effective undo depth.
+  ///
+  /// Returns [_maxUndo] (20) for normal documents and a reduced cap
+  /// ([MainScreen.kLargeDocMaxUndo] = 10) when the document holds more than
+  /// [MainScreen.kLargeDocStrokeThreshold] strokes, because each deep-copy
+  /// snapshot is large on big documents. The pure threshold logic lives in
+  /// the testable [MainScreen.effectiveMaxUndoFor].
+  int get _effectiveMaxUndo => _strokes.length > MainScreen.kLargeDocStrokeThreshold
+      ? MainScreen.kLargeDocMaxUndo
+      : _maxUndo;
 
   // v0.55-C: stroke soft-cap (memory hygiene).
   //
@@ -3321,7 +3371,10 @@ class _MainScreenState extends State<MainScreen>
 
   void _pushUndo() {
     _undoStack.add(_strokes.map((s) => s.copy()).toList());
-    if (_undoStack.length > _maxUndo) _undoStack.removeAt(0);
+    // v56-B: cap by the memory-aware effective depth (20 normal, 10 on big
+    // docs). The redo stack needs no cap here — it is cleared on the next
+    // line and only re-grows to the depth of a prior undo run.
+    if (_undoStack.length > _effectiveMaxUndo) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
