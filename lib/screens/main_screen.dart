@@ -145,6 +145,8 @@ import 'package:feather_krita/ui/widgets/light_rig_panel.dart'
     show LightRigPanel;
 import 'package:feather_krita/ui/widgets/tutorial_overlay.dart'
     show kTutorialShownKey, kTutorialHints, tutorialHintAt;
+import 'package:feather_krita/ui/widgets/stroke_list_panel.dart'
+    show StrokeListItem, StrokeListPanel;
 import 'package:feather_krita/utils/app_version.dart';
 import 'package:feather_krita/utils/crash_log.dart';
 import 'package:feather_krita/utils/paint_perf.dart';
@@ -284,6 +286,18 @@ class _MainScreenState extends State<MainScreen>
   double _lightIntensity = 1.0;
   double _lightAmbient = 0.35;
   bool _lightRigPanelVisible = false;
+
+  // ----- 3D strokes list (v55-B) ------------------------------------------
+  //
+  // Feather 3D shows a list of 3D strokes (not just 2D layers) with
+  // per-stroke controls: name, material icon, visibility toggle, delete,
+  // reorder. The host already owns the canonical [_strokes] list + the
+  // [_strokeMaterials] per-stroke material map; the [StrokeListPanel]
+  // is the user-facing surface for that list. It floats at the right
+  // edge (below the Stage panel toggle) when [_strokeListPanelVisible]
+  // is true. The toggle button sits at the bottom-right (stacked left
+  // of the AssistPanel toggle so the two don't overlap).
+  bool _strokeListPanelVisible = false;
 
   // ----- Live stroke assembly state ---------------------------------------
 
@@ -1040,6 +1054,33 @@ class _MainScreenState extends State<MainScreen>
                   top: 124,
                   child: _buildLightRigPanel(),
                 ),
+
+              // ----- 3D strokes list (v55-B) — floating rose/pink toggle
+              // button (bottom-right, stacked left of the AssistPanel
+              // toggle so the three bottom-right buttons don't overlap)
+              // + the [StrokeListPanel] overlay when
+              // [_strokeListPanelVisible]. The panel lists every stroke
+              // in the document with: name, colour swatch, material
+              // icon, visibility toggle, delete button, drag handle for
+              // reorder. The host wires the panel's callbacks to
+              // [_setStrokeVisible] / [_deleteStrokeById] /
+              // [_reorderStrokes] — all undoable (push the pre-mutation
+              // snapshot via [_pushUndo]).
+              Positioned(
+                right: 136,
+                bottom: 96,
+                child: _StrokeListPanelToggleButton(
+                  visible: _strokeListPanelVisible,
+                  onTap: () => setState(() =>
+                      _strokeListPanelVisible = !_strokeListPanelVisible),
+                ),
+              ),
+              if (_strokeListPanelVisible)
+                Positioned(
+                  right: 16,
+                  top: 124,
+                  child: _buildStrokeListPanel(),
+                ),
             ],
           ),
         );
@@ -1444,6 +1485,83 @@ class _MainScreenState extends State<MainScreen>
       ));
     }
     return items;
+  }
+
+  /// Builds the [StrokeListItem] snapshot the [StrokeListPanel] renders.
+  /// Iterates the canonical [_strokes] list in z-order (back → front)
+  /// + projects each stroke into the value object the panel expects
+  /// (id, name, color, material, isVisible, sampleCount). The material
+  /// comes from the per-stroke [_strokeMaterials] map (defaulting to
+  /// shadeless when no entry exists, matching the canvas painter's
+  /// fallback). The sample count comes from the parallel [_stroke3Ds]
+  /// map (the curves-system capture view) — falls back to the Stroke's
+  /// point count when no Stroke3D exists (e.g. after an undo rebuild).
+  List<StrokeListItem> _buildStrokeListItems() {
+    final items = <StrokeListItem>[];
+    for (var i = 0; i < _strokes.length; i++) {
+      final s = _strokes[i];
+      final mat = _strokeMaterials[s.id] ?? FeatherMaterial.shadeless;
+      final s3d = _stroke3Ds[s.id];
+      items.add(StrokeListItem(
+        id: s.id,
+        name: 'Stroke ${i + 1}',
+        color: s.color,
+        material: mat,
+        isVisible: s.isVisible,
+        sampleCount: s3d != null ? s3d.length : s.points.length,
+      ));
+    }
+    return items;
+  }
+
+  /// v55-B: toggles a stroke's visibility flag. Mutates the canonical
+  /// [_strokes] entry + setState so the next frame's [_buildCanvasScene]
+  /// skips / includes the stroke (the painter already honours
+  /// `stroke.isVisible` — see the `if (!stroke.isVisible) continue;`
+  /// guard in [_buildCanvasScene]).
+  void _setStrokeVisible(int id, bool visible) {
+    final s = _findStroke(id);
+    if (s == null) return;
+    setState(() => s.isVisible = visible);
+  }
+
+  /// v55-B: deletes a stroke by id. Mirrors the cleanup pattern the
+  /// eraser / vacuum paths use (removes from [_strokes] + the parallel
+  /// [_stroke3Ds] + [_strokeMaterials] maps). Pushes the pre-delete
+  /// snapshot onto the undo stack so the delete is undoable (matches
+  /// the existing undo contract). Clears the stroke from the selection
+  /// model if it was selected (uses [SelectionModel.setActive] — the
+  /// model exposes no public state setter).
+  void _deleteStrokeById(int id) {
+    final s = _findStroke(id);
+    if (s == null) return;
+    _pushUndo();
+    setState(() {
+      _strokes.removeWhere((st) => st.id == id);
+      _stroke3Ds.remove(id);
+      _strokeMaterials.remove(id);
+      if (_selectionModel.active.contains(id)) {
+        _selectionModel.setActive(
+          _selectionModel.active.where((sid) => sid != id).toList(),
+        );
+      }
+    });
+  }
+
+  /// v55-B: reorders the canonical [_strokes] list (z-order). The
+  /// [ReorderableListView] contract normalises the indices before
+  /// calling this (oldIndex is the source; newIndex is the target
+  /// AFTER normalisation — see the panel's onReorder wrapper). The
+  /// reorder is undoable (pushes the pre-reorder snapshot).
+  void _reorderStrokes(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _strokes.length) return;
+    if (newIndex < 0 || newIndex >= _strokes.length) return;
+    if (oldIndex == newIndex) return;
+    _pushUndo();
+    setState(() {
+      final s = _strokes.removeAt(oldIndex);
+      _strokes.insert(newIndex, s);
+    });
   }
 
   List<ResourceItem> _buildResourceItems() {
@@ -4066,6 +4184,25 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
+  /// Builds the v55-B [StrokeListPanel] overlay. Forwards a snapshot
+  /// of the host's [_strokes] list (built by [_buildStrokeListItems])
+  /// + wires the panel's callbacks to the host's mutation methods
+  /// ([_setStrokeVisible] / [_deleteStrokeById] / [_reorderStrokes]).
+  /// All three mutations setState so the next frame's snapshot reflects
+  /// the change + the canvas painter picks up the new stroke list.
+  Widget _buildStrokeListPanel() {
+    return StrokeListPanel(
+      strokes: _buildStrokeListItems(),
+      onToggleVisible: (id) {
+        final s = _findStroke(id);
+        if (s != null) _setStrokeVisible(id, !s.isVisible);
+      },
+      onDelete: (id) => _deleteStrokeById(id),
+      onReorder: (oldIndex, newIndex) => _reorderStrokes(oldIndex, newIndex),
+      onClose: () => setState(() => _strokeListPanelVisible = false),
+    );
+  }
+
   Widget _buildGuideOverlay() {
     switch (_guideMode) {
       case _GuideMode.none:
@@ -4482,6 +4619,64 @@ class _LightRigPanelToggleButton extends StatelessWidget {
           ),
           child: Icon(
             visible ? Icons.close_rounded : Icons.wb_sunny_outlined,
+            color: Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating rose/pink toggle button for the v55-B [StrokeListPanel]
+/// overlay. Sits at the bottom-right of the editor Stack (stacked left
+/// of the AssistPanel toggle so the three bottom-right buttons — Guide,
+/// Assist, Strokes — don't overlap); tapping it flips
+/// [_MainScreenState._strokeListPanelVisible]. Stateless + self-
+/// contained, mirroring [_GuidePanelToggleButton] /
+/// [_AssistPanelToggleButton] / [_LightRigPanelToggleButton]. The icon
+/// is a timeline (3D curve); when the panel is open the icon becomes a
+/// close X.
+class _StrokeListPanelToggleButton extends StatelessWidget {
+  const _StrokeListPanelToggleButton({
+    required this.visible,
+    required this.onTap,
+  });
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: visible ? 'Hide 3D Strokes panel' : 'Show 3D Strokes panel',
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFFA78BFA),
+                Color(0xFFF472B6),
+                Color(0xFFFB923C),
+              ],
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: const Color(0xFFA78BFA).withValues(alpha: 0.45),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            visible ? Icons.close_rounded : Icons.timeline_rounded,
             color: Colors.white,
             size: 22,
           ),

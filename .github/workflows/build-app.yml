@@ -27,10 +27,34 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --debug
+      # v0.55-C: build --release (not --debug) so R8/minify/shrinkResources
+      # in android/app/build.gradle actually fire. Build both fat APK and
+      # per-ABI splits; upload all 4 artifacts. See build-with-krita.yml for
+      # the canonical / push-triggered version of this job.
+      - name: Build fat (universal) APK — release
+        run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Build per-ABI split APKs — release
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
+
+      - name: Upload fat APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: feather-krita-android-fat-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 90
+
+      - name: Upload per-ABI split APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: feather-krita-android-split-apks
+          path: |
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
+          retention-days: 90
+
+      - name: Upload all APKs (legacy bucket)
         uses: actions/upload-artifact@v4
         with:
           name: feather-krita-android-apk

@@ -27,6 +27,26 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // v0.55-C: ABI filter for the FAT (universal) APK.
+        //
+        // Bundles only the two ABIs most users actually need:
+        //   * arm64-v8a  — every modern (64-bit ARM) Android phone/tablet.
+        //   * x86_64     — Android Studio emulator + ChromeOS tablets.
+        //
+        // armeabi-v7a (32-bit ARM, legacy) is deliberately excluded from the
+        // fat APK to keep it ~80–100 MB smaller (one fewer ~30–60 MB native
+        // lib bundled). Users on legacy 32-bit-only devices can still install
+        // the per-ABI split APK published by CI (`app-armeabi-v7a-release.apk`)
+        // — see `.github/workflows/build-with-krita.yml` build-android-with-krita.
+        //
+        // NOTE: `flutter build apk --split-per-abi` IGNORES abiFilters and
+        // produces one APK per ABI present in jniLibs/ (arm64-v8a +
+        // armeabi-v7a + x86_64). abiFilters only governs the fat APK that
+        // `flutter build apk` (no --split-per-abi) emits.
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
     }
 
     buildTypes {
@@ -34,6 +54,27 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.debug
+
+            // v0.55-C: R8 / ProGuard + resource shrinking for release builds.
+            //
+            //   * minifyEnabled true  → R8 strips unused Java/Kotlin classes
+            //     and inlines/renames what it can. Roughly -10–25% APK size
+            //     depending on transitive dep surface.
+            //   * shrinkResources true → aapt2 removes unreferenced resources
+            //     (strings, drawables, layouts) after R8 has identified the
+            //     reachable code. Requires minifyEnabled true.
+            //   * proguardFiles → Flutter's default consumer-proguard-rules
+            //     (auto-included by the Flutter Gradle plugin) PLUS our local
+            //     rules that keep MainActivity + the Qt5 stub classes the
+            //     native krita_bridge JNI_OnLoad path reflectively looks up.
+            //
+            // The native krita_bridge .so in jniLibs/ is untouched by R8 (R8
+            // only shrinks Java/Kotlin bytecode, not ELF .so). FFI symbol
+            // lookups via DynamicLibrary.open('libkrita_bridge.so') →
+            // lib.lookupFunction('krita_brush_generate_dab') are unaffected.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

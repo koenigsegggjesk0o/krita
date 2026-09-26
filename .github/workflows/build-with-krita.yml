@@ -203,10 +203,47 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --debug
+      # v0.55-C: Android APK size optimization.
+      #
+      # Build BOTH a fat (universal) APK and per-ABI split APKs so users can
+      # pick the smallest artifact for their device:
+      #
+      #   * Fat APK (~190–257 MB pre-v0.55, ~110–160 MB post-v0.55 with R8 +
+      #     resource shrinking + abiFilters=arm64-v8a,x86_64) — universal,
+      #     works on any device the abiFilters allow.
+      #   * Per-ABI APKs (~60–120 MB each) — one per ABI in jniLibs/.
+      #     arm64-v8a is the one ~95% of modern Android phones want; users on
+      #     it download ~half the bytes of the fat APK.
+      #
+      # We build --release (not --debug) so R8/minify/shrinkResources in
+      # android/app/build.gradle actually fire. --debug builds skip the
+      # release buildType entirely, so the v0.55 size work would be invisible.
+      - name: Build fat (universal) APK — release
+        run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Build per-ABI split APKs — release
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
+
+      # Fat APK = app-release.apk. Per-ABI APKs = app-arm64-v8a-release.apk,
+      # app-armeabi-v7a-release.apk, app-x86_64-release.apk. Upload all 4.
+      - name: Upload fat APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: feather-krita-android-fat-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload per-ABI split APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: feather-krita-android-split-apks
+          path: |
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
+
+      # Legacy "all APKs" bucket — kept for backwards compat with any pinned
+      # download links pointing at the old artifact name.
+      - name: Upload all APKs (legacy bucket)
         uses: actions/upload-artifact@v4
         with:
           name: feather-krita-android-with-krita-engine
