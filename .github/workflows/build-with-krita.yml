@@ -84,16 +84,28 @@ jobs:
       - name: Install Qt 5.15.2 via aqtinstall
         run: |
           pip install aqtinstall
-          # Install Qt 5.15.2 base + qtsvg (Krita REQUIRES Svg at
-          # CMakeLists.txt:558 find_package(Qt5 ... REQUIRED COMPONENTS ...
-          # Svg ...)) + qttools (for Qt5Test, Qt5Concurrent which are also
-          # REQUIRED at line 558).
-          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -m qtsvg qttools --outputdir C:\Qt
+          # Install Qt 5.15.2 base. We do NOT pass `-m qtsvg qttools` here:
+          # aqtinstall v3.3.0 on Qt 5.15.2 win64_msvc2019_64 reports those
+          # packages as "not found while parsing XML of package information"
+          # (verified in CI run 36229794871 log). For Qt 5.15.x msvc2019_64
+          # the base archive already includes Qt5Svg, Qt5Tools etc. (they
+          # are not separate module downloads for this version+arch combo).
+          # If Krita configure later complains about missing Qt5Svg, we will
+          # add `qt5-svg` to the vcpkg install list as a fallback.
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir C:\Qt
           # Verify Qt install path (used by both cmake -DCMAKE_PREFIX_PATH and
           # the cl /I include path / /LIBPATH lib path in Step 4).
           if (-not (Test-Path "C:\Qt\5.15.2\msvc2019_64\lib\Qt5Core.lib")) {
             Write-Host "FATAL: Qt5Core.lib not found at expected path"
             exit 1
+          }
+          # Check whether Qt5Svg is in the base install.
+          $svgLib = "C:\Qt\5.15.2\msvc2019_64\lib\Qt5Svg.lib"
+          if (Test-Path $svgLib) {
+            Write-Host "Qt5Svg.lib present in base install — no separate -m qtsvg needed"
+          } else {
+            Write-Host "WARNING: Qt5Svg.lib NOT in base install — Krita configure may fail"
+            Write-Host "  If it does, the fix is to add `qt5-svg` to the vcpkg install list."
           }
           Write-Host "Qt 5.15.2 installed at C:\Qt\5.15.2\msvc2019_64"
 
