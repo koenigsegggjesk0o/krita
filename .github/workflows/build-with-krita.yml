@@ -285,7 +285,11 @@ jobs:
             Write-Host "FATAL: quazip build failed (exit $LASTEXITCODE)"
             exit 1
           }
-          if (-not (Test-Path "C:\quazip-qt5\lib\cmake\QuaZip-Qt5")) {
+          # NOTE: quazip 1.4 installs its config into a version-suffixed dir
+          # (lib/cmake/QuaZip-Qt5-1.4/QuaZip-Qt5Config.cmake, verified in run
+          # 36253547971 step 8 log). The old check "...\cmake\QuaZip-Qt5"
+          # never exists and false-failed a fully successful install.
+          if (-not (Test-Path "C:\quazip-qt5\lib\cmake\QuaZip-Qt5-1.4\QuaZip-Qt5Config.cmake")) {
             Write-Host "FATAL: QuaZip-Qt5 config package missing after install"
             Get-ChildItem -Recurse "C:\quazip-qt5" | Select-Object -First 40
             exit 1
