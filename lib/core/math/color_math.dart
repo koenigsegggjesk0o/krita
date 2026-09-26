@@ -7,6 +7,29 @@
 // conversion follows the IEC 61966-2-1 transfer function. Tone
 // mapping supports Reinhard and the Narkowicz ACES approximation.
 // Alpha is handled out-of-band by the caller (e.g. via [Vec4]).
+//
+// v0.57-D runtime-wiring status (honest):
+// ----------------------------------------
+// NO runtime consumer in the v0.57-D in-scope files (main_screen.dart +
+// krita_resources.dart). A repo-wide grep for the sRGB transfer constants
+// (0.04045 / 0.0031308 / 1.055 / 12.92 / pow(…, 2.4)) found ZERO inline
+// duplicates anywhere in lib/ — the app relies on Flutter's Color API
+// (which assumes sRGB) + the rendering shaders do their own colour math
+// inline in lib/core/rendering/ (OUT OF SCOPE). So there is nothing to
+// replace + no natural in-scope consumer to wire.
+//
+// The natural consumers for toLinear / toSRGB / toneMap are:
+//   - lib/core/rendering/  (shader colour-space conversion — OUT OF SCOPE;
+//     the fragment/rasteriser shaders do sRGB↔linear inline today)
+//   - lib/engine/material/ (PBR lighting in linear space — OUT OF SCOPE)
+//   - a future colour-picker UI that shows linear vs sRGB values
+//
+// A future in-scope wiring would be: when main_screen.dart's brush colour
+// picker needs to display a perceived-brightness warning (e.g. "this colour
+// is too dark to read on the canvas bg"), call luminance(toLinear(srgbVec3)).
+// The current colour picker uses Flutter's Color API only, so there is no
+// natural in-scope consumer today. Left as a tested math library scaffold
+// for the rendering/material layers + future colour-aware UI tasks.
 
 import 'dart:math' as math;
 
