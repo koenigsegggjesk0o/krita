@@ -348,10 +348,16 @@ jobs:
           # (skip UI/plugins) is realised by Step 3's --target list (we
           # only build the listed lib targets; UI/plugin targets are not
           # in the --target list so they are not compiled).
+          # Forward slashes REQUIRED in CMAKE_PREFIX_PATH: Krita's FindWebP.cmake
+          # iterates CMAKE_PREFIX_PATH into find_package HINTS, and vcpkg.cmake's
+          # _find_package wrapper re-parses those args in a set() — backslash
+          # paths hit "Invalid character escape '\Q'" (run 36259134659).
+          # NOTE: comment must sit OUTSIDE the backtick-continued command —
+          # a # line inside it terminates the statement in PowerShell.
           cmake -S krita-source -B krita-build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX=krita-install `
-            -DCMAKE_PREFIX_PATH="$qtDir;C:\quazip-qt5" `
+            -DCMAKE_PREFIX_PATH="C:/Qt/5.15.2/msvc2019_64;C:/quazip-qt5" `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" `
             -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=krita-build/bin `
             -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=krita-build/lib `
