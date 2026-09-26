@@ -86,12 +86,14 @@ import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
 import 'package:feather_krita/data/models/project_model.dart';
 import 'package:feather_krita/data/models/settings_model.dart';
+import 'package:feather_krita/data/preset_repository.dart';
 import 'package:feather_krita/data/settings_repository.dart';
 import 'package:feather_krita/engine/assistance/assistance_wiring.dart';
 import 'package:feather_krita/engine/assistance/mirror_assist.dart';
 import 'package:feather_krita/engine/assistance/stable_strokes.dart';
 import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
+import 'package:feather_krita/engine/brush/eraser_engine.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
@@ -120,9 +122,8 @@ import 'package:feather_krita/engine/transform/joystick3d.dart';
 import 'package:feather_krita/engine/transform/transform_mode.dart';
 import 'package:feather_krita/engine/transform/transform_resolver.dart';
 import 'package:feather_krita/ffi/krita_bindings.dart' show BrushColor, BrushInput;
-import 'package:feather_krita/io/app_dirs.dart' show exportsDir, presetsDir;
+import 'package:feather_krita/io/app_dirs.dart' show exportsDir;
 import 'package:feather_krita/io/gltf_exporter.dart';
-import 'package:feather_krita/io/krita_resources.dart' show KritaResources;
 import 'package:feather_krita/io/obj_exporter.dart';
 import 'package:feather_krita/io/png_exporter.dart';
 import 'package:feather_krita/models/stroke.dart';
@@ -204,6 +205,14 @@ class MainScreen extends StatefulWidget {
   @visibleForTesting
   static const int kLargeDocStrokeThreshold = 200;
 
+  /// v0.57-B: world-space snap radius used by the snap-to-guide helper
+  /// ([_MainScreenState._guideSnapHelper]). Pinned as a @visibleForTesting
+  /// constant so [test/guide_snap_wiring_test.dart] can assert the wiring
+  /// without pumping the full [MainScreen] widget (which needs engine + FFI
+  /// init). Mirrors the [effectiveMaxUndoFor] pattern from v56-B.
+  @visibleForTesting
+  static const double kGuideSnapMaxDistance = 0.25;
+
   /// Effective undo depth for a document with [strokeCount] strokes.
   ///
   /// Memory-aware: halves the cap on large docs to bound peak memory. This is
@@ -233,15 +242,9 @@ class _MainScreenState extends State<MainScreen>
   // v0.57-B: snap-to-guide helper. Stateless engine object — constructed
   // once at boot and reused per stroke sample. The snap toggle itself is
   // [_guideSnap] (written by the GuidePanel's "Snap to guide" switch).
+  // The snap radius is [MainScreen.kGuideSnapMaxDistance] (pinned on the
+  // public widget class so tests can reach it without pumping the state).
   late final Guide3DSnap _guideSnapHelper;
-
-  /// v0.57-B: world-space snap radius used by [_guideSnapHelper]. Pinned
-  /// as a @visibleForTesting constant so [test/guide_snap_wiring_test.dart]
-  /// can assert the wiring without pumping the full [MainScreen] widget
-  /// (which needs engine + FFI init). Mirrors the [effectiveMaxUndoFor]
-  /// pattern from v56-B.
-  @visibleForTesting
-  static const double kGuideSnapMaxDistance = 0.25;
 
   /// The document's strokes in z-order (back → front). The [Scene] graph
   /// holds string-id references to these; the host owns the canonical
@@ -301,6 +304,19 @@ class _MainScreenState extends State<MainScreen>
   // SharedPreferences bool keyed by [kTutorialShownKey].
   final SettingsRepository _settingsRepo = SettingsRepository();
   bool _settingsLoaded = false;
+
+  // v0.57-D: brush-preset data layer. [PresetRepository.searchDirs] is
+  // the single source of truth for "which directories hold .kpp files"
+  // — used by [_scanDiskPresets] at boot. The sidecar save/load +
+  // favorite APIs ([saveSidecar], [loadSidecar], [toggleFavorite],
+  // [favoriteIds], [deleteSidecar]) operate on the heavier
+  // lib/models/brush_preset.dart [BrushPreset] type and are exercised
+  // by test/data/preset_repository_test.dart; they are NOT yet called
+  // from the host because the host's UI uses the lightweight
+  // lib/ui/widgets/brush_picker.dart [BrushPreset] (no favorite field).
+  // A future favorite-toggle UI task will swap the host to the heavier
+  // BrushPreset + call these APIs directly.
+  final PresetRepository _presetRepo = PresetRepository();
 
   // ----- UI state ---------------------------------------------------------
 
@@ -610,6 +626,13 @@ class _MainScreenState extends State<MainScreen>
   /// X/Y/Z chips via [onMirrorAxisToggled].
   final MirrorAssist _mirrorAssist = MirrorAssist();
 
+  /// v57-C: Eraser engine (point / vacuum / in-place erase). Wraps the
+  /// pure-geometry erase math so [_eraseAt] / [_eraseAtWorld] stay
+  /// thin host glue. Stateless — minSurvivingPoints = 2 (matches the
+  /// "strokes that drop below 2 points are removed" rule that lived
+  /// inline in [_eraseAt] before v57-C).
+  final EraserEngine _eraser = EraserEngine();
+
   /// When false (default), the joystick handlers route through
   /// [Joystick2dResolver] (view-based: move = camera-right/up plane,
   /// rotate = around camera forward, scale = uniform around the
@@ -827,7 +850,7 @@ class _MainScreenState extends State<MainScreen>
     // regression vs. the previous build.
     _realBackendActive = _krita.status == KritaEngineStatus.realEngine;
     _guides = Guide3DManager();
-    _guideSnapHelper = Guide3DSnap(maxDistance: kGuideSnapMaxDistance);
+    _guideSnapHelper = Guide3DSnap(maxDistance: MainScreen.kGuideSnapMaxDistance);
     _liquify = LiquifyEngine();
     _selectionModel = SelectionModel();
     _selection = SelectionSystem(
@@ -3325,11 +3348,18 @@ class _MainScreenState extends State<MainScreen>
   /// fallback tail. Best-effort: any I/O error aborts silently and the
   /// bundled catalog remains.
   Future<void> _scanDiskPresets() async {
-    final dirs = <Directory>[];
+    // v0.57-D: delegate the search-directory discovery to
+    // [PresetRepository.searchDirs] (the single source of truth for
+    // "which dirs hold .kpp files" — bundles feather_presets + the
+    // extracted Krita stock library, filters to existing dirs). The
+    // file iteration + cheap synthetic BrushPreset construction stay
+    // inline: PresetRepository.listAll() would call
+    // BrushPreset.loadFromFile (real .kpp parse) on every file, which
+    // the boot scan deliberately avoids to stay fast with hundreds of
+    // stock presets.
+    final List<Directory> dirs;
     try {
-      dirs.add(presetsDir());
-      final imported = KritaResources.importedPresetsDirPath();
-      if (imported != null) dirs.add(Directory(imported));
+      dirs = _presetRepo.searchDirs();
     } catch (_) {
       return;
     }
@@ -3629,31 +3659,67 @@ class _MainScreenState extends State<MainScreen>
   /// skipped (see [_strokeProtectedByGuide]). Strokes that drop below
   /// 2 points after the erase are removed entirely (with their
   /// Stroke3D + material records cleaned up).
+  ///
+  /// v57-C GAP 0 FIX (mirror-erase): when the mirror assist has any
+  /// active axis OR the FeatherTool.mirror dock tool is selected, the
+  /// erase is ALSO applied at each mirrored world position. Closes the
+  /// "eraser stays eraser on mirror paths" gap honestly — the eraser
+  /// mutates existing strokes at all mirrored positions simultaneously,
+  /// matching the mirror-draw behaviour (which produces 2^N - 1 mirror
+  /// copies of each committed paint stroke).
+  ///
+  /// HONESTY NOTE (brief deviation): the v57-C brief suggested
+  /// converting each mirrored world point back to screen and calling
+  /// `_eraseAt` recursively. That round trip would be lossy:
+  /// [_screenToWorld] re-raycasts to a guide / ground plane, so the
+  /// world point under the screen projection of `mirror(world)` is
+  /// NOT `mirror(world)` (unless the mirror plane is parallel to the
+  /// camera). Erasing at the screen projection would erase the wrong
+  /// points. Instead we call [_eraseAtWorld] directly at each mirrored
+  /// world point — same behaviour the brief intends (erase at mirrored
+  /// positions) without the lossy world→screen→world round trip.
   void _eraseAt(Offset screenPos) {
     final world = _screenToWorld(screenPos);
     if (world == null) return;
-    var mutated = false;
-    for (final stroke in _strokes) {
-      if (_strokeProtectedByGuide(stroke)) continue;
-      final before = stroke.points.length;
-      stroke.points.removeWhere((p) {
-        final wp = stroke.transform.transform3(p.position.clone());
-        return (wp - world).length <= _eraseRadius;
-      });
-      if (stroke.points.length != before) {
-        _syncStroke3D(stroke);
-        mutated = true;
+    _eraseAtWorld(world);
+    final mirrorActive =
+        _mirrorAssist.isEnabled || _tool == FeatherTool.mirror;
+    if (mirrorActive) {
+      final assist =
+          (_tool == FeatherTool.mirror && !_mirrorAssist.isEnabled)
+              ? MirrorAssist(activeAxes: const {MirrorAxis.x})
+              : _mirrorAssist;
+      // reflectPoints returns 2^N copies (identity first); skip the
+      // identity (already erased above) and erase at each mirrored
+      // world point directly.
+      final copies = assist.reflectPoints([world]);
+      for (var i = 1; i < copies.length; i++) {
+        _eraseAtWorld(copies[i].first);
       }
     }
-    if (mutated) {
-      _strokes.removeWhere((s) {
-        if (s.points.length < 2) {
-          _stroke3Ds.remove(s.id);
-          _strokeMaterials.remove(s.id);
-          return true;
-        }
-        return false;
-      });
+  }
+
+  /// Erases stroke POINTS within [_eraseRadius] of [world] using the
+  /// [EraserEngine]. Extracted from [_eraseAt] so the mirror-erase
+  /// path can call it directly at each mirrored world position without
+  /// re-entering the mirror logic (avoids infinite recursion).
+  void _eraseAtWorld(Vector3 world) {
+    final res = _eraser.erasePointsInPlace(
+      _strokes,
+      world,
+      _eraseRadius,
+      skip: _strokeProtectedByGuide,
+    );
+    for (final s in res.mutated) {
+      _syncStroke3D(s);
+    }
+    if (res.dropped.isNotEmpty) {
+      final dropSet = res.dropped.toSet();
+      _strokes.removeWhere(dropSet.contains);
+      for (final s in res.dropped) {
+        _stroke3Ds.remove(s.id);
+        _strokeMaterials.remove(s.id);
+      }
     }
   }
 
