@@ -28,25 +28,21 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // v0.55-C: ABI filter for the FAT (universal) APK.
+        // v0.55-C fix: NO `ndk.abiFilters` here.
         //
-        // Bundles only the two ABIs most users actually need:
-        //   * arm64-v8a  — every modern (64-bit ARM) Android phone/tablet.
-        //   * x86_64     — Android Studio emulator + ChromeOS tablets.
+        // Earlier revision added `abiFilters 'arm64-v8a','x86_64'` to slim the
+        // fat APK, but it CONFLICTS with `flutter build apk --split-per-abi`
+        // (Gradle error: "Conflicting configuration in ndk abiFilters cannot
+        // be present when splits abi filters are set"). The split build sets
+        // `splits.abi` with all ABIs found in jniLibs/, which Gradle refuses
+        // to mix with an ndk.abiFilters block.
         //
-        // armeabi-v7a (32-bit ARM, legacy) is deliberately excluded from the
-        // fat APK to keep it ~80–100 MB smaller (one fewer ~30–60 MB native
-        // lib bundled). Users on legacy 32-bit-only devices can still install
-        // the per-ABI split APK published by CI (`app-armeabi-v7a-release.apk`)
-        // — see `.github/workflows/build-with-krita.yml` build-android-with-krita.
-        //
-        // NOTE: `flutter build apk --split-per-abi` IGNORES abiFilters and
-        // produces one APK per ABI present in jniLibs/ (arm64-v8a +
-        // armeabi-v7a + x86_64). abiFilters only governs the fat APK that
-        // `flutter build apk` (no --split-per-abi) emits.
-        ndk {
-            abiFilters 'arm64-v8a', 'x86_64'
-        }
+        // Resolution: let the fat APK bundle ALL ABIs present in jniLibs/
+        // (arm64-v8a + armeabi-v7a + x86_64). It's bigger (~250 MB) but
+        // universal + buildable. Per-ABI split APKs (the
+        // `app-<abi>-release.apk` files) are what most users download —
+        // arm64-v8a split is ~80–120 MB and is what 95% of modern Android
+        // devices need. See `.github/workflows/build-with-krita.yml`.
     }
 
     buildTypes {
