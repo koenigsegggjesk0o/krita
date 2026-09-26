@@ -75,21 +75,56 @@ jobs:
       # windows-latest ships vcpkg at C:\vcpkg (pre-installed). We use classic
       # mode + the default (binary) triplet. Add `--build-from-source` if the
       # user requires source builds of these deps (adds ~2h to job time).
+      #
+      # Dep list verified against krita-source/CMakeLists.txt find_package():
+      #   REQUIRED deps (configure fails without these):
+      #     - ECM 6.0                (line 468)  → vcpkg port: extra-cmake-modules
+      #     - KF6 6.0 COMPONENTS     (line 548)  → vcpkg ports: kf6config, kf6widgetsaddons,
+      #       Config, WidgetsAddons,                kf6completion, kf6coreaddons, kf6guiaddons,
+      #       Completion, CoreAddons,               kf6i18n, kf6itemviews
+      #       GuiAddons, I18n, ItemViews
+      #     - PNG 1.2.6              (line 1148) → vcpkg port: libpng
+      #     - Boost 1.69             (line 1161) → vcpkg port: boost (meta)
+      #     - Immer                  (line 1181) → vcpkg port: immer
+      #     - Zug                    (line 1182) → vcpkg port: zug
+      #     - Lager                  (line 1183) → vcpkg port: lager
+      #     - ZLIB                   (line 1226) → vcpkg port: zlib
+      #     - Eigen3                 (line 1401) → vcpkg port: eigen3
+      #     - LibExiv2 0.16          (line 1413) → vcpkg port: exiv2
+      #     - LCMS2 2.4              (line 1418) → vcpkg port: lcms
+      #       (vcpkg port name is `lcms`, NOT `lcms2` — port provides liblcms2.
+      #        First CI run failed with `lcms2 does not exist` error; fixed.)
+      #   Optional but commonly-needed deps (NOT REQUIRED in CMakeLists.txt):
+      #     - OpenEXR, libjpeg-turbo, giflib, quazip, fftw3, gsl
       # --------------------------------------------------------------------------
       - name: Install Krita third-party deps via vcpkg
         shell: pwsh
         run: |
           # vcpkg is pre-installed at C:\vcpkg on windows-latest.
           & "C:\vcpkg\vcpkg.exe" --version
-          # These are the deps Krita's CMakeLists.txt find_package()s during
-          # the configure step. If any is missing, configure fails with
-          # "Could not find X". Verified against krita-source/CMakeLists.txt
-          # find_package() calls.
+          # vCPKG_ROOT env on the runner sometimes points at an MSVC-internal
+          # vcpkg; force the canonical C:\vcpkg location.
+          $env:VCPKG_ROOT = "C:\vcpkg"
+          # Install Krita's REQUIRED find_package() deps (verified above).
+          # Note: kf6* ports will transitively install vcpkg's qtbase — that
+          # is a SEPARATE Qt6 from aqtinstall's. We don't use it for cl.exe
+          # paths (Step 4 uses aqtinstall's Qt6), but vcpkg's qtbase must be
+          # present so vcpkg can build kf6* at all. This wastes ~1.5 GB disk
+          # and ~10 min, but is unavoidable given the spec's "keep aqtinstall"
+          # directive AND Krita's hard KF6 dependency.
           & "C:\vcpkg\vcpkg.exe" install `
+            extra-cmake-modules `
+            kf6config kf6widgetsaddons kf6completion kf6coreaddons `
+            kf6guiaddons kf6i18n kf6itemviews `
+            immer zug lager `
             boost-filesystem boost-system boost-interprocess boost-thread `
-            eigen3 exiv2 lcms2 zlib libpng libjpeg-turbo giflib `
+            eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
             openexr quazip fftw3 gsl `
             --triplet x64-windows
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FATAL: vcpkg install failed (exit $LASTEXITCODE)"
+            exit 1
+          }
           # Make vcpkg packages discoverable to CMake via the toolchain file.
           & "C:\vcpkg\vcpkg.exe" integrate install
 
@@ -132,8 +167,14 @@ jobs:
           Write-Host "Verified: krita-source/libs/brush/kis_brush.h present"
 
           # CMake configure. -DBUILD_WITH_QT6=ON is the real Krita option
-          # (krita-source/CMakeLists.txt:14: option(BUILD_WITH_QT6 ...));
-          # the spec's -DWITH_PYTHON=OFF / -DWITH_QT_XMLPATTERNS=OFF /
+          # (krita-source/CMakeLists.txt:14: option(BUILD_WITH_QT6 ...)).
+          # Krita 6.0.4 still considers Qt6 builds "not yet production-ready"
+          # (krita-source/CMakeLists.txt:375 message(FATAL_ERROR ...) unless
+          # ALLOW_UNSTABLE contains "QT6") — pass -DALLOW_UNSTABLE=QT6 to
+          # bypass (we are not packaging a stable release; we are building
+          # the engine libs for FFI consumption). First CI run failed here
+          # without this flag; fixed.
+          # The spec's -DWITH_PYTHON=OFF / -DWITH_QT_XMLPATTERNS=OFF /
           # -DBUILD_LIB_KRITA_UI=OFF / -DBUILD_LIB_KRITA_PLUGIN=OFF options
           # are passed through verbatim per the spec — Krita's CMake will
           # cache unknown -D vars without error, and the spec's intent
@@ -148,6 +189,7 @@ jobs:
             -DBoost_NO_BOOST_CMAKE=ON `
             -DBUILD_TESTING=OFF `
             -DBUILD_WITH_QT6=ON `
+            -DALLOW_UNSTABLE=QT6 `
             -DBUILD_KRITA_QT_DESIGNER=OFF `
             -DWITH_PYTHON=OFF `
             -DWITH_QT_XMLPATTERNS=OFF `
