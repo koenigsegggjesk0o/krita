@@ -204,6 +204,18 @@ jobs:
           # present so vcpkg can build kf5* at all. This wastes ~1.5 GB disk
           # and ~10 min, but is unavoidable given the spec's "keep aqtinstall"
           # directive AND Krita's hard KF5 dependency.
+          # DISK FIX (run 36243575206, C1085 during qtdeclarative@6.11.1):
+          # vcpkg's quazip port hard-depends on qtbase@6 + qt5compat (Qt6) —
+          # it dragged in a ~20 GB Qt6 stack (qtbase, qtdeclarative, qtsvg,
+          # qt5compat, qtshadertools, libpq, icu, harfbuzz) and the runner ran
+          # out of disk at package 128/130. Dropped here:
+          #   * quazip  — built FROM SOURCE in the next step against Qt5
+          #               (Krita's FindQUAZIP.cmake wants QuaZip-Qt5 anyway;
+          #               libs/resources includes <quazip.h> unconditionally,
+          #               so kritaresources needs it — just not the Qt6 build)
+          #   * openexr / fftw3 / gsl — OPTIONAL in krita-source/CMakeLists.txt
+          #               (find_package without REQUIRED, lines 1188/1234/1300);
+          #               none is used by the 8 lib targets we build
           & "C:\vcpkg\vcpkg.exe" install `
             ecm `
             kf5config kf5widgetsaddons kf5completion kf5coreaddons `
@@ -211,7 +223,6 @@ jobs:
             immer zug lager `
             boost-filesystem boost-system boost-interprocess boost-thread `
             eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
-            openexr quazip fftw3 gsl `
             --triplet x64-windows
           if ($LASTEXITCODE -ne 0) {
             Write-Host "FATAL: vcpkg install failed (exit $LASTEXITCODE)"
@@ -228,6 +239,58 @@ jobs:
           Remove-Item -Recurse -Force "C:\vcpkg\downloads" -ErrorAction SilentlyContinue
           $free = [math]::Round((Get-PSDrive C).Free/1GB,1)
           Write-Host "vcpkg install done, free disk: $free GB"
+
+      # --------------------------------------------------------------------------
+      # Step 1c: Build QuaZip 1.4 from source against Qt 5.
+      #
+      # Replaces the vcpkg quazip port (which now requires Qt6 and killed
+      # run 36243575206 with disk-full). QuaZip is ~15 source files + minizip
+      # (~2 min build, ~5 MB). Krita requires it unconditionally at
+      # libs/resources/KisResourceStorage.cpp:18 (#include <quazip.h>), and
+      # krita-source/cmake/modules/FindQUAZIP.cmake accepts a QuaZip-Qt5
+      # config package (QuaZip::QuaZip target) — exactly what this installs.
+      # Qt5 resolves through the same vcpkg toolchain + aqt prefix that the
+      # Krita configure step uses, so quazip and kritaresources link against
+      # the SAME Qt5. QuaZip source is a third-party dependency (github
+      # release tarball v1.4); the krita.org rule applies to Krita's own
+      # source, which remains the sha256-verified download.kde.org tarball.
+      # --------------------------------------------------------------------------
+      - name: Build QuaZip 1.4 (Qt5) — replaces vcpkg quazip (Qt6 disk bomb)
+        shell: pwsh
+        run: |
+          $qtDir = "C:\Qt\5.15.2\msvc2019_64"
+          $quazipUrl = "https://github.com/stachenov/quazip/archive/refs/tags/v1.4.tar.gz"
+          Invoke-WebRequest -Uri $quazipUrl -OutFile "$env:RUNNER_TEMP\quazip-1.4.tar.gz"
+          tar -xzf "$env:RUNNER_TEMP\quazip-1.4.tar.gz" -C "$env:RUNNER_TEMP"
+          if (-not (Test-Path "$env:RUNNER_TEMP\quazip-1.4\quazip\quazip.h")) {
+            Write-Host "FATAL: quazip-1.4 extraction failed"
+            exit 1
+          }
+          cmake -S "$env:RUNNER_TEMP\quazip-1.4" -B quazip-build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="C:\quazip-qt5" `
+            -DCMAKE_PREFIX_PATH="$qtDir" `
+            -DCMAKE_TOOLCHAIN_FILE="C:\vcpkg\scripts\buildsystems\vcpkg.cmake" `
+            -DQUAZIP_QT_MAJOR_VERSION=5 `
+            -DQUAZIP_FETCH_LIBS=OFF `
+            -DQUAZIP_FORCE_FETCH_LIBS=OFF `
+            -DQUAZIP_BZIP2=OFF `
+            -DQUAZIP_ENABLE_TESTS=OFF
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FATAL: quazip cmake configure failed (exit $LASTEXITCODE)"
+            exit 1
+          }
+          cmake --build quazip-build --target install
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FATAL: quazip build failed (exit $LASTEXITCODE)"
+            exit 1
+          }
+          if (-not (Test-Path "C:\quazip-qt5\lib\cmake\QuaZip-Qt5")) {
+            Write-Host "FATAL: QuaZip-Qt5 config package missing after install"
+            Get-ChildItem -Recurse "C:\quazip-qt5" | Select-Object -First 40
+            exit 1
+          }
+          Write-Host "SUCCESS: QuaZip-Qt5 installed to C:\quazip-qt5"
 
       # --------------------------------------------------------------------------
       # Step 2: Configure Krita source with CMake.
@@ -284,7 +347,7 @@ jobs:
           cmake -S krita-source -B krita-build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX=krita-install `
-            -DCMAKE_PREFIX_PATH="$qtDir" `
+            -DCMAKE_PREFIX_PATH="$qtDir;C:\quazip-qt5" `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" `
             -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=krita-build/bin `
             -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=krita-build/lib `
