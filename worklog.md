@@ -3023,3 +3023,96 @@ Work Log:
 
 Stage Summary:
 - v0.50 code complete and green locally. NEXT: mirror to feather-krita-build (incl. 80MB payload), patch build-app.yml to download + SHA256-verify + bundle the full official Krita 6.0.4 zip into the Windows real-engine package, dispatch CI, release v0.50-full-krita.
+
+---
+Task ID: v53-A-guide-ui
+Agent: Opus (general-purpose)
+Task: Wire guide3d Draw/Loft/Bend/Primitives UI panel for Feather 3D parity.
+
+Work Log:
+- Read worklog.md (last 200 lines) + PROGRESS_SATURDAY.md to understand prior work; confirmed the guide3d engine (lib/engine/guide3d/, 12 files) was fully built but the user-facing mode-switcher UI was only a minimal in-canvas launcher row in main_screen.dart (_buildGuideLauncher: 4 text buttons).
+- Read guide3d_type.dart (Guide3DType enum: drawn/lofted/primitive/bent with displayName Draw/Loft/Primitives/Bend), guide_manager.dart (Guide3DManager: add/remove/select/setOpacity/transform, no mode setter — the host owns _guideMode), guide3d.dart (Guide3D base + raycast), primitive_guide.dart (PrimitiveGuideBuilder + PrimitiveGuideParams: size/height/radius/segments), lofted_guide.dart (LoftedGuideBuilder + LoftGuideParams: tension/samplesPerCurve), bent_guide.dart (BentGuideBuilder + BentGuideParams: spineLength/resample), and guide3d_primitive.dart (Guide3DPrimitive enum: cube/pyramid/sphere/tube).
+- Read main_screen.dart guide wiring: _GuideMode enum (none/loft/primitive/bend), setGuideMode(), setGuideDrawMode(), insertPrimitive(), setPrimitiveSegments(), setLoftTension(), finishLoft/cancelLoft/finishPrimitive/cancelPrimitive/cancelBend — all existing host methods. Found the editor Stack (LayoutBuilder) with the guide overlay Positioned at top-center (~line 606) and the _GuideMode enum + _CamRay/_ExportFormat/_CapturedViewport private classes at file end.
+- Read top_bar.dart, tool_dock.dart, feather_colors.dart (FeatherPalette: accentPink=#F472B6, accentPurple=#A78BFA, accentOrange=#FB923C — the rose/pink family, NOT indigo/blue), glassmorphism.dart (GlassSpec/GlassPainter), glass_panel.dart (GlassPanel widget), icon_button.dart (FeatherIconButton), feather_typography.dart (Inter/Caveat/JetBrainsMono styles).
+- Created lib/ui/widgets/guide_panel.dart (639 lines): a self-contained StatefulWidget GuidePanel with:
+  * Mode picker: Material 3 SegmentedButton<Guide3DType> (Draw/Loft/Bend/Prim segments).
+  * Primitives section: Wrap of 4 _PrimitiveChip (Cube/Pyramid/Sphere/Tube) + size Slider (0.5–6.0, rose activeColor).
+  * Loft section: _AxisPicker SegmentedButton<GuideAxis> (X/Y/Z) + segments Slider (4–128, purple activeColor).
+  * Bend section: _AxisPicker + angle Slider (-180° to 180°, orange activeColor).
+  * Snap-to-guide + Show-guide-ribbon toggle rows with Switch (rose thumb/track via WidgetStateProperty, avoiding the deprecated activeColor).
+  * Rose/pink gradient header (accentPink→accentPurple→accentOrange) with "3D Guide" title + close button.
+  * GlassPanel body (GlassSpec.panel) + dark-theme-aware palette via Theme.of(context).brightness.
+  * GuideAxis enum (x/y/z) exported for the host wiring.
+  * 9 change callbacks (onModeChanged, onPrimitiveKindChanged, onPrimitiveSizeChanged, onLoftAxisChanged, onLoftSegmentsChanged, onBendAngleChanged, onBendAxisChanged, onSnapChanged, onRibbonChanged) + onClose.
+- Wired the panel into main_screen.dart as a SMALL SELF-CONTAINED BLOCK (no refactor of existing code):
+  * Added import for guide_panel.dart + guide3d_type.dart.
+  * Added 8 new state fields (_guidePanelVisible, _guideSnap, _guideRibbon, _guidePrimitiveSize, _guideLoftAxis, _guideLoftSegments, _guideBendAngle, _guideBendAxis) with // ignore: unused_field on the 7 capture-only fields (the F2 milestone will read them).
+  * Added a Positioned bottom-right _GuidePanelToggleButton (rose/pink gradient circle, view_in_ar/close icon) + a conditional Positioned right-side SingleChildScrollView wrapping _buildGuidePanel() — both inserted into the existing editor Stack children.
+  * Added _buildGuidePanel() helper that constructs GuidePanel with onModeChanged translating Guide3DType → _GuideMode (drawn→setGuideDrawMode(true)+setGuideMode(none); lofted→setGuideMode(loft); bent→setGuideMode(bend); primitive→setGuideMode(primitive)), onPrimitiveKindChanged→insertPrimitive (existing host method), and the remaining callbacks capturing into the _guide* fields.
+  * Added _GuidePanelToggleButton private StatelessWidget at file end (near _CamRay/_ExportFormat).
+- Wrote test/guide_panel_test.dart (9 tests in 4 groups): rendering (header + 4 mode segments + 2 toggle rows + 2 Switches), mode callback (Bend→bent, Loft→lofted), primitive section (Sphere chip→onPrimitiveKindChanged, size Slider drag→onPrimitiveSizeChanged), toggles+close (snap Switch→onSnapChanged true, ribbon Switch→onRibbonChanged false, close icon→onClose). All pump inside a dark MaterialApp+Scaffold so GlassPanel's BackdropFilter has a surface.
+- Validation: flutter analyze lib/ui/widgets/guide_panel.dart → No issues found (0 errors). flutter analyze lib/ → No issues found (0 errors, 0 warnings — did not regress the documented 0/0/12 baseline). flutter analyze lib/screens/main_screen.dart lib/utils/app_version.dart test/guide_panel_test.dart → No issues found. flutter test test/guide_panel_test.dart → 9/9 passed (~3s).
+- Bumped pubspec.yaml 0.52.0+1 → 0.53.0+1; bumped lib/utils/app_version.dart kAppVersion 0.51.0+1 → 0.53.0+1 and kAppVersionLabel v0.51.0 → v0.53.0 (was stale — pubspec was already 0.52).
+- Committed only my 5 files (guide_panel.dart, guide_panel_test.dart, main_screen.dart, app_version.dart, pubspec.yaml) — left pre-existing uncommitted changes in editor_screen.dart + canvas_viewport.dart (a concurrent agent's MaterialLightRig honesty-gap 2 work, not mine) and untracked test/core/math/*.dart files untouched.
+- Pre-push: stashed the 2 non-mine unstaged files + 1 concurrent main_screen.dart edit, ran git pull --rebase origin feather-krita-flutter (up to date, no conflicts), pushed successfully (00abde39..4a0b7079), then popped both stashes to restore the concurrent agent's working tree.
+
+Stage Summary:
+- Files created: lib/ui/widgets/guide_panel.dart (639 lines), test/guide_panel_test.dart (9 tests).
+- Files modified (minimal wiring only): lib/screens/main_screen.dart (+~70 lines: 1 import, 8 fields, 2 Positioned in Stack, _buildGuidePanel helper, _GuidePanelToggleButton class), lib/utils/app_version.dart (version bump), pubspec.yaml (version bump 0.52→0.53).
+- Test results: 9/9 guide_panel_test.dart pass; flutter analyze lib/ui/widgets/guide_panel.dart = 0 errors; flutter analyze lib/ = No issues found (no baseline regression).
+- Commit hash: 4a0b7079 (pushed to origin/feather-krita-flutter).
+- Feather 3D guide parity: the user can now switch Draw/Loft/Bend/Primitives modes, pick a primitive shape + size, set loft axis + segments, set bend axis + angle, and toggle snap-to-guide + guide-ribbon visibility from a rose/pink Material 3 dark-theme panel. The mode + shape callbacks drive the existing host setters (setGuideMode/setGuideDrawMode/insertPrimitive); the remaining knobs are captured into host fields for the F2 stroke-session milestone.
+- No blockers. No files outside scope touched (transform/, rendering/, brush/, krita_bridge/ untouched; main_screen.dart change is the minimal wiring block only).
+
+---
+Task ID: v53-C-tests-lint
+Agent: Opus (general-purpose)
+Task: Add 20+ new unit tests + clean 12 info-level lint issues.
+
+Work Log:
+- Read worklog.md (last 150 lines) for prior work; confirmed baseline 244 tests pass (`flutter test` => "All tests passed!", 00:06 wall time).
+- Ran `flutter analyze lib/` → "No issues found!" (0 errors, 0 warnings, 0 infos). The 12 deprecation info issues mentioned in the task brief (Matrix4.scale, Switch.activeColor, Color.red/green/blue/alpha/value) had ALREADY been cleaned up by commits 52a0ba88 (withOpacity→withValues, 77→12 info) and 00abde39 (29→4 total issues). No lib/ lint work remained.
+- Inspected existing test files (10 files, 244 tests) and identified untested modules: lib/core/math/{aabb,plane,sphere,triangle,vec2,vec4}.dart, lib/engine/assistance/{mirror_assist,draw_shape_assist,stable_strokes}.dart, lib/engine/color/color_sampler.dart, lib/engine/transform/transform_resolver.dart (TransformDelta), lib/io/{gltf_exporter,obj_exporter}.dart.
+- Created 13 NEW test files in test/ (no existing tests modified):
+  * test/core/math/aabb_test.dart — 16 tests (construction, containment, intersection, ray slab, expand/merge, transformed, equality).
+  * test/core/math/plane_test.dart — 14 tests (construction, side predicates, ray/segment intersection, transformed, equality).
+  * test/core/math/sphere_test.dart — 15 tests (construction, containment, sphere-sphere/sphere-AABB intersection, merge, transformed, equality).
+  * test/core/math/triangle_test.dart — 16 tests (geometry, barycentric coords, containsPoint, closestPoint Ericson regions, Möller-Trumbore ray intersection with cullBackfaces, equality).
+  * test/core/math/vec2_test.dart — 11 tests (construction, arithmetic, geometry, lerp, signed angleTo).
+  * test/core/math/vec4_test.dart — 15 tests (construction, arithmetic, length/normalize, swizzle/perspectiveDivide, lerp/copyWith).
+  * test/engine/assistance/mirror_assist_test.dart — 15 tests (axis toggling, 2^N copyCount, X/Y/Z reflection matrices, origin offset, reflectPoints, LiveMirror streaming, JSON round-trip).
+  * test/engine/assistance/draw_shape_assist_test.dart — 12 tests (line snap, circle snap, arc snap, freehand fallback, degenerate inputs, DrawShapeAdjuster begin/commit/adjust).
+  * test/engine/assistance/stable_strokes_test.dart — 11 tests (disabled passthrough, warm-up null, causal bounds, extrapolation, confidence growth, flush/reset, toggle/setIntensity config helpers).
+  * test/engine/color/color_sampler_test.dart — 12 tests (nearest-stroke sampling, hidden-stroke skip, bilinear image sampling, samplePixel, empty/degenerate cases).
+  * test/engine/transform/transform_delta_test.dart — 10 tests (zero constant, isZero, translation/rotation/scale compose, pivot inheritance).
+  * test/io/gltf_exporter_test.dart — 10 tests (asset metadata, strokes→LINE_STRIP, hidden-stroke skip, POSITION accessor min/max, guides→TRIANGLES, base64 buffer embedding, export byte output).
+  * test/io/obj_exporter_test.dart — 10 tests (header, object naming, vertex/face counts, hidden & degenerate strokes, multi-stroke indexing, cap centers, constructor asserts).
+- Total NEW tests added: 167 (16+14+15+16+11+15+15+12+11+12+10+10+10) across 13 files. (Task target was 20+.)
+- Validation:
+  * `flutter test` → "All tests passed!" 424 tests (244 pre-existing baseline + 9 v53-A guide_panel + 4 v53-B lightrig + 167 v53-C = 424).
+  * `flutter analyze lib/` → "No issues found!" (0 errors / 0 warnings / 0 infos — same as before, no regression).
+  * `flutter analyze` (whole repo) → 5 issues total: 3 unused imports + 1 leading underscore in pre-existing test files (out of scope; task forbids modifying existing tests) + 1 super-parameter in a concurrent agent's untracked lightrig_test.dart (not mine). All 13 of my new test files analyze 100% clean.
+- Lint cleanup attempted: scanned lib/ for the 12 documented deprecation patterns (Matrix4.scale, Switch.activeColor, Color.red/green/blue/alpha/value). NONE remain in lib/ — they were already fixed by prior commits. The remaining `activeColor` and `alpha` references in lib/ are custom widget/state fields (e.g. CanvasViewport.activeColor, ColorPicker.alpha), NOT the deprecated Flutter APIs. No safe lint fixes to apply in lib/.
+- Removed one unused import (stroke3d.dart) from my own test/io/gltf_exporter_test.dart after the first analyze pass flagged it.
+- Pre-push: stashed concurrent v53-A/v53-B agents' unstaged changes (lib/screens/main_screen.dart, lib/ui/screens/editor_screen.dart, lib/ui/widgets/canvas_viewport.dart, worklog.md) so `git pull --rebase` could run cleanly (no remote changes to integrate; up to date). Popped the stash afterwards to restore the concurrent agents' working tree. Pushed 797e17ba successfully.
+- Did NOT touch: lib/screens/main_screen.dart, lib/ui/screens/editor_screen.dart, lib/ui/widgets/canvas_viewport.dart, lib/engine/guide3d/, lib/engine/transform/ (engine code — only tested the existing TransformDelta API), lib/engine/material/, test/guide_panel_test.dart, test/lightrig_test.dart, test/core/math/mesh_test.dart, test/engine/curves_test.dart, test/engine/selection_test.dart, test/engine/transform_test.dart, test/engine/guide3d_test.dart, test/engine/material_test.dart, test/engine/brush_test.dart, test/core/math/{vec3,mat4,quaternion}_test.dart (all pre-existing or concurrent-agent files).
+
+Stage Summary:
+- Test files added (13 NEW files, no existing tests modified):
+  test/core/math/aabb_test.dart (16)
+  test/core/math/plane_test.dart (14)
+  test/core/math/sphere_test.dart (15)
+  test/core/math/triangle_test.dart (16)
+  test/core/math/vec2_test.dart (11)
+  test/core/math/vec4_test.dart (15)
+  test/engine/assistance/mirror_assist_test.dart (15)
+  test/engine/assistance/draw_shape_assist_test.dart (12)
+  test/engine/assistance/stable_strokes_test.dart (11)
+  test/engine/color/color_sampler_test.dart (12)
+  test/engine/transform/transform_delta_test.dart (10)
+  test/io/gltf_exporter_test.dart (10)
+  test/io/obj_exporter_test.dart (10)
+- Test count: 244 → 424 total (167 new from v53-C; +9 from v53-A guide_panel_test; +4 from v53-B lightrig_test). All 424 pass.
+- Lint info count: lib/ was already 0/0/0 (the 12 documented deprecations were fixed by prior commits 52a0ba88 + 00abde39). Whole-repo analyze went from 4 issues (pre-existing test-file warnings) to 5 issues (4 pre-existing + 1 from concurrent lightrig_test.dart) — none of which are mine. All 13 new test files analyze clean.
+- Commit hash: 797e17ba (pushed to origin/feather-krita-flutter).
+- No blockers. The 5 remaining analyzer issues are all out of scope (3 unused imports + 1 leading underscore in pre-existing test files I was forbidden to modify; 1 super-parameter in a concurrent agent's untracked lightrig_test.dart). No lib/ files touched.
