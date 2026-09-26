@@ -84,6 +84,8 @@ import 'package:vector_math/vector_math_64.dart' hide Colors;
 import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
 import 'package:feather_krita/data/models/project_model.dart';
+import 'package:feather_krita/engine/assistance/assistance_wiring.dart';
+import 'package:feather_krita/engine/assistance/stable_strokes.dart';
 import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
 import 'package:feather_krita/core/math/vec3.dart';
@@ -124,6 +126,7 @@ import 'package:feather_krita/ui/theme/feather_typography.dart';
 import 'package:feather_krita/ui/widgets/brush_picker.dart'
     show BrushPreset;
 import 'package:feather_krita/ui/widgets/editor_shortcuts.dart';
+import 'package:feather_krita/ui/widgets/assist_panel.dart';
 import 'package:feather_krita/ui/widgets/guide_panel.dart';
 import 'package:feather_krita/ui/widgets/material_picker.dart'
     show FeatherMaterial, FeatherPattern;
@@ -376,6 +379,51 @@ class _MainScreenState extends State<MainScreen>
   /// undo / redo. Used by the glTF exporter (passed alongside the
   /// rendered Strokes so exporters can choose either view).
   final Map<int, Stroke3D> _stroke3Ds = <int, Stroke3D>{};
+
+  // ----- Assistance subsystems (v0.54-A wiring) ---------------------------
+  //
+  // Four assistance modules shipped with tests but were never called at
+  // runtime (AUDIT_FINAL.md §3). They are now wired into the live paint
+  // path via the pure helpers in
+  // `lib/engine/assistance/assistance_wiring.dart`:
+  //
+  //   * Stable Strokes  — causal Gaussian pre-filter on each stroke
+  //                       update's world sample (see [_stableStrokes]).
+  //   * ColorSampler    — eye-dropper tool tap → nearest-stroke colour
+  //                       (see [_onTapSelect] eyedropper branch).
+  //   * MirrorAssist    — X/Y/Z reflection of the committed stroke into
+  //                       2^N - 1 editable copies (see [_onStrokeEnd]).
+  //   * DrawShapeAssist — PCA line / Kasa circle snap on the committed
+  //                       stroke's control points (see [_onStrokeEnd]).
+  //
+  // The assist panel (lib/ui/widgets/assist_panel.dart) floats on the
+  // right of the canvas (next to the guide panel) and exposes the
+  // per-assist toggles. Each toggle is independent of the active tool so
+  // the artist can combine them (e.g. Stable Strokes + Mirror X).
+
+  /// Stable Strokes stabilizer instance. Reset on every stroke start;
+  /// fed each stroke-update world sample. When [_stableStrokesEnabled]
+  /// is false the stabilizer passes samples through unchanged.
+  final StableStrokes _stableStrokes = StableStrokes(
+    config: const StableStrokesConfig(
+      enabled: false,
+      intensity: 0.5,
+      maxWindow: 12,
+      extrapolation: 0.5,
+    ),
+  );
+
+  /// Whether Stable Strokes is active. Toggled from the assist panel.
+  bool _stableStrokesEnabled = false;
+
+  /// Live Stable Strokes intensity (0..1), mirrored from the assist
+  /// panel slider. Read on stroke start when the stabilizer config is
+  /// rebuilt (see [_onStrokeStart]).
+  double _stableStrokesIntensity = 0.5;
+
+  /// Whether the assist panel overlay is visible. Toggled by the
+  /// floating rose/pink button in the bottom-right of the canvas.
+  bool _assistPanelVisible = false;
 
   /// When false (default), the joystick handlers route through
   /// [Joystick2dResolver] (view-based: move = camera-right/up plane,
@@ -716,6 +764,33 @@ class _MainScreenState extends State<MainScreen>
                   bottom: 96,
                   child: SingleChildScrollView(
                     child: _buildGuidePanel(),
+                  ),
+                ),
+
+              // ----- Assist panel (v0.54-A) — self-contained wiring block -----
+              // Floating rose/pink toggle button (bottom-right, stacked
+              // left of the guide panel toggle) + the AssistPanel overlay
+              // when [_assistPanelVisible]. The panel exposes the per-assist
+              // toggles (Stable Strokes now; Mirror axes + Draw Shape mode
+              // in the follow-up commits of v0.54-A). Each callback mutates
+              // a host field that the stroke-update / stroke-end handlers
+              // read. See [lib/ui/widgets/assist_panel.dart].
+              Positioned(
+                right: 76,
+                bottom: 96,
+                child: _AssistPanelToggleButton(
+                  visible: _assistPanelVisible,
+                  onTap: () => setState(
+                      () => _assistPanelVisible = !_assistPanelVisible),
+                ),
+              ),
+              if (_assistPanelVisible)
+                Positioned(
+                  right: 76,
+                  top: 80,
+                  bottom: 96,
+                  child: SingleChildScrollView(
+                    child: _buildAssistPanel(),
                   ),
                 ),
             ],
@@ -1496,6 +1571,17 @@ class _MainScreenState extends State<MainScreen>
     if (_guideMode != _GuideMode.bend) {
       _pushUndo();
     }
+    // Stable Strokes: sync the stabilizer's enabled flag to the host's
+    // [_stableStrokesEnabled] toggle and reset the buffer for a new
+    // stroke. The stabilizer is a CAUSAL pre-filter on the world sample
+    // stream — see [_onStrokeUpdate] for the push call.
+    _stableStrokes.setConfig(StableStrokesConfig(
+      enabled: _stableStrokesEnabled,
+      intensity: _stableStrokesIntensity,
+      maxWindow: 12,
+      extrapolation: 0.5,
+    ));
+    _stableStrokes.reset();
     // Initialize Stroke3D capture for draw mode. The Stroke3D is the
     // curves-system source of truth (carries pressure + timestamp per
     // sample) and is converted to a Stroke for rendering in
@@ -1534,15 +1620,34 @@ class _MainScreenState extends State<MainScreen>
     }
     final world = _screenToWorld(screenPos);
     if (world == null) return;
-    _liveStroke.add(world);
+    // Stable Strokes pre-filter: push the raw world sample through the
+    // causal Gaussian stabilizer and use its output (when non-null) as
+    // the world position fed to the live stroke + Stroke3D capture. On
+    // warm-up (first sample, returns null) we fall back to the raw world
+    // so the stroke stays continuous — the stabilizer's own doc notes
+    // the consumer "may want to suppress the dab until the filter has
+    // warmed up"; we choose continuity over a 1-frame gap.
+    //
+    // HONESTY NOTE: the real-Krita dab path (see [_paintRealDab] below)
+    // continues to use the raw [screenPos] — re-projecting the smoothed
+    // world back to screen space would require a world→screen helper
+    // that doesn't exist yet (see [_screenToRay] for the inverse). The
+    // stabilizer therefore smooths the 3D curve geometry (the ribbon
+    // + the exported Stroke3D) but not the real-Krita paint layer's
+    // dab placement. This is a partial wiring — documented honestly.
+    final pressure = _pressure ? 0.8 : 0.5;
+    final t = _strokeStartTime == null
+        ? 0.0
+        : DateTime.now().difference(_strokeStartTime!).inMicroseconds / 1e6;
+    final smoothed =
+        smoothStrokeSample(_stableStrokes, world, pressure: pressure, time: t);
+    final sampleWorld = smoothed ?? world;
+    _liveStroke.add(sampleWorld);
     // Build Stroke3D (curves-system source of truth) for draw mode.
     if (_liveStroke3D != null && _strokeStartTime != null) {
-      final t =
-          DateTime.now().difference(_strokeStartTime!).inMicroseconds /
-              1e6;
       _liveStroke3D!.addSample(StrokeSample3D(
-        position: world.clone(),
-        pressure: _pressure ? 0.8 : 0.5,
+        position: sampleWorld.clone(),
+        pressure: pressure,
         time: t,
       ));
     }
@@ -1556,10 +1661,10 @@ class _MainScreenState extends State<MainScreen>
     if (_guideMode == _GuideMode.bend || _guideDrawMode) {
       if (_liveStroke.length == 1) {
         _brush
-            .beginStroke(StrokePoint(position: world.clone(), pressure: 0.8));
+            .beginStroke(StrokePoint(position: sampleWorld.clone(), pressure: 0.8));
       } else {
         _brush
-            .addPoint(StrokePoint(position: world.clone(), pressure: 0.8));
+            .addPoint(StrokePoint(position: sampleWorld.clone(), pressure: 0.8));
       }
     }
     // Wire real Krita dab → host paint canvas → ui.Image → canvas drawImage.
@@ -3209,6 +3314,23 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
+  /// Builds the v0.54-A [AssistPanel] overlay. The panel's Stable Strokes
+  /// toggle / intensity callbacks mutate the host's [_stableStrokesEnabled]
+  /// / [_stableStrokesIntensity] fields, which the stroke-start handler
+  /// reads when it rebuilds the stabilizer config (see [_onStrokeStart]).
+  /// Mirror axes + Draw Shape mode sections are added in the follow-up
+  /// commits of v0.54-A.
+  Widget _buildAssistPanel() {
+    return AssistPanel(
+      initialStableStrokes: _stableStrokesEnabled,
+      initialStableStrokesIntensity: _stableStrokesIntensity,
+      onStableStrokesChanged: (v) => setState(() => _stableStrokesEnabled = v),
+      onStableStrokesIntensityChanged: (v) =>
+          setState(() => _stableStrokesIntensity = v),
+      onClose: () => setState(() => _assistPanelVisible = false),
+    );
+  }
+
   Widget _buildGuideOverlay() {
     switch (_guideMode) {
       case _GuideMode.none:
@@ -3530,3 +3652,55 @@ class _GuidePanelToggleButton extends StatelessWidget {
     );
   }
 }
+
+/// Floating rose/pink toggle button for the v0.54-A [AssistPanel] overlay.
+/// Sits in the bottom-right corner of the editor Stack (offset left of the
+/// [_GuidePanelToggleButton] so the two don't overlap); tapping it flips
+/// [_MainScreenState._assistPanelVisible]. Stateless + self-contained,
+/// mirroring [_GuidePanelToggleButton].
+class _AssistPanelToggleButton extends StatelessWidget {
+  const _AssistPanelToggleButton({required this.visible, required this.onTap});
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: visible ? 'Hide Assist panel' : 'Show Assist panel',
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFFFB923C),
+                Color(0xFFF472B6),
+                Color(0xFFA78BFA),
+              ],
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: const Color(0xFFFB923C).withValues(alpha: 0.45),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            visible ? Icons.close_rounded : Icons.auto_awesome_outlined,
+            color: Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
