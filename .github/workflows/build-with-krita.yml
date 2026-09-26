@@ -59,6 +59,34 @@ jobs:
       - uses: actions/checkout@v4
 
       # --------------------------------------------------------------------------
+      # Step 0: Free disk space. FAILED VERIFIED in run 36229966283 step 6:
+      #   "fatal error C1085: Cannot write precompiled header file ...
+      #    There is not enough space on the disk." (qt5-winextras build).
+      # windows-latest has ~14 GB free SSD; vcpkg Boost+OpenEXR+qt5* in BOTH
+      # debug+release exceeds it. This job builds a Windows DLL only — it never
+      # touches Android SDK / Docker / Go / Rust / CodeQL / PyPy preinstalls
+      # (~15+ GB reclaimable). Strawberry Perl + Windows Kits + node are KEPT
+      # (vcpkg openssl needs perl; actions runtime needs node; MSVC needs Kits).
+      # --------------------------------------------------------------------------
+      - name: Free disk space (C1085 disk-full fix, run 36229966283)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "SilentlyContinue"
+          $before = [math]::Round((Get-PSDrive C).Free/1GB,1)
+          Write-Host "Free before: $before GB"
+          Remove-Item "C:\Program Files (x86)\Android" -Recurse -Force
+          Remove-Item "$env:LOCALAPPDATA\Android" -Recurse -Force
+          docker system prune -af --volumes
+          Remove-Item "C:\hostedtoolcache\windows\go" -Recurse -Force
+          Remove-Item "C:\hostedtoolcache\windows\rust" -Recurse -Force
+          Remove-Item "C:\hostedtoolcache\windows\CodeQL" -Recurse -Force
+          Remove-Item "C:\hostedtoolcache\windows\PyPy" -Recurse -Force
+          Remove-Item "C:\hostedtoolcache\windows\Ruby" -Recurse -Force
+          Remove-Item "C:\hostedtoolcache\windows\dotnet" -Recurse -Force
+          $after = [math]::Round((Get-PSDrive C).Free/1GB,1)
+          Write-Host "Free after: $after GB (reclaimed $([math]::Round($after-$before,1)) GB)"
+
+      # --------------------------------------------------------------------------
       # Step 1: MSVC dev environment (cl.exe, link.exe, dumpbin.exe on PATH).
       # --------------------------------------------------------------------------
       - name: Setup MSVC
@@ -151,6 +179,16 @@ jobs:
           # VCPKG_ROOT env on the runner sometimes points at an MSVC-internal
           # vcpkg; force the canonical C:\vcpkg location.
           $env:VCPKG_ROOT = "C:\vcpkg"
+          # DISK FIX (run 36229966283 died on C1085 disk-full): default
+          # x64-windows triplet builds BOTH debug+release → 2x disk and time.
+          # Krita configure uses -DCMAKE_BUILD_TYPE=Release (single-config
+          # Ninja), so release-only libs are sufficient. Patch the system
+          # triplet in place so every --triplet x64-windows use stays
+          # consistent (configure step passes VCPKG_TARGET_TRIPLET=x64-windows
+          # via the toolchain default).
+          Add-Content -Path "C:\vcpkg\triplets\x64-windows.cmake" -Value "`nset(VCPKG_BUILD_TYPE release)"
+          Write-Host "Triplet x64-windows patched to release-only:"
+          Get-Content "C:\vcpkg\triplets\x64-windows.cmake" | Select-Object -Last 2
           # Install Krita's REQUIRED find_package() deps (verified above).
           # Note: kf5* ports will transitively install vcpkg's qt5-base — that
           # is a SEPARATE Qt5 from aqtinstall's. We don't use it for cl.exe
@@ -173,6 +211,15 @@ jobs:
           }
           # Make vcpkg packages discoverable to CMake via the toolchain file.
           & "C:\vcpkg\vcpkg.exe" integrate install
+          # DISK FIX continued: buildtrees (extracted sources + intermediate
+          # objs, ~10-15 GB for boost/qt/openexr) and downloads (tarball cache)
+          # are no longer needed once installed/ is populated. Remove them so
+          # the Krita cmake build (steps 2-3) has room. installed/ is kept —
+          # that is what the toolchain file points at.
+          Remove-Item -Recurse -Force "C:\vcpkg\buildtrees" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\vcpkg\downloads" -ErrorAction SilentlyContinue
+          $free = [math]::Round((Get-PSDrive C).Free/1GB,1)
+          Write-Host "vcpkg install done, free disk: $free GB"
 
       # --------------------------------------------------------------------------
       # Step 2: Configure Krita source with CMake.
