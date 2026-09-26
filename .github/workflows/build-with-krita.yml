@@ -644,6 +644,10 @@ jobs:
 
   build-android-with-krita:
     name: Build Android APK with Krita Engine
+    # DISABLED per user request 2026-09-26: "saya ga minta buat android, buat
+    # windows dulu". Focus 100% on Windows (krita_bridge.dll + Windows EXE).
+    # Re-enable by removing the `if: false` line below.
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
