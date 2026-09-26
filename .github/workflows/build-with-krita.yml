@@ -125,7 +125,10 @@ jobs:
           # are not separate module downloads for this version+arch combo).
           # If Krita configure later complains about missing Qt5Svg, we will
           # add `qt5-svg` to the vcpkg install list as a fallback.
-          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir C:\Qt
+          # --base pins the OFFICIAL Qt host: run 36242932348 died with
+          # Bad7zFile (Qt5AxServer.lib) from random mirror qt.mirror.constant.com
+          # serving a corrupt 7z. Official download.qt.io serves clean archives.
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir C:\Qt --base https://download.qt.io/
           # Verify Qt install path (used by both cmake -DCMAKE_PREFIX_PATH and
           # the cl /I include path / /LIBPATH lib path in Step 4).
           if (-not (Test-Path "C:\Qt\5.15.2\msvc2019_64\lib\Qt5Core.lib")) {
