@@ -787,10 +787,13 @@ class _MainScreenState extends State<MainScreen>
       renderMode: _renderMode,
       // Lighting direction (Stage panel → Environment → Azimuth /
       // Elevation). The painter's _strokeGeometry uses this for the
-      // Lambert lit-sign computation (dot(normal, -lightDir)) and the
-      // drop-shadow projection (skew along lightDir). Converted from
-      // spherical (azimuth, elevation) to a 2D screen-space direction
-      // vector — see [_azimuthElevationToLightDir].
+      // legacy 2D Lambert lit-sign fallback (dot(normal, -lightDir),
+      // used when [CanvasScene.lightRig] is null) and the drop-shadow
+      // projection (skew along lightDir). The rig-bound path
+      // ([_buildLightRig]) derives the lit sign from
+      // [MaterialLightRig.evaluate] instead — see honesty-gap 2 fix.
+      // Converted from spherical (azimuth, elevation) to a 2D screen-
+      // space direction vector — see [_azimuthElevationToLightDir].
       lightDir: _azimuthElevationToLightDir(_lightAzimuth, _lightElevation),
       // Ground plane + shadow projection. When ON, the painter draws a
       // visible band at 80% of the viewport height (computed in
@@ -812,7 +815,39 @@ class _MainScreenState extends State<MainScreen>
       // [_buildOverlayPrimitives]. Empty when no overlay applies (e.g.
       // the Draw tool with no active selection).
       overlayPrimitives: _buildOverlayPrimitives(vp),
+      // Honesty-gap 2 fix: pass the material light rig so the painter
+      // derives per-vertex lit signs from [MaterialLightRig.evaluate]
+      // (shared with the Shaded material + BrushRenderer) instead of
+      // the legacy inline 2D Lambert. Built from the same
+      // (azimuth, elevation) as [lightDir] above so the rig's key-light
+      // direction matches the shadow-projection direction — see
+      // [_buildLightRig].
+      lightRig: _buildLightRig(),
     );
+  }
+
+  /// Honesty-gap 2 fix: constructs the [MaterialLightRig] shared with the
+  /// painter (and the Shaded material / BrushRenderer when wired). The
+  /// rig's 3D key-light direction is built from the same
+  /// (azimuth, elevation) the legacy 2D [CanvasScene.lightDir] is derived
+  /// from, so the rig's lit-sign decision matches the legacy inline calc
+  /// (a 2D normal `(nx, ny, 0)` dotted with `-key.unit` equals the legacy
+  /// `-(nx*ldx + ny*ldy)` when `key.unit.xy == lightDir`).
+  ///
+  /// The rig's ambient/intensity are irrelevant for the painter's
+  /// lit-sign decision (only the sign of `n · (-L)` matters, which is
+  /// direction-only); they ARE consumed by the Shaded material's
+  /// [ShadedMaterial.shade] when a stroke carries that material.
+  MaterialLightRig _buildLightRig() {
+    final el = _lightElevation.clamp(0.0, dmath.pi / 2);
+    final ce = dmath.cos(el);
+    final se = dmath.sin(el);
+    final dir = Vec3(
+      ce * dmath.cos(_lightAzimuth),
+      ce * dmath.sin(_lightAzimuth),
+      se,
+    );
+    return MaterialLightRig(direction: dir, intensity: 1.0, ambient: 0.35);
   }
 
   /// Converts a spherical light direction (azimuth + elevation, both in

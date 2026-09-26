@@ -176,6 +176,17 @@ class EditorScreen extends StatefulWidget {
     this.onJoystickMove,
     this.onJoystickRotate,
     this.onJoystickScale,
+    // --- Joystick 2D/3D + Lock toggles (honesty-gap 1 fix) ----------------
+    // The JoystickWidget exposes 2D/3D + Lock toggle pills, but until v0.53
+    // the editor never forwarded the callbacks — the pills were dead UI.
+    // The host (lib/screens/main_screen.dart) owns the canonical state
+    // (_joystick3d, _joystickLocked) and gates joystick input on lock;
+    // we mirror it back here so the pills reflect the active state and
+    // forward taps through onToggle3D / onLockToggle.
+    this.isJoystick3D = false,
+    this.joystickLocked = false,
+    this.onToggle3D,
+    this.onLockToggle,
     this.onPickPreset,
     // --- Export wiring (feather-integration) -----------------------------
     // onExport: opens the host's export sheet (glTF / OBJ / PNG options).
@@ -250,6 +261,26 @@ class EditorScreen extends StatefulWidget {
 
   /// Joystick → scale delta (width, height) — fractional.
   final ValueChanged<Offset>? onJoystickScale;
+
+  /// Mirror of the host's [_joystick3d] flag — true when the 3D world-axis
+  /// resolver is active. Drives the JoystickWidget's 2D/3D pill state so
+  /// the toggle reflects the active resolver.
+  final bool isJoystick3D;
+
+  /// Mirror of the host's [_joystickLocked] flag — true when the joystick
+  /// is locked (host ignores drag input; the knob still tracks visually).
+  final bool joystickLocked;
+
+  /// Joystick 2D/3D toggle pill → host flips [_joystick3d] and switches
+  /// the resolver used by [_onJoystickMove] / _onJoystickRotate /
+  /// _onJoystickScale.
+  final VoidCallback? onToggle3D;
+
+  /// Joystick Lock toggle pill → host flips [_joystickLocked]. When
+  /// locked, the host early-returns from the joystick input handlers so
+  /// drags have no transform effect (the widget still snaps the knob
+  /// back to centre on release).
+  final VoidCallback? onLockToggle;
 
   /// Brush picker → preset selected. The host loads it into the engine.
   final ValueChanged<BrushPreset>? onPickPreset;
@@ -579,6 +610,10 @@ class _EditorScreenState extends State<EditorScreen> {
                   onMove: widget.onJoystickMove,
                   onRotate: widget.onJoystickRotate,
                   onScale: widget.onJoystickScale,
+                  is3D: widget.isJoystick3D,
+                  locked: widget.joystickLocked,
+                  onToggle3D: widget.onToggle3D,
+                  onLockToggle: widget.onLockToggle,
                 ),
               ),
             ),

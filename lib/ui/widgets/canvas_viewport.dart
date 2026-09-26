@@ -23,8 +23,12 @@
 //
 //   1. compute a per-vertex screen-space normal (perpendicular of the
 //      local tangent, smoothed across the polyline),
-//   2. compute a per-vertex lit sign from `dot(normal, -lightDir)` —
-//      i.e. which side of the tube faces the light source,
+//   2. compute a per-vertex lit sign — which side of the tube faces the
+//      light source. When [CanvasScene.lightRig] is bound (honesty-gap 2
+//      fix) this routes through [MaterialLightRig.evaluate] so the
+//      painter shares the Shaded material's lighting model; otherwise it
+//      falls back to the legacy inline 2D Lambert
+//      `sign(dot(normal, -lightDir))`.
 //   3. draw THREE offset polylines:
 //        • a base pass at the stroke's own color & width,
 //        • a "shadow" pass offset to the unlit side, darker & thinner,
@@ -55,6 +59,8 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, LogicalKeyboardKey;
 
+import '../../core/math/vec3.dart' show Vec3;
+import '../../engine/material/light_rig.dart' show MaterialLightRig;
 import '../theme/feather_colors.dart';
 
 // ── Overlay primitives ───────────────────────────────────────────────────
@@ -227,6 +233,16 @@ class CanvasScene {
     /// values so the UI package stays decoupled from the engine. Empty by
     /// default (no overlay to draw).
     this.overlayPrimitives = const [],
+    /// Honesty-gap 2 fix: the material light rig shared with the Shaded
+    /// material + BrushRenderer. When non-null, [_CanvasPainter] derives
+    /// each stroke's per-vertex lit sign from [MaterialLightRig.evaluate]
+    /// instead of the legacy inline 2D Lambert (`sign(dot(n, -lightDir))`).
+    /// This makes the painter consume the rig's output so all strokes use
+    /// the same lighting model as the Shaded material. Null = legacy
+    /// inline calc (kept as a fallback for callers that construct
+    /// [CanvasScene] without a rig — existing tests, the default
+    /// constructor).
+    this.lightRig,
   });
 
   final List<CanvasStroke> strokes;
@@ -254,6 +270,12 @@ class CanvasScene {
   /// liquify preview). Drawn after [selectionBounds] in screen space
   /// (no pan / zoom — they're already in canvas pixels).
   final List<CanvasOverlay> overlayPrimitives;
+
+  /// The material light rig (honesty-gap 2 fix). When non-null, the
+  /// painter derives per-vertex lit signs from [MaterialLightRig.evaluate]
+  /// so all strokes use the same lighting as the Shaded material. Null
+  /// falls back to the legacy inline 2D Lambert.
+  final MaterialLightRig? lightRig;
 }
 
 class CanvasViewport extends StatefulWidget {
@@ -545,6 +567,38 @@ class _CanvasViewportState extends State<CanvasViewport> {
       Theme.of(context).brightness == Brightness.dark
           ? FeatherColors.dark
           : FeatherColors.light;
+}
+
+/// Honesty-gap 2 fix: computes the per-vertex lit sign (+1 = lit side,
+/// -1 = shadow side) for a 2D tube normal by routing through the
+/// material light rig's [MaterialLightRig.evaluate].
+///
+/// The painter previously computed this inline as
+/// `sign(dot(normal, -lightDir))` — a 2D Lambert that ignored the rig's
+/// ambient / intensity / color and diverged from the Shaded material's
+/// lighting model. This helper makes the painter consume the rig's
+/// output so all strokes use the same lighting.
+///
+/// Lit-sign decision: [MaterialLightRig.evaluate] returns
+/// `LightResult{diffuse, specular}` where `diffuse = ambient +
+/// (1-ambient)*intensity*max(0, n·(-L))`. When the normal faces the
+/// light (`n·(-L) > 0`), `diffuse > ambient` → lit side (+1). When the
+/// normal faces away (`n·(-L) <= 0`), `diffuse == ambient` → shadow
+/// side (-1). This matches the legacy `sign(dot(n, -lightDir))` decision
+/// everywhere except the exact perpendicular boundary (`n·(-L) == 0`),
+/// which the legacy code rounded to +1 and this helper rounds to -1 — a
+/// negligible behaviour change at the lit/shadow transition.
+///
+/// Exposed as a top-level function so [test/lightrig_test.dart] can
+/// verify the painter actually calls [MaterialLightRig.evaluate] (mock
+/// the rig, assert it's called).
+double litSignFromRig(
+  MaterialLightRig rig,
+  Vec3 normal,
+  Vec3 viewDir,
+) {
+  final result = rig.evaluate(normal, viewDir);
+  return result.diffuse > rig.ambient ? 1.0 : -1.0;
 }
 
 class _CanvasPainter extends CustomPainter {
@@ -1142,11 +1196,30 @@ class _CanvasPainter extends CustomPainter {
 
     // Lit sign: +1 if the normal points TOWARDS the light source
     // (i.e. opposite to the direction light travels), -1 otherwise.
+    //
+    // Honesty-gap 2 fix: when the scene carries a [MaterialLightRig],
+    // route the lit-sign decision through [litSignFromRig] (which calls
+    // [MaterialLightRig.evaluate]) so all strokes use the same lighting
+    // model as the Shaded material + BrushRenderer. The 2D screen-space
+    // normal maps to a 3D Vec3 with z=0 (the tube cross-section lives in
+    // the screen plane); view direction is +Z (out of screen) so the
+    // rig's Phong specular picks up the perpendicular view-facing
+    // highlight. Falls back to the legacy inline 2D Lambert
+    // (`sign(dot(n, -lightDir))`) when no rig is bound — preserves the
+    // existing behaviour for callers that construct [CanvasScene]
+    // without a rig (existing tests, the default constructor).
+    final rig = scene.lightRig;
     final litSigns = <double>[];
     for (final nrm in normals) {
-      // dot(n, -lightDir) > 0 → facing the light.
-      final s = -(nrm.dx * lightDir.dx + nrm.dy * lightDir.dy);
-      litSigns.add(s >= 0 ? 1.0 : -1.0);
+      if (rig != null) {
+        final n3 = Vec3(nrm.dx, nrm.dy, 0.0).normalized();
+        const v3 = Vec3(0.0, 0.0, 1.0); // out-of-screen view direction
+        litSigns.add(litSignFromRig(rig, n3, v3));
+      } else {
+        // dot(n, -lightDir) > 0 → facing the light.
+        final s = -(nrm.dx * lightDir.dx + nrm.dy * lightDir.dy);
+        litSigns.add(s >= 0 ? 1.0 : -1.0);
+      }
     }
 
     // Per-vertex half-width — perspective modulation when depths are
