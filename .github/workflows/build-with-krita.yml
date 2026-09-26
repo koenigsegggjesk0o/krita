@@ -169,6 +169,9 @@ jobs:
       #     - LCMS2 2.4             (line 1418) → vcpkg port: lcms
       #       (vcpkg port name is `lcms`, NOT `lcms2` — port provides liblcms2.
       #        First CI run failed with `lcms2 does not exist` error; fixed.)
+      #     - Fontconfig 2.13.1     (line 1616) → vcpkg port: fontconfig (run 36264487307)
+      #     - libunibreak 5.0       (line 1625) → vcpkg port: libunibreak (same run; fix both
+      #       in one cycle — vcpkg cold build costs ~86 min per attempt)
       #   Optional but commonly-needed deps (NOT REQUIRED in CMakeLists.txt):
       #     - OpenEXR, libjpeg-turbo, giflib, quazip, fftw3, gsl
       #
@@ -223,6 +226,7 @@ jobs:
             immer zug lager `
             boost-filesystem boost-system boost-interprocess boost-thread `
             eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
+            fontconfig libunibreak `
             --triplet x64-windows
           if ($LASTEXITCODE -ne 0) {
             Write-Host "FATAL: vcpkg install failed (exit $LASTEXITCODE)"
