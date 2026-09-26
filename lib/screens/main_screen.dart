@@ -140,6 +140,8 @@ import 'package:feather_krita/ui/widgets/liquify_panel.dart'
     show LiquifyMode;
 import 'package:feather_krita/ui/widgets/render_mode_toggle.dart'
     show RenderModeState, RenderModeToggle;
+import 'package:feather_krita/ui/widgets/light_rig_panel.dart'
+    show LightRigPanel;
 import 'package:feather_krita/utils/app_version.dart';
 import 'package:feather_krita/utils/crash_log.dart';
 import 'package:feather_krita/utils/paint_perf.dart';
@@ -266,6 +268,19 @@ class _MainScreenState extends State<MainScreen>
   Color? _backgroundColor;
   bool _showGrid = true;
   bool _showGroundPlane = false;
+
+  // ----- Light rig quick-access (v55-B) -----------------------------------
+  //
+  // The prominent Light dial ([LightRigPanel]) exposes the key light's
+  // intensity + ambient floor in addition to azimuth / elevation (which
+  // the Stage panel already exposes). Pre-v55-B these two were hardcoded
+  // in [_buildLightRig] (intensity = 1.0, ambient = 0.35). The host now
+  // owns them as fields so the dial + the rig stay in sync. The panel
+  // floats at top-left (the sun-icon toggle button); tapping the toggle
+  // shows / hides the panel overlay.
+  double _lightIntensity = 1.0;
+  double _lightAmbient = 0.35;
+  bool _lightRigPanelVisible = false;
 
   // ----- Live stroke assembly state ---------------------------------------
 
@@ -962,6 +977,32 @@ class _MainScreenState extends State<MainScreen>
                   onChanged: _onRenderModeChanged,
                 ),
               ),
+
+              // ----- Light rig quick-access (v55-B) — floating sun-icon
+              // toggle button (top-left, just below the top bar) + the
+              // [LightRigPanel] dial overlay. The dial exposes azimuth /
+              // elevation / intensity / ambient (the four knobs the brief
+              // asks for); the sun icon rotates with the azimuth so the
+              // artist gets a visual affordance of where the key light
+              // sits. The host forwards the panel's callbacks to the
+              // existing [_lightAzimuth] / [_lightElevation] fields +
+              // the new [_lightIntensity] / [_lightAmbient] fields, then
+              // [_buildLightRig] feeds them to the [MaterialLightRig].
+              Positioned(
+                left: 16,
+                top: 70,
+                child: _LightRigPanelToggleButton(
+                  visible: _lightRigPanelVisible,
+                  onTap: () => setState(
+                      () => _lightRigPanelVisible = !_lightRigPanelVisible),
+                ),
+              ),
+              if (_lightRigPanelVisible)
+                Positioned(
+                  left: 16,
+                  top: 124,
+                  child: _buildLightRigPanel(),
+                ),
             ],
           ),
         );
@@ -1082,6 +1123,11 @@ class _MainScreenState extends State<MainScreen>
   /// lit-sign decision (only the sign of `n · (-L)` matters, which is
   /// direction-only); they ARE consumed by the Shaded material's
   /// [ShadedMaterial.shade] when a stroke carries that material.
+  ///
+  /// v55-B: intensity + ambient are now host-owned fields (mutated by
+  /// the [LightRigPanel] dial). Pre-v55-B they were hardcoded (1.0 +
+  /// 0.35); the dial exposes them to the artist the way Feather 3D's
+  /// quick-access light affordance does.
   MaterialLightRig _buildLightRig() {
     final el = _lightElevation.clamp(0.0, dmath.pi / 2);
     final ce = dmath.cos(el);
@@ -1091,7 +1137,11 @@ class _MainScreenState extends State<MainScreen>
       ce * dmath.sin(_lightAzimuth),
       se,
     );
-    return MaterialLightRig(direction: dir, intensity: 1.0, ambient: 0.35);
+    return MaterialLightRig(
+      direction: dir,
+      intensity: _lightIntensity.clamp(0.0, 4.0),
+      ambient: _lightAmbient.clamp(0.0, 1.0),
+    );
   }
 
   /// Converts a spherical light direction (azimuth + elevation, both in
@@ -3904,6 +3954,25 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
+  /// Builds the v55-B [LightRigPanel] overlay. Forwards the host's
+  /// current azimuth / elevation / intensity / ambient as initial
+  /// values + wires each slider's callback to mutate the corresponding
+  /// host field + setState (so [_buildCanvasScene] + [_buildLightRig]
+  /// pick up the new values on the next frame).
+  Widget _buildLightRigPanel() {
+    return LightRigPanel(
+      initialAzimuth: _lightAzimuth,
+      initialElevation: _lightElevation,
+      initialIntensity: _lightIntensity,
+      initialAmbient: _lightAmbient,
+      onAzimuthChanged: (v) => setState(() => _lightAzimuth = v),
+      onElevationChanged: (v) => setState(() => _lightElevation = v),
+      onIntensityChanged: (v) => setState(() => _lightIntensity = v),
+      onAmbientChanged: (v) => setState(() => _lightAmbient = v),
+      onClose: () => setState(() => _lightRigPanelVisible = false),
+    );
+  }
+
   Widget _buildGuideOverlay() {
     switch (_guideMode) {
       case _GuideMode.none:
@@ -4268,6 +4337,58 @@ class _AssistPanelToggleButton extends StatelessWidget {
           ),
           child: Icon(
             visible ? Icons.close_rounded : Icons.auto_awesome_outlined,
+            color: Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating rose/pink toggle button for the v55-B [LightRigPanel] overlay.
+/// Sits at the top-left of the editor Stack (just below the top bar);
+/// tapping it flips [_MainScreenState._lightRigPanelVisible]. Stateless +
+/// self-contained, mirroring [_GuidePanelToggleButton] /
+/// [_AssistPanelToggleButton]. The icon is a sun; when the panel is open
+/// the icon becomes a close X.
+class _LightRigPanelToggleButton extends StatelessWidget {
+  const _LightRigPanelToggleButton({required this.visible, required this.onTap});
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: visible ? 'Hide Light panel' : 'Show Light panel',
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFFFB923C),
+                Color(0xFFF472B6),
+                Color(0xFFA78BFA),
+              ],
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: const Color(0xFFFB923C).withValues(alpha: 0.45),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            visible ? Icons.close_rounded : Icons.wb_sunny_outlined,
             color: Colors.white,
             size: 22,
           ),
