@@ -155,15 +155,37 @@ KritaProbeOutcome _tryOpenDetailed() {
 }
 
 List<String> _candidates() {
+  // Install-dir candidate, resolved relative to the running executable's
+  // directory via [Platform.resolvedExecutable]. On Windows a Start Menu
+  // shortcut sets the process CWD to system32 (or the user's home), so the
+  // CWD-relative candidates below all fail even when `krita_bridge.dll`
+  // sits right next to `feather_krita.exe`. The resolvedExecutable path
+  // does NOT depend on CWD, so it loads reliably from any launch context
+  // (Start Menu, file explorer double-click, scheduled task, etc.). It is
+  // listed FIRST so it wins when both an install-dir copy and a stray
+  // CWD-relative copy exist; the legacy CWD-relative candidates below stay
+  // as fallbacks for dev runs where CWD == the repo root.
+  //
+  // Implementation note: `package:path` is intentionally NOT a dependency
+  // (pubspec.yaml declares only `path_provider`), so we derive the
+  // executable's parent directory with a simple last-separator split that
+  // handles both `/` (POSIX) and `\` (Windows) — `Platform.resolvedExecutable`
+  // is normalised to the platform's native separator already.
+  final exePath = Platform.resolvedExecutable;
+  final lastSep = exePath.lastIndexOf(RegExp(r'[/\\]'));
+  final exeDir = lastSep >= 0 ? exePath.substring(0, lastSep) : exePath;
+  final sep = Platform.isWindows ? r'\' : '/';
   if (Platform.isWindows) {
-    return const <String>[
+    return <String>[
+      '$exeDir${sep}krita_bridge.dll',
       'krita_bridge.dll',
       'lib\\krita_bridge.dll',
       '.\\krita_bridge.dll',
     ];
   }
   if (Platform.isLinux) {
-    return const <String>[
+    return <String>[
+      '$exeDir${sep}libkrita_bridge.so',
       'lib/libkrita_bridge.so',
       'libkrita_bridge.so',
       './libkrita_bridge.so',
@@ -173,7 +195,10 @@ List<String> _candidates() {
     ];
   }
   if (Platform.isMacOS) {
-    return const <String>['libkrita_bridge.dylib'];
+    return <String>[
+      '$exeDir${sep}libkrita_bridge.dylib',
+      'libkrita_bridge.dylib',
+    ];
   }
   return const <String>[];
 }
