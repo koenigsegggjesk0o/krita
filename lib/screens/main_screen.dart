@@ -99,6 +99,8 @@ import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/core/math/plane.dart' as math show Plane;
 import 'package:feather_krita/core/math/sphere.dart' as math show Sphere;
+import 'package:feather_krita/core/math/scalar_math.dart' as scalarmath
+    show wrapAngle;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/guide3d/guide3d_type.dart';
@@ -4528,7 +4530,12 @@ class _MainScreenState extends State<MainScreen>
       initialElevation: _lightElevation,
       initialIntensity: _lightIntensity,
       initialAmbient: _lightAmbient,
-      onAzimuthChanged: (v) => setState(() => _lightAzimuth = v),
+      // v0.57-D: wrap the azimuth into [-pi, pi] via scalar_math.wrapAngle
+      // so a slider drag past +pi/-pi does not leave the host with a
+      // raw angle like 7.5 rad (which would still render correctly but
+      // makes equality checks + serialisation non-canonical). The wrap
+      // is a no-op for values already in range.
+      onAzimuthChanged: (v) => setState(() => _lightAzimuth = scalarmath.wrapAngle(v)),
       onElevationChanged: (v) => setState(() => _lightElevation = v),
       onIntensityChanged: (v) => setState(() => _lightIntensity = v),
       onAmbientChanged: (v) => setState(() => _lightAmbient = v),

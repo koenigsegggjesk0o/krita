@@ -17,6 +17,30 @@
 //   - `gaussianWeight(x, sigma)` — Gaussian kernel value (unnormalised).
 //   - `smootherstep` — Ken Perlin's 6t^5-15t^4+10t^3 C2 smoothstep.
 //   - `wrapAngle` — fold an angle into [-pi, pi].
+//
+// v0.57-D runtime-wiring status (honest):
+// ----------------------------------------
+// PARTIALLY consumed via the core/math barrel (lib/core/math/math.dart):
+//   - `gaussianWeight` is called by lib/engine/curves/stroke_smoother.dart
+//     (stroke smoothing kernel).
+//   - `smootherstep` is called by lib/engine/curves/curve_renderer.dart
+//     (stroke tapering).
+// Both consumers are in lib/engine/curves/ (OUT OF SCOPE for v0.57-D), so
+// they were not touched — but they ARE live runtime callers, proving the
+// barrel re-export + the two functions work end-to-end.
+//
+// v0.57-D NEW runtime consumer (in-scope): `wrapAngle` is now called by
+// lib/screens/main_screen.dart's light-rig azimuth slider callback to fold
+// the azimuth into [-pi, pi] (canonical serialisation + equality). This is
+// the one natural in-scope consumer — the host owns the raw azimuth float.
+//
+// The remaining functions (factorial, binomial, bernstein, horner,
+// hornerDerivative, simpson, trapezoidal, solveLinear, solveQuadratic) have
+// NO in-scope consumer today. Their natural consumers are the curve/NURBS
+// engine (lib/engine/curves/ — OUT OF SCOPE) + a future polynomial-fit UI.
+// No inline duplicates of these functions exist in the in-scope files
+// (main_screen.dart, krita_resources.dart), so there is nothing to replace.
+// Left as a tested math library scaffold for the curves engine + future tasks.
 
 import 'dart:math' as math;
 
