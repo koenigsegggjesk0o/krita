@@ -3,6 +3,28 @@
 //
 // gesture_detector.dart — multi-touch gesture recognizer for Feather.
 //
+// ── STATUS: SCAFFOLD — NOT YET WIRED (v0.54-D) ──────────────────────────
+// This recognizer is fully implemented and unit-testable in isolation, but
+// it is NOT mounted in the live canvas. The production canvas viewport
+// (lib/ui/widgets/canvas_viewport.dart) uses Flutter's stock `GestureDetector`
+// for the draw / pan / zoom / orbit flows. Wiring this detector as a
+// replacement is a larger lift than the v0.54-D Apple-Pencil task and
+// would risk regressing the live draw / liquify / orbit paths (which the
+// stock GestureDetector + the viewport's custom `Listener` together own).
+//
+// The detector's value-adds — stylus-vs-finger disambiguation, 3-finger
+// FOV / projection-toggle, tap-and-hold resolve-orbit — remain
+// forward-looking. The Apple Pencil wiring (double-tap / squeeze / tilt)
+// added in v0.54-D does NOT depend on this detector: tilt is fed from
+// Flutter's own stylus `PointerEvent` stream (see
+// `_feedStylusSample` in canvas_viewport.dart) and the hardware
+// double-tap / squeeze arrive via the native iOS EventChannel
+// (apple_pencil_channel.dart). When palm-rejection / stylus-finger
+// disambiguation becomes a priority, mount a `Listener` that maps
+// `PointerEvent`s into `GesturePointer`s and dispatch the `GestureEvent`
+// stream from the host — but that is a separate, dedicated task.
+// ─────────────────────────────────────────────────────────────────────────
+//
 // Sits between the raw pointer stream and the camera / drawing pipelines.
 // It classifies the active pointer set into one of the documented
 // gesture families and emits typed [GestureEvent]s the host can dispatch:

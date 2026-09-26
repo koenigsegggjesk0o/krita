@@ -27,6 +27,7 @@ import 'dart:async';
 
 import 'package:feather_krita/core/interaction/input_state.dart';
 import 'package:feather_krita/core/math/math.dart';
+import 'package:flutter/widgets.dart';
 
 /// High-level Pencil actions the UI may want to react to.
 sealed class PencilAction {
@@ -180,4 +181,42 @@ class ApplePencilHandler {
   void dispose() {
     _actions.close();
   }
+}
+
+/// InheritedWidget that exposes the host-owned [ApplePencilHandler] to
+/// descendants (notably [CanvasViewport]) without prop-drilling it through
+/// every intermediate widget ([EditorScreen] wraps the viewport and does
+/// not forward Apple-Pencil-specific props).
+///
+/// The host (`lib/screens/main_screen.dart`) wraps its tree in an
+/// [ApplePencilScope] ONLY on iOS — see `isApplePencilPlatform` in
+/// `apple_pencil_channel.dart`. On every other platform no scope is
+/// mounted, [maybeOf] returns `null`, and the viewport's stylus-tilt feed
+/// is inert (the stock [GestureDetector] flow is untouched).
+///
+/// `updateShouldNotify` returns `false`: the handler is created once in
+/// the host's `initState` and never replaced, so descendants never
+/// rebuild from a scope change.
+class ApplePencilScope extends InheritedWidget {
+  const ApplePencilScope({
+    super.key,
+    required this.handler,
+    required super.child,
+  });
+
+  /// The host-owned Apple Pencil handler exposed to descendants. Non-null
+  /// whenever the scope is mounted (the host only mounts it on iOS).
+  final ApplePencilHandler handler;
+
+  /// Returns the nearest [ApplePencilScope]'s handler, or `null` when no
+  /// scope is mounted (the non-iOS path).
+  static ApplePencilHandler? maybeOf(BuildContext context) {
+    final scope =
+        context.dependOnInheritedWidgetOfExactType<ApplePencilScope>();
+    return scope?.handler;
+  }
+
+  @override
+  bool updateShouldNotify(ApplePencilScope oldWidget) =>
+      !identical(oldWidget.handler, handler);
 }

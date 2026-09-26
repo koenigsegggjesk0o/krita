@@ -54,12 +54,16 @@ import 'package:flutter/gestures.dart'
         kPrimaryButton,
         kSecondaryButton,
         kMiddleMouseButton,
+        PointerDeviceKind,
         PointerScrollEvent,
         PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, LogicalKeyboardKey;
 
+import '../../core/interaction/apple_pencil_handler.dart'
+    show ApplePencilHandler, ApplePencilScope;
 import '../../core/math/vec3.dart' show Vec3;
+import '../../core/math/math.dart' show Vector2;
 import '../../engine/material/light_rig.dart' show MaterialLightRig;
 import '../theme/feather_colors.dart';
 
@@ -499,6 +503,13 @@ class _CanvasViewportState extends State<CanvasViewport> {
   // ----- Desktop mouse routing (loop-keyboard-shortcuts-mouse) -----------
 
   void _onPointerDown(PointerDownEvent event) {
+    // Feed stylus samples (pressure + tilt) into the Apple Pencil handler
+    // when one is mounted via [ApplePencilScope]. The scope is only
+    // populated by the host on iOS (see main_screen.dart), so on every
+    // other platform this is a no-op and the stock GestureDetector flow
+    // below is untouched. The handler's InputState is what the host reads
+    // back to thread tilt into BrushInput.tiltX/tiltY for the dab pipeline.
+    _feedStylusSample(event);
     // Track the held buttons so _onPointerMove can route multi-button
     // drags (e.g. chording left + right). Touch / stylus events carry a
     // buttons bitmask of 0 (touch) or kPrimaryButton (stylus); only real
@@ -520,6 +531,10 @@ class _CanvasViewportState extends State<CanvasViewport> {
   }
 
   void _onPointerMove(PointerMoveEvent event) {
+    // Forward live stylus pressure + tilt to the Apple Pencil handler so
+    // the host's dab pipeline (BrushInput.tiltX/tiltY) reflects the pen
+    // attitude in real time. No-op when no scope is mounted (non-iOS).
+    _feedStylusSample(event);
     if (!_suppressGesture) return;
     final last = _mouseDragLast;
     if (last == null) return;
@@ -539,9 +554,44 @@ class _CanvasViewportState extends State<CanvasViewport> {
   }
 
   void _onPointerUp(PointerEvent event) {
+    // Mark the stylus as lifted so the handler's InputState returns to
+    // idle (pressure → 0). No-op when no scope is mounted (non-iOS).
+    final handler = ApplePencilScope.maybeOf(context);
+    if (handler != null && _isStylusKind(event.kind)) {
+      handler.onStylusUp();
+    }
     _mouseButtons = 0;
     _suppressGesture = false;
     _mouseDragLast = null;
+  }
+
+  // ----- Apple Pencil stylus sample feed (iOS-gated via scope) ----------
+
+  /// `true` for pen-style pointer kinds (regular + inverted stylus — the
+  /// latter is the Apple Pencil eraser end). Mouse / touch / trackpad are
+  /// excluded so the tilt feed never fires for non-pen input.
+  static bool _isStylusKind(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.stylus ||
+      kind == PointerDeviceKind.invertedStylus;
+
+  /// Forwards a stylus [PointerEvent]'s pressure + tilt into the host's
+  /// [ApplePencilHandler] (when one is mounted via [ApplePencilScope]).
+  ///
+  /// Flutter's public [PointerEvent] API exposes a single tilt scalar
+  /// (the stylus pitch from the screen normal, in radians) rather than a
+  /// 2D tilt vector. We map it to the tilt-Y component and leave tilt-X
+  /// at 0; full 2D tilt (azimuth + altitude) arrives only via the native
+  /// iOS bridge — see `apple_pencil_channel.dart`. This partial tilt is
+  /// still consumed by the host's BrushInput path so dabs reflect pen
+  /// pitch on iOS without any native code.
+  void _feedStylusSample(PointerEvent event) {
+    final handler = ApplePencilScope.maybeOf(context);
+    if (handler == null) return;
+    if (!_isStylusKind(event.kind)) return;
+    handler.onStylusSample(
+      pressure: event.pressure,
+      tilt: Vector2(0.0, event.tilt),
+    );
   }
 
   void _onPointerSignal(PointerSignalEvent event) {
