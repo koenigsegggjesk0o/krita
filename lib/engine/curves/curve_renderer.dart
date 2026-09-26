@@ -3,12 +3,18 @@
 //
 // curve_renderer.dart — Builds triangle meshes from [Curve3D]s.
 //
-// Export-only: used by glTF/OBJ exporters for tube mesh generation.
-// Not used in real-time rendering — the canvas viewport's CustomPainter
-// handles live stroke rendering via faux-3D tube polylines, which is
-// cheaper than tessellating a real mesh at 30 fps. This module is kept
-// for the export pipeline (glTF/OBJ) and for future headless render
-// paths (e.g. the software rasterizer in lib/core/rendering/).
+// AUDIT (v0.54-B): this module is now WIRED. The previous header (v0.54-C)
+// correctly flagged it as dead code with a misleading "used by glTF/OBJ
+// exporters" claim — neither exporter consumed it at the time. v0.54-B
+// closed the gap by adding an optional `emitTubes` mode to
+// [GltfExporter.exportJson]: when on, each stroke that has a matching
+// [Stroke3D] is fitted to a Bezier via `Stroke3D.toBezier()` and
+// tessellated into a capped tube mesh here via
+// [CurveRenderer.buildTubeMesh], then emitted as a glTF TRIANGLES
+// primitive (mode 4) so viewers show solid lit tubes instead of thin
+// LINE_STRIPs. Strokes without a matching [Stroke3D] fall back to
+// LINE_STRIP. The OBJ exporter still does NOT use this module — it has
+// its own parallel-transport tube builder.
 //
 // Curves by themselves have no volume — to render them as lit 3D
 // geometry (with thickness, pressure variation, and a real surface
@@ -31,7 +37,7 @@
 // The output is a plain [CurveMesh] (positions, normals, uvs, indices,
 // optional colors) — no Flutter / OpenGL types — so the same builder
 // can feed a CustomPainter vertex list, a flutter_gl VBO, or an
-// exported .glTF.
+// exported .glTF (once wired).
 
 import 'dart:math' as math;
 

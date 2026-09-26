@@ -8,11 +8,16 @@
 // base64-encoded binary buffer embedded as a `data:` URI.
 //
 // Mapping:
-//   * Each visible [Stroke] becomes a glTF mesh with one primitive whose
-//     `mode` is `3` (LINE_STRIP). Vertices are the stroke's world-space
-//     points — the curves-system [Stroke3D] is accepted alongside so the
-//     exporter can be extended later to emit fitted Bezier / Catmull-Rom
-//     splines without changing the call site.
+//   * Each visible [Stroke] becomes a glTF mesh. By default the primitive
+//     `mode` is `3` (LINE_STRIP) and the vertices are the stroke's
+//     world-space points. When [exportJson]'s `emitTubes` flag is set
+//     (and a matching [Stroke3D] is supplied in `strokeCurves`), the
+//     stroke is instead fitted to a Bezier via `Stroke3D.toBezier()`,
+//     tessellated into a capped tube mesh by
+//     `CurveRenderer.buildTubeMesh`, and emitted as `mode` `4`
+//     (TRIANGLES) — so glTF viewers show solid lit tubes instead of
+//     thin lines. Strokes without a matching [Stroke3D] always fall
+//     back to LINE_STRIP.
 //   * Each visible [Guide3D] becomes a glTF mesh with one primitive whose
 //     `mode` is `4` (TRIANGLES). Vertices + indices come straight from
 //     `guide.mesh`, transformed into world space by `guide.transform`.
@@ -21,11 +26,13 @@
 //     POSITION accessors).
 //   * All indices use componentType 5123 (UNSIGNED_SHORT) — sufficient
 //     for any mesh with < 65536 vertices, which covers every guide the
-//     engine currently generates.
+//     engine currently generates and every tube mesh the default
+//     `tubeRadialSegments` / `tubeLengthSegments` produce.
 
 import 'dart:convert' show base64Encode, jsonEncode, utf8;
 import 'dart:typed_data' show ByteData, Endian, Uint8List;
 
+import 'package:feather_krita/engine/curves/curve_renderer.dart';
 import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide3d.dart';
 import 'package:feather_krita/models/stroke.dart';
@@ -34,15 +41,26 @@ import 'package:feather_krita/models/stroke.dart';
 class GltfExporter {
   /// Builds the glTF JSON document for the given scene.
   ///
-  /// [strokes] are emitted as LINE_STRIP primitives (one mesh each).
-  /// [strokeCurves] is accepted alongside for future curve-fit export
-  /// paths (Bezier / Catmull-Rom flattening); it is not required for
-  /// the default line-strip export.
+  /// [strokes] are emitted as LINE_STRIP primitives (one mesh each) by
+  /// default. [strokeCurves] is the optional map from stroke id → the
+  /// [Stroke3D] that captured the stroke; when [emitTubes] is true, each
+  /// stroke that has an entry here is fitted to a Bezier and tessellated
+  /// into a capped tube mesh (TRIANGLES) via [CurveRenderer.buildTubeMesh].
+  /// Strokes without a matching entry always fall back to LINE_STRIP.
   /// [guides] are emitted as TRIANGLES primitives (one mesh each).
+  ///
+  /// [tubeRadialSegments] / [tubeLengthSegments] control the tube mesh
+  /// density when [emitTubes] is on (defaults 8 / 32). The resulting
+  /// vertex count must stay below 65536 (UNSIGNED_SHORT index range);
+  /// any stroke whose tube would exceed that silently falls back to
+  /// LINE_STRIP so export never fails on a long stroke.
   Map<String, dynamic> exportJson({
     required List<Stroke> strokes,
     required Map<int, Stroke3D> strokeCurves,
     required List<Guide3D> guides,
+    bool emitTubes = false,
+    int tubeRadialSegments = 8,
+    int tubeLengthSegments = 32,
   }) {
     final buffer = <int>[];
     final accessors = <Map<String, dynamic>>[];
@@ -96,9 +114,54 @@ class GltfExporter {
       return accessors.length - 1;
     }
 
-    // Strokes -> LINE_STRIP primitives.
+    // Strokes -> LINE_STRIP primitives (default), or TRIANGLES tube
+    // meshes when [emitTubes] is on and a matching [Stroke3D] is present.
     for (final stroke in strokes) {
       if (!stroke.isVisible || stroke.points.length < 2) continue;
+
+      // Try the tube-mesh path first when requested.
+      if (emitTubes) {
+        final stroke3d = strokeCurves[stroke.id];
+        if (stroke3d != null && stroke3d.samples.isNotEmpty) {
+          final tube = _buildStrokeTube(
+            stroke3d,
+            radialSegments: tubeRadialSegments,
+            lengthSegments: tubeLengthSegments,
+          );
+          // UNSIGNED_SHORT indices cap the mesh at 65536 verts. A tube
+          // that exceeds that (very long stroke + high density) falls
+          // back to LINE_STRIP so export never fails.
+          if (tube != null &&
+              tube.positions.length ~/ 3 < 65536 &&
+              tube.indices.isNotEmpty) {
+            final posBytes = _floatsToBytes(tube.positions);
+            final idxBytes = _intsToUShortBytes(tube.indices);
+            final posBv = addBufferView(posBytes, 34962); // ARRAY_BUFFER
+            final idxBv =
+                addBufferView(idxBytes, 34963); // ELEMENT_ARRAY_BUFFER
+            final posAcc = addPositionAccessor(posBv, tube.positions);
+            final idxAcc =
+                addUShortIndexAccessor(idxBv, tube.indices.length);
+            meshes.add({
+              'primitives': [
+                {
+                  'attributes': {'POSITION': posAcc},
+                  'indices': idxAcc,
+                  'mode': 4, // TRIANGLES
+                }
+              ],
+            });
+            nodes.add({
+              'mesh': meshes.length - 1,
+              'name': stroke.name ?? 'Stroke ${stroke.id}',
+            });
+            sceneNodes.add(nodes.length - 1);
+            continue;
+          }
+        }
+      }
+
+      // Default: LINE_STRIP from the stroke's own world-space points.
       final positions = <double>[];
       for (final p in stroke.points) {
         final wp = stroke.transform.transform3(p.position.clone());
@@ -183,18 +246,60 @@ class GltfExporter {
 
   /// Encodes the scene as a glTF 2.0 JSON UTF-8 byte buffer.
   ///
-  /// The result can be written directly to a `.gltf` file.
+  /// The result can be written directly to a `.gltf` file. Forwards the
+  /// [emitTubes] / [tubeRadialSegments] / [tubeLengthSegments] options to
+  /// [exportJson].
   Uint8List export({
     required List<Stroke> strokes,
     required Map<int, Stroke3D> strokeCurves,
     required List<Guide3D> guides,
+    bool emitTubes = false,
+    int tubeRadialSegments = 8,
+    int tubeLengthSegments = 32,
   }) {
     final json = exportJson(
       strokes: strokes,
       strokeCurves: strokeCurves,
       guides: guides,
+      emitTubes: emitTubes,
+      tubeRadialSegments: tubeRadialSegments,
+      tubeLengthSegments: tubeLengthSegments,
     );
     return Uint8List.fromList(utf8.encode(jsonEncode(json)));
+  }
+
+  // ---- Stroke → tube mesh -----------------------------------------------
+
+  /// Fits [stroke3d] to a Bezier and tessellates a capped tube mesh via
+  /// [CurveRenderer.buildTubeMesh]. Returns `null` when the fit produces
+  /// a degenerate curve (e.g. all samples coincident) — the caller falls
+  /// back to LINE_STRIP in that case.
+  ///
+  /// The Bezier's transform (set by `Stroke3D.toBezier` to the stroke's
+  /// transform) is applied by `Curve3D.sampleAt`, so the returned
+  /// positions are in the same world space as the LINE_STRIP path's
+  /// `stroke.transform * point`.
+  static CurveMesh? _buildStrokeTube(
+    Stroke3D stroke3d, {
+    int radialSegments = 8,
+    int lengthSegments = 32,
+  }) {
+    try {
+      final bezier = stroke3d.toBezier();
+      // Reject degenerate fits (zero-length curve) — buildTubeMesh would
+      // emit a collapsed mesh that's useless to a glTF viewer.
+      if (bezier.length() < 1e-6) return null;
+      return CurveRenderer.buildTubeMesh(
+        bezier,
+        radialSegments: radialSegments,
+        lengthSegments: lengthSegments,
+        capEnds: true,
+      );
+    } catch (_) {
+      // toBezier can throw on pathological inputs (e.g. NaN samples);
+      // never let export crash on a bad stroke.
+      return null;
+    }
   }
 
   // ---- Binary helpers ---------------------------------------------------

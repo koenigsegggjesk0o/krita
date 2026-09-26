@@ -10,7 +10,7 @@
 // headless widget tests and for instant first paint on low-end Android.
 
 /// The full `major.minor.patch+build` version string (matches pubspec).
-const String kAppVersion = '0.53.0+1';
+const String kAppVersion = '0.54.0+1';
 
 /// Short `vX.Y.Z` label for display in the About card and release toasts.
-const String kAppVersionLabel = 'v0.53.0';
+const String kAppVersionLabel = 'v0.54.0';

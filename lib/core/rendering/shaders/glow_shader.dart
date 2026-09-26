@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Feather-Krita App Contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// Export-only: software rasterizer for high-quality PNG export.
-// Not used in real-time (too slow for 30 fps); the canvas viewport's
-// CustomPainter handles live rendering. This subsystem is reserved
-// for the export pipeline (rasterize scene -> framebuffer -> PNG)
-// and for future headless render paths.
+// SCAFFOLD — software rasterizer for a FUTURE high-quality headless
+// render path. NOT YET WIRED to any live path (AUDIT_FINAL gap #4):
+// the canvas viewport's CustomPainter handles live faux-3D tube
+// rendering, and PNG export uses RepaintBoundary pixel capture. Wiring
+// this would regress WYSIWYG unless the canvas also moves to mesh
+// rendering. Kept as a forward-looking scaffold for a future
+// WebGL/Impeller/headless-export backend; see worklog v54-B.
 //
 // glow_shader.dart — Emissive additive-blend shader for stroke highlights
 // and guide-surface accent lines.
