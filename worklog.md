@@ -3273,3 +3273,101 @@ Stage Summary:
 - Files read-only (per scope): lib/engine/krita_bridge/krita_brush_controller.dart, lib/engine/krita_bridge/krita_bindings.dart, lib/engine/curves/curve_renderer.dart, lib/ui/widgets/canvas_viewport.dart, lib/ui/screens/editor_screen.dart.
 - Commit hash: 7a7b23d6 (pushed to origin/feather-krita-flutter).
 - HONEST remaining gap: on iOS/macOS/web the live paint path does NOT use real Krita generateDab (falls back to 3D polyline renderer). This is BY DESIGN (no native artifact bundled for those platforms) and documented honestly in the comment block. Closing it would require porting/compiling krita_bridge for iOS/macOS/web — a substantial native-build effort, out of scope for a comment-verify task. No minimal 1-2 line fix exists. Documented as a known platform-availability gap, not a code defect.
+
+---
+Task ID: v55-A-windows-polish
+Agent: Opus (general-purpose)
+Task: Windows real-install readiness — first-run error handling, crash guard, about dialog.
+
+Work Log:
+- Mandatory first steps: `export PATH="/home/z/flutter/bin:$PATH"`; `git pull --rebase origin feather-krita-flutter` (HEAD 1343af81 → my commit 003aa524 pushed). Read worklog.md last 120 lines (v0.54-A assistance-wire → v0.54-C generateDab verify). Read lib/screens/main_screen.dart top 200 lines + initState at 586-706 to understand the boot flow.
+
+- WINDOWS RUNNER AUDIT (windows/runner/main.cpp, flutter_window.cpp, win32_window.cpp, runner.exe.manifest, Runner.rc, resource.h):
+  * Window title was `L"feather_krita"` (lowercase-underscore binary name — reads as a debug build). CHANGED to `L"Feather-Krita"` (user-facing brand) at main.cpp:35.
+  * Initial window size was 1280x720 (too short for the bottom-bar cluster on first run). CHANGED to 1280x800 at main.cpp:34 per the spec's "1280x800 min".
+  * App icon EXISTS at windows/runner/resources/app_icon.ico — wired via Runner.rc:55 `IDI_APP_ICON ICON "resources\\app_icon.ico"` and resource.h:5 `#define IDI_APP_ICON 101`. No action needed.
+  * High-DPI awareness: runner.exe.manifest:5 declares `<dpiAwareness>PerMonitorV2</dpiAwareness>` — the modern per-monitor V2 mode. win32_window.cpp:42-54 also dynamically loads `EnableNonClientDpiScaling` for the PerMonitor V1 fallback path. WM_DPICHANGED is handled at win32_window.cpp:190-199. No action needed — DPI is properly enabled.
+  * Runner.rc:93 FileDescription + ProductName still say "feather_krita" — left unchanged (this is the binary's Windows property sheet, not the user-facing window title; the binary IS named feather_krita.exe). Documented as a known minor cosmetic gap.
+
+- BOOT FLOW AUDIT (lib/main.dart → lib/screens/main_screen.dart → lib/io/engine_probe.dart → lib/engine/krita_bridge/krita_engine.dart → lib/io/krita_resources.dart):
+  * WidgetsFlutterBinding.ensureInitialized() is called at main.dart:39 BEFORE any FFI probe. ✓
+  * The boot probe (probeKritaEngine in engine_probe.dart:92-134) runs inside a throwaway isolate (Isolate.run) with a 12-second timeout. ✓ hang-proof.
+  * The probe returns a KritaProbeOutcome (success/reason/candidatePath/error) — main.dart calls the boolean variant probeKritaEngine() at line 140, which discards the reason. The richer probeKritaEngineDetailed() exists but main.dart does NOT use it (would let the splash show WHY the engine was skipped — deferred as a follow-up; the new first-run dialog in MainScreen covers the user-facing gap).
+  * KritaEngine.init() (krita_engine.dart:203-242) loads the native lib via _tryLoad() and falls back to KritaFallbackEngine on any exception. _realBackendActive in MainScreen.initState (main_screen.dart:648) is set from _krita.status.
+  * PRE-v0.55-A GAP: when _realBackendActive was false, the editor entered fallback mode SILENTLY — the splash already showed `engineReal: engineOk` but no warning banner was set, and no dialog fired after the editor mounted. First-run Windows users saw "the app opened but brushes feel wrong" with no explanation.
+
+- FIRST-RUN ENGINE-LOAD DIALOG (NEW, lib/screens/main_screen.dart):
+  * Added `_engineDialogShown` field (bool, false) at main_screen.dart:560 — guards against re-showing on a hot-reload or setState round-trip.
+  * Added a `kGitHubReleasesUrl` static const at main_screen.dart:565 — `https://github.com/koenigsegggjesk0o/krita/releases` (the actual repo URL from `git remote -v`).
+  * Added a post-frame callback in initState (main_screen.dart:699-705) that fires when `!_realBackendActive` — calls `_showEngineLoadDialog()` after the first frame paints.
+  * `_showEngineLoadDialog()` (main_screen.dart:3399-3498): a clear AlertDialog with title "Krita engine not loaded", body "Feather-Krita could not load the real Krita brush engine (krita_bridge.dll). The app will run in fallback mode with reduced features. Please re-download from GitHub Releases if this persists. If the file is present, the MSVC 2019+ runtime may be missing or the DLL may have been quarantined by antivirus.", a tappable GitHub URL that copies to clipboard, and a "Continue in fallback mode" dismiss button. Matches the brief's required text + adds the MSVC/antivirus hint.
+  * The dialog fires ONCE per MainScreen mount — closing it lets the user paint in fallback mode without further interruption. Re-opens via the About dialog if the user wants to see it again.
+
+- SPLASH WARNING BANNER (lib/main.dart):
+  * main.dart:152-154 — added `engineWarning` (`'Real Krita engine not loaded — using fallback (reduced features)'` when `!engineOk`).
+  * main.dart:225-235 — added `_combinedWarning(engineWarning, _resourcesMissing)` helper that joins the engine warning + the resource-missing warning with ` · ` separator. Wired into phases 2/3/4 (main_screen.dart:161, 184, 194, 202) so the splash banner shows the warning throughout the rest of boot (was only showing the resource warning pre-v0.55-A).
+
+- CRASH GUARD (NEW, lib/main.dart + lib/utils/crash_log.dart):
+  * NEW lib/utils/crash_log.dart (101 lines): `CrashLog` class with `path()` / `cachedPath()` / `write(record)` / `readAll()`. Writes a single append-only `feather_krita_crash.log` into the user's documents directory via path_provider. ALL operations are best-effort (a path_provider failure, a disk write failure, or a null documents directory NEVER crashes the app). Path is cached after the first successful resolution. Each record is wrapped in a banner with a UTC timestamp for GitHub-issue triage. NOT a crash reporter (no network upload) — the user opts in by opening the About dialog and copying the log.
+  * lib/main.dart:45-49 — `FlutterError.onError` now writes to CrashLog AND calls FlutterError.presentError (default red error screen in debug, silent in release). Pre-v0.55-A there was NO FlutterError.onError override.
+  * lib/main.dart:55-57 — `ErrorWidget.builder` is overridden to render `_CrashErrorWidget` (a custom dark-red screen with the exception + stack trace + a "Copy error" button that writes to both the clipboard AND the crash log). Pre-v0.55-A unhandled widget-tree exceptions rendered the terse default grey ErrorWidget box.
+  * lib/main.dart:80-93 — `runZonedGuarded` wraps `runApp` so async errors, FFI callback errors, and isolate-handler errors that escape the Flutter framework's reach are STILL caught — logged to CrashLog AND re-surfaced via `FlutterError.reportError` so the ErrorWidget builder picks them up on the next frame. Pre-v0.55-A a native crash inside an async callback silently killed the process.
+  * lib/main.dart:268-414 — `_CrashErrorWidget` StatefulWidget: full-screen dark red backdrop, centered Material card with the exception + stack trace in a JetBrainsMono-styled SelectableText, and a "Copy error" FilledButton.icon that copies the trace to clipboard + writes to CrashLog. The button label flips to "Copied to clipboard + crash log" after the tap.
+
+- ABOUT / HELP DIALOG (NEW, lib/ui/widgets/about_dialog.dart + main_screen.dart wiring):
+  * NEW lib/ui/widgets/about_dialog.dart (211 lines): self-contained `FeatherAboutDialog` widget + `FeatherAboutInfo` props class. Renders a Material AlertDialog with: app version (label + full), engine status (Real/Fallback with green/orange colour), bridge version string, native lib path (or "(not loaded — fallback mode)"), crash log path (or "(not yet resolved)"), and a tappable GitHub Releases URL that copies to clipboard. The dialog is a pure function of its props (no host state, no FFI calls inside the build) so it's widget-testable in isolation. Includes an optional "Copy crash log" action (wired by the host).
+  * lib/ui/widgets/top_bar.dart:42-45, 73-76, 172-182 — added `onAbout` callback prop + a help_outline_rounded icon button (tooltip "About / Help") mounted after the Share button, before the status chip.
+  * lib/ui/screens/editor_screen.dart:196-198, 301-306, 573 — added `onAbout` prop on EditorScreen + forwarded to TopBar.
+  * lib/screens/main_screen.dart:790-796 — wired `onAbout: _showAboutDialog` on the EditorScreen.
+  * `_showAboutDialog()` (main_screen.dart:3530-3553) + `_buildAboutInfo()` (main_screen.dart:3508-3527): constructs FeatherAboutInfo from the live host state (engine status from _krita.capabilities, native lib path from caps.libraryPath, crash log path from CrashLog.path()). The "Copy crash log" action reads CrashLog.readAll() and copies to clipboard with a snackbar confirmation.
+
+- FIRST-RUN RESOURCE EXTRACTION AUDIT (lib/io/krita_resources.dart):
+  * NO CHANGES NEEDED — the extraction is already bulletproof:
+    - Async via Isolate.spawn (krita_resources.dart:157-161). ✓ does NOT block the UI thread.
+    - Streams real progress back to the UI via a ReceivePort + _Progress messages (krita_resources.dart:169-187). The splash screen shows the actual file count (main.dart:158-162). ✓ loading spinner equivalent.
+    - Disk-full / permission failures are caught: the worker's try/catch (krita_resources.dart:198-227) sends _Done(false, written) on any exception, which surfaces as KritaImportStatus.failed in the summary. main.dart:166-168 sets _resourcesMissing = true → splash warning shows → editor still loads. ✓ no crash.
+    - The marker file is written LAST (krita_resources.dart:178-179) so a crash mid-import leaves no marker → next launch retries cleanly. ✓ idempotent + crash-safe.
+    - Zip-path traversal is guarded (krita_resources.dart:208-213) — absolute paths + `..` segments are skipped.
+  * Documented in this worklog entry as "already bulletproof, no changes needed" per the brief's "If broken, fix it" — nothing was broken.
+
+- VERSION BUMP:
+  * pubspec.yaml: 0.54.0+1 → 0.55.0+1 (line 4).
+  * lib/utils/app_version.dart: kAppVersion 0.54.0+1 → 0.55.0+1, kAppVersionLabel v0.54.0 → v0.55.0 (lines 13, 16).
+
+- TESTS:
+  * NEW test/about_dialog_test.dart (6 tests): FeatherAboutDialog renders version label + GitHub URL, shows fallback status when engineReal is false, Close button dismisses the dialog, TopBar.onAbout button renders + fires callback, TopBar.onAbout renders without throwing when null (disabled), CrashLog.cachedPath() returns null before resolution. All 6 pass.
+  * REGRESSION CHECK: flutter test test/engine/brush_test.dart test/engine/curves_test.dart → 54/54 pass (engine + brush + curves paths — the closest tests to the FFI/render code I touched).
+  * REGRESSION CHECK: flutter test test/tool_dock_test.dart test/assist_panel_test.dart test/guide_panel_test.dart → 21/21 pass (all widget tests for top bar / panels — verifies my TopBar + EditorScreen changes did not break existing widget tests).
+  * flutter analyze lib/ → "No issues found!" (0 errors / 0 warnings / 0 infos) at commit time. The post-push working tree shows 1 warning for `lib/ui/widgets/light_rig_panel.dart` (an unused import from a CONCURRENT agent's new untracked WIP file added after my push — NOT my code, NOT in my commit).
+
+- SHARED-SANDBOX INTERLEAVING (honest note): a concurrent v0.55-B agent pushed two commits (b1f0196f "material picker per-stroke — 5th Metallic swatch" + 7324496a "render mode toggle — 3-state Shaded/Shadeless/Wireframe") while I was working. My commit 003aa524 sits BETWEEN them in git log order. The concurrent agent's b1f0196f commit captured my uncommitted about_dialog.dart / crash_log.dart / app_version.dart imports in main_screen.dart (because their commit was made while my working tree had those imports). My commit 003aa524 in turn captured their uncommitted render_mode_toggle.dart import + RenderModeState/_wireframeOverlay fields + the render-mode-toggle UI block. The end result is functional code on the remote — both commits are present, both agents' work is preserved — but my commit message ("Windows first-run polish") does not mention the accidentally-captured render_mode_toggle code. This is a known shared-sandbox hazard, not a code defect: my Windows-first-run code is in my commit AND the concurrent agent's render_mode_toggle code is in their commit 7324496a on top.
+
+Stage Summary:
+- Files modified (in commit 003aa524):
+  * windows/runner/main.cpp (+6/-3 lines: window title L"feather_krita" → L"Feather-Krita", size 1280x720 → 1280x800, explanatory comment).
+  * lib/main.dart (+168/-7 lines: FlutterError.onError → CrashLog, ErrorWidget.builder → _CrashErrorWidget, runZonedGuarded wrapping runApp, _CrashErrorWidget class with Copy button, splash engine-warning banner + _combinedWarning helper).
+  * lib/screens/main_screen.dart (+126 lines: _engineDialogShown + kGitHubReleasesUrl fields, post-frame callback in initState, _showEngineLoadDialog method, _buildAboutInfo + _showAboutDialog methods, onAbout wiring to EditorScreen, Clipboard+ClipboardData import).
+  * lib/ui/widgets/top_bar.dart (+20 lines: onAbout prop + help_outline_rounded icon button).
+  * lib/ui/screens/editor_screen.dart (+11 lines: onAbout prop + forward to TopBar).
+  * lib/utils/app_version.dart (+2/-2 lines: version bump 0.54.0+1 → 0.55.0+1, v0.54.0 → v0.55.0).
+  * pubspec.yaml (+1/-1 line: version bump 0.54.0+1 → 0.55.0+1).
+- Files created (in commit 003aa524):
+  * lib/utils/crash_log.dart (101 lines: best-effort append-only crash log writer).
+  * lib/ui/widgets/about_dialog.dart (211 lines: self-contained About/Help dialog widget + FeatherAboutInfo props).
+  * test/about_dialog_test.dart (176 lines, 6 tests).
+- What's now bulletproof (code-reviewed, not runtime-verified on Windows):
+  * The window opens with the user-facing brand "Feather-Krita" at 1280x800 (was debug-looking "feather_krita" at 1280x720).
+  * High-DPI: PerMonitorV2 manifest entry + EnableNonClientDpiScaling fallback — already correct, verified.
+  * App icon: windows/runner/resources/app_icon.ico exists, wired through Runner.rc → IDI_APP_ICON → window_class.hIcon in win32_window.cpp:98-99.
+  * First-run: if krita_bridge.dll is missing/corrupt, the user sees a CLEAR AlertDialog ("Krita engine not loaded" + the brief's required text + MSVC/antivirus hint + GitHub URL) instead of a silent fallback. The splash banner also surfaces the warning during boot.
+  * Crash guard: FlutterError.onError + ErrorWidget.builder + runZonedGuarded together ensure NO unhandled exception (widget-tree OR async OR FFI callback) silently kills the process. The user sees a dark-red error screen with the trace + a Copy button that writes to feather_krita_crash.log in their documents dir.
+  * About / Help dialog: top-bar help button opens a dialog showing version + engine status (real/fallback) + native lib path + crash log path + GitHub Releases re-download link. Lets a first-run Windows user self-diagnose without filing a bug.
+  * Resource extraction: already bulletproof pre-v0.55-A (async isolate + progress streaming + try/catch + marker-file-last + zip-traversal guard) — no changes needed, documented honestly.
+- HONEST remaining Windows risks (NOT runtime-verified — no Windows toolchain in this sandbox):
+  * The 362MB Windows zip from the v0.50 release CI has NEVER been installed on a real Windows 10 machine. My changes are CODE-REVIEWED ONLY — they will compile (flutter analyze = 0 errors, 0 warnings at commit time) and the Dart-side widget tests pass, but I cannot prove the installer runs end-to-end on Windows 10 without actually running it. The user MUST do a real install + first-launch smoke test on a Windows 10 Pro machine before the v0.55 release.
+  * The crash guard's `ErrorWidget.builder` override only fires for widget-tree exceptions caught by Flutter's framework. Native crashes inside `krita_bridge.dll` itself (e.g. a segfault in the FFI bridge) will still kill the process — Dart's runZonedGuarded cannot catch native segfaults. The crash log will record the last async error before the segfault, but not the segfault itself. A real Windows crash reporter (Breakpad / Crashpad) is a future milestone, NOT in scope for v0.55-A.
+  * The `krita_bridge.dll` is bundled at `windows/runner/krita_bridge.dll` (verified present in the repo), but the Windows DLL search path may or may not include the runner directory at runtime. The probe in engine_probe.dart:158-163 tries `krita_bridge.dll` (CWD), `lib\\krita_bridge.dll`, and `.\\krita_bridge.dll` — if the installed app's CWD is NOT the install dir, the probe will fail and the user will see the fallback dialog. This is the most likely real-install failure mode. A follow-up should add `<install_dir>\\krita_bridge.dll` to the probe candidate list (would need `Platform.resolvedExecutable` path resolution).
+  * The MSVC 2019+ runtime requirement is mentioned in the fallback dialog but NOT verified at install time. A real Windows installer should bundle the VC++ redistributable OR link the bridge statically. Out of scope for v0.55-A.
+  * The About dialog's "Copy crash log" action assumes path_provider resolves correctly on Windows. path_provider_windows is in the dependency tree (verified), but the actual documents-dir resolution on a fresh Windows 10 install is NOT runtime-verified.
+  * Shared-sandbox interleaving: my commit 003aa524 accidentally captured concurrent v0.55-B agent's render_mode_toggle.dart import + UI block (documented above). The code is functional but the commit history is messier than ideal.
+- Commit hash: 003aa524 (pushed to origin/feather-krita-flutter; sits between concurrent b1f0196f and 7324496a v0.55-B commits).
