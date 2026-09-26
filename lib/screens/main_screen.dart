@@ -98,6 +98,7 @@ import 'package:feather_krita/engine/brush/eraser_engine.dart';
 import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/core/math/plane.dart' as math show Plane;
+import 'package:feather_krita/core/math/sphere.dart' as math show Sphere;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/guide3d/guide3d_type.dart';
@@ -2783,11 +2784,33 @@ class _MainScreenState extends State<MainScreen>
   /// (already raycast by the caller). Finds the nearest stroke within the
   /// tap radius and toggles its membership in [_loftStrokeIds]. Rebuilds
   /// the live loft preview whenever the selection changes.
+  ///
+  /// v0.57-D: uses the engine [Sphere] (lib/core/math/sphere.dart) as a
+  /// per-stroke bounding volume for a quick-reject pre-filter. For each
+  /// stroke a bounding sphere is built from its world points
+  /// ([Sphere.fromPoints]); when the tap point lies farther than
+  /// `tapRadius` outside the sphere, the stroke is skipped WITHOUT the
+  /// per-point distance loop. This cuts the hit-test from O(stroke
+  /// points) to O(1) for the common case of tapping far from any stroke.
   void _onLoftTap(Vector3 world) {
     const tapRadius = 0.5;
+    final worldVec3 = Vec3(world.x, world.y, world.z);
     int? nearestId;
     var nearestDist = double.infinity;
     for (final s in _strokes) {
+      // Build the per-stroke bounding sphere (Ritter seed — centroid +
+      // farthest-point radius). Cheap enough to recompute per tap (a
+      // loft-mode tap is a low-frequency gesture).
+      final points = <Vec3>[
+        for (var i = 0; i < s.length; i++)
+          Vec3(s.worldPosition(i).x, s.worldPosition(i).y, s.worldPosition(i).z),
+      ];
+      final sphere = math.Sphere.fromPoints(points);
+      // Quick-reject: skip the whole stroke when the tap point is farther
+      // than tapRadius outside the bounding sphere.
+      final distToCenter = sphere.center.distanceTo(worldVec3);
+      if (distToCenter - sphere.radius > tapRadius) continue;
+      // Precise check: nearest point on the stroke polyline.
       for (var i = 0; i < s.length; i++) {
         final d = (s.worldPosition(i) - world).length;
         if (d < nearestDist) {
