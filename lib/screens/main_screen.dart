@@ -85,6 +85,8 @@ import 'package:vector_math/vector_math_64.dart' hide Colors;
 import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
 import 'package:feather_krita/data/models/project_model.dart';
+import 'package:feather_krita/data/models/settings_model.dart';
+import 'package:feather_krita/data/settings_repository.dart';
 import 'package:feather_krita/engine/assistance/assistance_wiring.dart';
 import 'package:feather_krita/engine/assistance/mirror_assist.dart';
 import 'package:feather_krita/engine/assistance/stable_strokes.dart';
@@ -95,6 +97,7 @@ import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/guide3d/guide3d_type.dart';
+import 'package:feather_krita/engine/guide3d/guide_snap.dart';
 import 'package:feather_krita/engine/guide3d/drawn_guide.dart';
 import 'package:feather_krita/engine/guide3d/lofted_guide.dart';
 import 'package:feather_krita/engine/guide3d/bent_guide.dart';
@@ -227,6 +230,19 @@ class _MainScreenState extends State<MainScreen>
   late final SelectionModel _selectionModel;
   late final SelectionSystem _selection;
 
+  // v0.57-B: snap-to-guide helper. Stateless engine object — constructed
+  // once at boot and reused per stroke sample. The snap toggle itself is
+  // [_guideSnap] (written by the GuidePanel's "Snap to guide" switch).
+  late final Guide3DSnap _guideSnapHelper;
+
+  /// v0.57-B: world-space snap radius used by [_guideSnapHelper]. Pinned
+  /// as a @visibleForTesting constant so [test/guide_snap_wiring_test.dart]
+  /// can assert the wiring without pumping the full [MainScreen] widget
+  /// (which needs engine + FFI init). Mirrors the [effectiveMaxUndoFor]
+  /// pattern from v56-B.
+  @visibleForTesting
+  static const double kGuideSnapMaxDistance = 0.25;
+
   /// The document's strokes in z-order (back → front). The [Scene] graph
   /// holds string-id references to these; the host owns the canonical
   /// list and the integer-id space.
@@ -272,6 +288,19 @@ class _MainScreenState extends State<MainScreen>
   // The cap value + decision logic live in lib/utils/paint_perf.dart so
   // they're unit-testable in isolation.
   bool _strokeCapWarned = false;
+
+  // ----- Persistent settings (v0.57-D) ------------------------------------
+  //
+  // The [SettingsRepository] is the disk-backed persistence layer for
+  // session-spanning defaults (brush size, grid visibility, mirror
+  // planes, guide surface, …). It is the ONLY place in the host that
+  // touches [SharedPreferences] key names for app settings — every
+  // consumer goes through the typed [SettingsModel]. The tutorial
+  // first-run flag (kTutorialShownKey) is intentionally NOT routed
+  // through here: it predates SettingsModel and lives as a one-off
+  // SharedPreferences bool keyed by [kTutorialShownKey].
+  final SettingsRepository _settingsRepo = SettingsRepository();
+  bool _settingsLoaded = false;
 
   // ----- UI state ---------------------------------------------------------
 
@@ -434,9 +463,7 @@ class _MainScreenState extends State<MainScreen>
   // by the F2 stroke-session milestone (snap renderer, ribbon renderer,
   // PrimitiveGuideParams.size feed-through, loft axis/segments, bend
   // angle/axis). Suppressed here so the v0.53 wiring block ships clean.
-  // ignore: unused_field
   bool _guideSnap = false;
-  // ignore: unused_field
   bool _guideRibbon = true;
   // ignore: unused_field
   double _guidePrimitiveSize = 2.0;
@@ -800,6 +827,7 @@ class _MainScreenState extends State<MainScreen>
     // regression vs. the previous build.
     _realBackendActive = _krita.status == KritaEngineStatus.realEngine;
     _guides = Guide3DManager();
+    _guideSnapHelper = Guide3DSnap(maxDistance: kGuideSnapMaxDistance);
     _liquify = LiquifyEngine();
     _selectionModel = SelectionModel();
     _selection = SelectionSystem(
@@ -849,6 +877,10 @@ class _MainScreenState extends State<MainScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _maybeStartFirstRunTutorial();
+      // v0.57-D: Apply persisted user defaults (brush size, grid
+      // visibility) loaded from [SettingsRepository]. Best-effort: a
+      // failed read leaves the in-memory defaults in place.
+      _loadPersistedSettings();
     });
   }
 
@@ -1991,6 +2023,9 @@ class _MainScreenState extends State<MainScreen>
     _brush.settings = _brush.settings.copyWith(size: _brushSize);
     final backend = _krita.isInitialized ? _krita.backend : null;
     if (backend != null) backend.size = _brushSize;
+    // v0.57-D: persist the new brush size so the next session opens
+    // with the same value (SettingsRepository round-trip).
+    _persistSettings();
   }
 
   /// The full shortcut → callback map. Built once per build; cheap because
@@ -2170,6 +2205,21 @@ class _MainScreenState extends State<MainScreen>
     }
     final world = _screenToWorld(screenPos);
     if (world == null) return;
+    // v0.57-B: snap-to-guide. When the GuidePanel's "Snap to guide"
+    // toggle ([_guideSnap]) is ON, project the world sample onto the
+    // nearest guide surface within [Guide3DSnap.maxDistance] (default
+    // 0.25 world units). This softens the hard raycast inside
+    // [_screenToWorld] — which falls through to the y=0 ground plane
+    // when the pen ray misses a guide — so strokes land cleanly on a
+    // nearby guide ribbon even when the cursor is just off its edge.
+    // When no guide is in range, [snapPoint] returns null and the
+    // original world sample flows through unchanged (no behaviour
+    // change vs. snap-OFF). Skip when no guides exist (cheap exit).
+    Vector3 effectiveWorld = world;
+    if (_guideSnap && _guides.guides.isNotEmpty) {
+      final snap = _guideSnapHelper.snapPoint(_guides.guides, world);
+      if (snap != null) effectiveWorld = snap.point;
+    }
     // Stable Strokes pre-filter: push the raw world sample through the
     // causal Gaussian stabilizer and use its output (when non-null) as
     // the world position fed to the live stroke + Stroke3D capture. On
@@ -2190,8 +2240,8 @@ class _MainScreenState extends State<MainScreen>
         ? 0.0
         : DateTime.now().difference(_strokeStartTime!).inMicroseconds / 1e6;
     final smoothed =
-        smoothStrokeSample(_stableStrokes, world, pressure: pressure, time: t);
-    final sampleWorld = smoothed ?? world;
+        smoothStrokeSample(_stableStrokes, effectiveWorld, pressure: pressure, time: t);
+    final sampleWorld = smoothed ?? effectiveWorld;
     _liveStroke.add(sampleWorld);
     // Build Stroke3D (curves-system source of truth) for draw mode.
     if (_liveStroke3D != null && _strokeStartTime != null) {
@@ -2815,6 +2865,60 @@ class _MainScreenState extends State<MainScreen>
         if (mounted) setState(() => _captionText = '');
       });
     });
+  }
+
+  // ----- Persistent settings I/O (v0.57-D) --------------------------------
+
+  /// Loads the persisted [SettingsModel] from disk via
+  /// [SettingsRepository] and applies the user-default fields that the
+  /// host owns ([_brushSize] ← defaultBrushSize, [_showGrid] ←
+  /// showGridByDefault). Best-effort: a read failure or a missing
+  /// manifest leaves the in-memory defaults untouched (so a corrupt
+  /// prefs file never blocks the editor from opening). Idempotent —
+  /// guarded by [_settingsLoaded] so a re-entrant call is a no-op.
+  Future<void> _loadPersistedSettings() async {
+    if (_settingsLoaded) return;
+    final SettingsModel model;
+    try {
+      model = await _settingsRepo.load();
+    } catch (_) {
+      // Corrupt prefs → keep in-memory defaults. Flagged loaded so a
+      // later _persistSettings write can still recover the file.
+      _settingsLoaded = true;
+      return;
+    }
+    _settingsLoaded = true;
+    if (!mounted) return;
+    setState(() {
+      // Only apply the brush size when the model carries a non-default
+      // value (the SettingsModel default is 32.0; the host's own
+      // default is 20.0 — both are valid, so we always trust the disk
+      // value when present).
+      _brushSize = model.defaultBrushSize;
+      _showGrid = model.showGridByDefault;
+    });
+    // Mirror into the live brush engine so the first dab matches the
+    // persisted size.
+    _brush.settings = _brush.settings.copyWith(size: _brushSize);
+    final backend = _krita.isInitialized ? _krita.backend : null;
+    if (backend != null) backend.size = _brushSize;
+  }
+
+  /// Persists the current host-owned defaults ([_brushSize], [_showGrid])
+  /// back to disk via [SettingsRepository]. Fire-and-forget: callers do
+  /// not await (a slow disk write must never block the UI thread). The
+  /// write preserves every other SettingsModel field by re-loading the
+  /// current model first + copyWith-ing only the host-owned fields.
+  Future<void> _persistSettings() async {
+    try {
+      final current = await _settingsRepo.load();
+      await _settingsRepo.save(current.copyWith(
+        defaultBrushSize: _brushSize,
+        showGridByDefault: _showGrid,
+      ));
+    } catch (_) {
+      // Best-effort: a failed write is retried on the next change.
+    }
   }
 
   // ----- First-run tutorial caption sequence (v55-B) ---------------------
