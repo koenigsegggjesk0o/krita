@@ -170,16 +170,18 @@ jobs:
           $totalSize = (Get-ChildItem $buildDir -Recurse | Measure-Object -Property Length -Sum).Sum
           Write-Host "=== Total build size: $([math]::Round($totalSize / 1MB, 1)) MB ==="
 
-      - name: Package as ZIP
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath feather-krita-krita-engine.zip -Force
-
-      - name: Upload artifact
+      # NOTE (v0.57-fix): upload the Release/ DIRECTORY directly, not a
+      # pre-zipped file. `actions/upload-artifact@v4` already wraps the
+      # upload in its own zip — uploading a .zip would create a NESTED
+      # zip (user downloads X.zip → extracts → gets another Y.zip → extracts
+      # again → finally gets the .exe). Uploading the folder means the user
+      # downloads ONE zip, extracts ONCE, and gets feather_krita.exe +
+      # krita_bridge.dll + all the Krita data files ready to run.
+      - name: Upload Windows build (folder, no nested zip)
         uses: actions/upload-artifact@v4
         with:
           name: feather-krita-windows-with-krita-engine
-          path: feather-krita-krita-engine.zip
+          path: build/windows/x64/runner/Release/*
           retention-days: 90
 
   build-android-with-krita:
