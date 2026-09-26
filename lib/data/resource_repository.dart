@@ -143,6 +143,49 @@ class ResourceRepository {
   Future<List<ResourceModel>> byKind(ResourceKind kind) async =>
       (await list()).where((r) => r.kind == kind).toList();
 
+  /// Indexes the Krita stock brush presets extracted by
+  /// [KritaResources.ensureImported] into the manifest WITHOUT copying
+  /// bytes — the .kpp files already live under [resourcesDir] at
+  /// `paintoppresets/`, so this registers a manifest entry pointing at
+  /// the existing path. Each .kpp gets kind = [ResourceKind.brushPreset],
+  /// a content-hash id (so re-indexing is idempotent + dedupes), and the
+  /// existing on-disk path.
+  ///
+  /// Called by [KritaResources] after a successful first-run extraction
+  /// so the rest of the app can query "which stock presets are on disk?"
+  /// via [byKind] / [byId] instead of re-scanning the directory tree.
+  /// Returns the number of newly-registered entries (0 when the presets
+  /// dir is missing or already fully indexed).
+  Future<int> indexExtractedPresets() async {
+    final presetsDir = Directory(
+        '${resourcesDir.path}${Platform.pathSeparator}paintoppresets');
+    if (!presetsDir.existsSync()) return 0;
+    final existing = await list();
+    final existingIds = existing.map((r) => r.id).toSet();
+    var added = 0;
+    final entries = <ResourceModel>[...existing];
+    await for (final entity in presetsDir.list(recursive: true)) {
+      if (entity is! File) continue;
+      if (!entity.path.toLowerCase().endsWith('.kpp')) continue;
+      final bytes = await entity.readAsBytes();
+      final id = _contentHash(bytes);
+      if (existingIds.contains(id)) continue;
+      final name = _basename(entity.uri.pathSegments.last);
+      entries.add(ResourceModel(
+        id: id,
+        kind: ResourceKind.brushPreset,
+        name: name,
+        path: entity.path,
+        mimeType: 'application/x-krita-brushpreset',
+        sizeBytes: bytes.length,
+        importedAt: DateTime.timestamp(),
+      ));
+      added++;
+    }
+    if (added > 0) await _writeManifest(entries);
+    return added;
+  }
+
   String _basename(String fileName) {
     final dot = fileName.lastIndexOf('.');
     return dot > 0 ? fileName.substring(0, dot) : fileName;

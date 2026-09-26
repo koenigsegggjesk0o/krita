@@ -31,6 +31,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'app_dirs.dart';
+import 'package:feather_krita/data/resource_repository.dart';
 
 /// Outcome of one [KritaResources.ensureImported] run.
 enum KritaImportStatus {
@@ -166,7 +167,7 @@ class KritaResources {
 
     final completer = Completer<KritaImportSummary>();
     late final StreamSubscription sub;
-    sub = port.listen((message) {
+    sub = port.listen((message) async {
       if (message is _Progress) {
         onProgress?.call(message.done, message.total);
         return;
@@ -177,11 +178,24 @@ class KritaResources {
           // next launch retries cleanly.
           _markerFile()
               .writeAsStringSync('v$importVersion\n${message.files} files\n');
+          // v0.57-D: index the freshly-extracted brush presets into the
+          // [ResourceRepository] manifest so the rest of the app can
+          // query the stock library via byKind(brushPreset) / byId
+          // instead of re-scanning paintoppresets/ on every lookup.
+          // Idempotent (content-addressed dedup) + best-effort (a
+          // failure here does not undo the import — the marker is
+          // already written + the presets are on disk; a future
+          // ResourceRepository.indexExtractedPresets call retries).
+          try {
+            await ResourceRepository().indexExtractedPresets();
+          } catch (_) {
+            // Best-effort: indexing can retry on the next manual call.
+          }
         }
         completer.complete(KritaImportSummary(
             message.ok ? KritaImportStatus.imported : KritaImportStatus.failed,
             message.files));
-        sub.cancel();
+        await sub.cancel();
         port.close();
       }
     });
