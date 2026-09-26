@@ -44,6 +44,31 @@ class EraseResult {
   final bool modified;
 }
 
+/// Outcome of an in-place erase pass over a list of strokes (see
+/// [EraserEngine.erasePointsInPlace]). [mutated] holds the surviving
+/// strokes that lost sample points (the caller should re-sync their
+/// Stroke3D / curve-cache); [dropped] holds the strokes that fell
+/// below [EraserEngine.minSurvivingPoints] and should be removed
+/// entirely from the document (with their Stroke3D / material records
+/// cleaned up).
+class InPlaceEraseResult {
+  const InPlaceEraseResult({
+    this.mutated = const <Stroke>[],
+    this.dropped = const <Stroke>[],
+  });
+
+  /// Surviving strokes that lost at least one sample point but still
+  /// have >= [EraserEngine.minSurvivingPoints] samples left.
+  final List<Stroke> mutated;
+
+  /// Strokes that dropped below [EraserEngine.minSurvivingPoints] after
+  /// the erase — the caller removes them from the document.
+  final List<Stroke> dropped;
+
+  /// True when at least one stroke was mutated or dropped.
+  bool get anyChange => mutated.isNotEmpty || dropped.isNotEmpty;
+}
+
 /// Erase + vacuum engine.
 class EraserEngine {
   EraserEngine({this.minSurvivingPoints = 2});
@@ -76,6 +101,52 @@ class EraserEngine {
       return eraseVacuum(stroke, worldPos, radius);
     }
     return erasePoint(stroke, worldPos, radius);
+  }
+
+  /// Erases sample points within [radius] of [worldPos] from each stroke
+  /// in [strokes] IN PLACE — i.e. by mutating each stroke's `points`
+  /// list directly (no re-chaining, no stroke splitting). This is the
+  /// behaviour the Feather editor host expects: strokes keep their
+  /// identity so the host's Stroke3D / material / selection records
+  /// stay attached, and a stroke that drops below
+  /// [minSurvivingPoints] is reported back in [InPlaceEraseResult.dropped]
+  /// so the host can remove it cleanly.
+  ///
+  /// Strokes for which [skip] returns `true` are passed through
+  /// unchanged (used by the host to enforce the 3D Guide isolation
+  /// contract — strokes fully inside a guide's bounds are protected).
+  ///
+  /// Returns the list of strokes that lost points
+  /// ([InPlaceEraseResult.mutated], surviving) plus the list that
+  /// dropped below [minSurvivingPoints] ([InPlaceEraseResult.dropped],
+  /// to be removed). The caller is responsible for syncing the
+  /// Stroke3D of each mutated stroke and removing each dropped stroke
+  /// from the document + its auxiliary records.
+  InPlaceEraseResult erasePointsInPlace(
+    List<Stroke> strokes,
+    Vector3 worldPos,
+    double radius, {
+    bool Function(Stroke stroke)? skip,
+  }) {
+    final r2 = radius * radius;
+    final mutated = <Stroke>[];
+    final dropped = <Stroke>[];
+    for (final stroke in strokes) {
+      if (skip != null && skip(stroke)) continue;
+      final before = stroke.points.length;
+      stroke.points.removeWhere((p) {
+        final wp = stroke.transform.transform3(p.position.clone());
+        return (wp - worldPos).length2 <= r2;
+      });
+      if (stroke.points.length != before) {
+        if (stroke.points.length < minSurvivingPoints) {
+          dropped.add(stroke);
+        } else {
+          mutated.add(stroke);
+        }
+      }
+    }
+    return InPlaceEraseResult(mutated: mutated, dropped: dropped);
   }
 
   /// Isolate-by-guide: returns true when [stroke]'s world bounds lie
