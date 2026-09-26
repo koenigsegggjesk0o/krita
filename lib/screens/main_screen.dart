@@ -79,6 +79,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, LogicalKeyboardKey;
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
 
 import 'package:feather_krita/core/camera/orbit_camera.dart';
@@ -142,6 +143,8 @@ import 'package:feather_krita/ui/widgets/render_mode_toggle.dart'
     show RenderModeState, RenderModeToggle;
 import 'package:feather_krita/ui/widgets/light_rig_panel.dart'
     show LightRigPanel;
+import 'package:feather_krita/ui/widgets/tutorial_overlay.dart'
+    show kTutorialShownKey, kTutorialHints, tutorialHintAt;
 import 'package:feather_krita/utils/app_version.dart';
 import 'package:feather_krita/utils/crash_log.dart';
 import 'package:feather_krita/utils/paint_perf.dart';
@@ -393,6 +396,28 @@ class _MainScreenState extends State<MainScreen>
   late final AnimationController _captionAnim;
   Timer? _captionHideTimer;
   String _captionText = '';
+
+  // ----- First-run tutorial captions (v55-B) ------------------------------
+  //
+  // Feather 3D shows small handwritten captions on first launch ("Tap to
+  // draw", "Pinch to orbit", etc). Pre-v55-B the [setCaption] helper
+  // existed but only fired on guide-mode entry — the first-run flow was
+  // missing. The host now runs a 4-hint sequence on first launch (gated
+  // by a SharedPreferences flag so it only shows once per install).
+  //
+  // The sequence uses the existing [setCaption] (Caveat font, white text
+  // + soft shadow, 3 s hold + 400 ms fade). Hints fire every 3.7 s
+  // (3 s hold + 700 ms gap) so the artist has time to read each one.
+  // The SharedPreferences flag is written AFTER the last hint shows so
+  // a crash mid-tutorial will replay it on next launch (honest: this is
+  // intentional — a half-shown tutorial is worse than a replay).
+  //
+  // The hint list + the pure accessor live in
+  // lib/ui/widgets/tutorial_overlay.dart so the bounds logic is
+  // unit-testable without pumping the full MainScreen (which
+  // initialises the engine + FFI).
+  Timer? _tutorialTimer;
+  bool _tutorialActive = false;
 
   // ----- Per-stroke material + joystick resolver wiring -------------------
 
@@ -750,11 +775,23 @@ class _MainScreenState extends State<MainScreen>
         _showEngineLoadDialog();
       });
     }
+
+    // v0.55-B: First-run tutorial captions. Gated by a SharedPreferences
+    // flag so the sequence only shows once per install. The post-frame
+    // callback lets the first frame paint + the engine-load dialog (if
+    // any) surface before we start the caption sequence. The sequence
+    // itself is fired from [_maybeStartFirstRunTutorial] which reads the
+    // flag async; if the flag is already set, the sequence is skipped.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _maybeStartFirstRunTutorial();
+    });
   }
 
   @override
   void dispose() {
     _captionHideTimer?.cancel();
+    _tutorialTimer?.cancel();
     _captionAnim.dispose();
     _brush.dispose();
     _krita.shutdown();
@@ -2610,6 +2647,62 @@ class _MainScreenState extends State<MainScreen>
       _captionAnim.reverse().whenComplete(() {
         if (mounted) setState(() => _captionText = '');
       });
+    });
+  }
+
+  // ----- First-run tutorial caption sequence (v55-B) ---------------------
+
+  /// Reads the SharedPreferences flag + starts the 4-hint tutorial
+  /// sequence if the flag is unset. Idempotent: if the flag is already
+  /// set OR the tutorial is already active, this is a no-op.
+  ///
+  /// Honest scope note: the SharedPreferences read is async; if the
+  /// host is disposed before the read completes, the [_tutorialActive]
+  /// guard + the [mounted] check inside [_runTutorialSequence] prevent
+  /// any setState after disposal.
+  Future<void> _maybeStartFirstRunTutorial() async {
+    if (_tutorialActive) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    if (prefs.getBool(kTutorialShownKey) == true) return;
+    _runTutorialSequence();
+  }
+
+  /// Runs the 4-hint tutorial sequence. Each hint shows for ~3 s via
+  /// [setCaption] (which handles its own fade-in / fade-out + hide
+  /// timer); the next hint fires 3.7 s later (3 s hold + 700 ms gap).
+  /// After the last hint shows, the SharedPreferences flag is written
+  /// so the sequence never replays (unless the user clears app data).
+  void _runTutorialSequence() {
+    _tutorialActive = true;
+    var index = 0;
+    setCaption(kTutorialHints[index]);
+    _tutorialTimer?.cancel();
+    _tutorialTimer = Timer.periodic(const Duration(milliseconds: 3700),
+        (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      index += 1;
+      final hint = tutorialHintAt(index);
+      if (hint == null) {
+        timer.cancel();
+        // Mark the tutorial as shown AFTER the last hint has fired so a
+        // crash mid-sequence will replay on next launch (honest: better
+        // to re-show than to leave the artist with no onboarding).
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setBool(kTutorialShownKey, true);
+        });
+        // Clear the active flag after the last hint's hold time so the
+        // host can re-trigger the tutorial if a future host method
+        // wants to (e.g. a "Replay tutorial" settings button).
+        Future<void>.delayed(const Duration(seconds: 4), () {
+          if (mounted) _tutorialActive = false;
+        });
+        return;
+      }
+      setCaption(hint);
     });
   }
 
