@@ -90,6 +90,7 @@ import 'package:feather_krita/core/math/vec3.dart';
 import 'package:feather_krita/core/math/ray.dart' as math;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
+import 'package:feather_krita/engine/guide3d/guide3d_type.dart';
 import 'package:feather_krita/engine/guide3d/drawn_guide.dart';
 import 'package:feather_krita/engine/guide3d/lofted_guide.dart';
 import 'package:feather_krita/engine/guide3d/bent_guide.dart';
@@ -102,6 +103,7 @@ import 'package:feather_krita/engine/krita_bridge/krita_fallback.dart'
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
 import 'package:feather_krita/engine/liquify/liquify_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_renderer.dart';
+import 'package:feather_krita/engine/material/light_rig.dart';
 import 'package:feather_krita/engine/selection/selection.dart';
 import 'package:feather_krita/engine/selection/selection_renderer.dart';
 import 'package:feather_krita/engine/selection/selection_state.dart';
@@ -122,6 +124,7 @@ import 'package:feather_krita/ui/theme/feather_typography.dart';
 import 'package:feather_krita/ui/widgets/brush_picker.dart'
     show BrushPreset;
 import 'package:feather_krita/ui/widgets/editor_shortcuts.dart';
+import 'package:feather_krita/ui/widgets/guide_panel.dart';
 import 'package:feather_krita/ui/widgets/material_picker.dart'
     show FeatherMaterial, FeatherPattern;
 import 'package:feather_krita/ui/widgets/right_panel.dart'
@@ -282,6 +285,39 @@ class _MainScreenState extends State<MainScreen>
   /// "You can repeat the Bend 3D Guide process multiple times").
   GuideId? _bendSourceId;
 
+  // ----- Guide panel (Feather 3D mode switcher) ---------------------------
+  //
+  // Self-contained block added in v0.53 to surface the full Draw / Loft /
+  // Bend / Primitives guide mode switcher (lib/ui/widgets/guide_panel.dart).
+  // The panel floats on the right; a rose/pink toggle button in the
+  // bottom-right corner shows / hides it. The mode callback routes to the
+  // existing [setGuideMode] / [setGuideDrawMode] setters (the "call the
+  // GuideManager's setter" requirement); the shape callback routes to the
+  // existing [insertPrimitive]; the snap / ribbon toggles are captured into
+  // [_guideSnap] / [_guideRibbon] for the next milestone's snap + ribbon
+  // renderer wiring. The size / axis / segment / angle knobs are captured
+  // into fields so the F2 stroke-session milestone can consume them without
+  // revisiting this block.
+  bool _guidePanelVisible = false;
+  // The next seven fields are written by the GuidePanel callbacks and read
+  // by the F2 stroke-session milestone (snap renderer, ribbon renderer,
+  // PrimitiveGuideParams.size feed-through, loft axis/segments, bend
+  // angle/axis). Suppressed here so the v0.53 wiring block ships clean.
+  // ignore: unused_field
+  bool _guideSnap = false;
+  // ignore: unused_field
+  bool _guideRibbon = true;
+  // ignore: unused_field
+  double _guidePrimitiveSize = 2.0;
+  // ignore: unused_field
+  GuideAxis _guideLoftAxis = GuideAxis.y;
+  // ignore: unused_field
+  int _guideLoftSegments = 32;
+  // ignore: unused_field
+  double _guideBendAngle = 90.0;
+  // ignore: unused_field
+  GuideAxis _guideBendAxis = GuideAxis.y;
+
   // ----- Tutorial caption overlay -----------------------------------------
   //
   // A handwritten-style caption (Caveat font, white text + soft shadow)
@@ -353,9 +389,16 @@ class _MainScreenState extends State<MainScreen>
 
   /// Lock state for the 2D joystick (off by default). When on, the
   /// gizmo's per-axis scale handles collapse to a single uniform handle
-  /// and the stick snap to cardinal directions. Exposed for future UI
-  /// wiring (a "Lock" toggle on the joystick panel).
-  final JoystickLock _joystickLock = JoystickLock.off;
+  /// and the stick snap to cardinal directions. Wired from the
+  /// JoystickWidget's Lock pill via [_toggleJoystickLock] (honesty-gap 1
+  /// fix — previously the toggle was dead UI). The host's joystick input
+  /// handlers early-return when this is [JoystickLock.on] so drags have
+  /// no transform effect (the knob still tracks visually + snaps back).
+  JoystickLock _joystickLock = JoystickLock.off;
+
+  /// True when the joystick is locked — convenience for the input-handler
+  /// gate (see [_onJoystickMove] / _onJoystickRotate / _onJoystickScale).
+  bool get _joystickLocked => _joystickLock == JoystickLock.on;
 
   /// Last-known screen position of the liquify brush cursor, in canvas
   /// pixels. Set on every liquify drag update; cleared when the liquify
@@ -574,6 +617,14 @@ class _MainScreenState extends State<MainScreen>
                   onJoystickMove: _onJoystickMove,
                   onJoystickRotate: _onJoystickRotate,
                   onJoystickScale: _onJoystickScale,
+                  // Honesty-gap 1 fix: forward the 2D/3D + Lock toggle
+                  // callbacks + state mirror so the JoystickWidget's pills
+                  // are no longer dead UI. The host owns the canonical
+                  // state; the editor just reflects it back.
+                  isJoystick3D: _joystick3d,
+                  joystickLocked: _joystickLocked,
+                  onToggle3D: _toggleJoystick3D,
+                  onLockToggle: _toggleJoystickLock,
                   onPickPreset: _onPickPreset,
                   // Export wiring: TopBar buttons → host exporter calls.
                   onExport: _showExportSheet,
@@ -638,6 +689,33 @@ class _MainScreenState extends State<MainScreen>
                         ),
                       ),
                     ),
+                  ),
+                ),
+
+              // ----- Guide panel (v0.53) — self-contained wiring block -----
+              // Floating rose/pink toggle button (bottom-right) + the
+              // GuidePanel overlay (right side) when [_guidePanelVisible].
+              // The panel's mode callback routes to the host's existing
+              // [setGuideMode] / [setGuideDrawMode] setters; the shape
+              // callback routes to [insertPrimitive]; the remaining knobs
+              // are captured into the [_guide*] fields for the next
+              // milestone. See [lib/ui/widgets/guide_panel.dart].
+              Positioned(
+                right: 16,
+                bottom: 96,
+                child: _GuidePanelToggleButton(
+                  visible: _guidePanelVisible,
+                  onTap: () => setState(
+                      () => _guidePanelVisible = !_guidePanelVisible),
+                ),
+              ),
+              if (_guidePanelVisible)
+                Positioned(
+                  right: 16,
+                  top: 80,
+                  bottom: 96,
+                  child: SingleChildScrollView(
+                    child: _buildGuidePanel(),
                   ),
                 ),
             ],
@@ -2054,6 +2132,11 @@ class _MainScreenState extends State<MainScreen>
   // derivation — the host just dispatches.
 
   void _onJoystickMove(Offset v) {
+    // Honesty-gap 1 fix: when the Lock toggle is on, the host ignores
+    // joystick drag input (the widget's knob still tracks visually and
+    // snaps back on release — the user can experiment without
+    // disturbing the selection).
+    if (_joystickLocked) return;
     final selected = _selectedStrokes();
     if (selected.isEmpty) return;
     final frame = _viewFrame(selected);
@@ -2070,6 +2153,8 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _onJoystickRotate(double r) {
+    // Honesty-gap 1 fix: lock gate (see [_onJoystickMove]).
+    if (_joystickLocked) return;
     final selected = _selectedStrokes();
     if (selected.isEmpty) return;
     final frame = _viewFrame(selected);
@@ -2092,6 +2177,8 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _onJoystickScale(Offset s) {
+    // Honesty-gap 1 fix: lock gate (see [_onJoystickMove]).
+    if (_joystickLocked) return;
     final selected = _selectedStrokes();
     if (selected.isEmpty) return;
     final frame = _viewFrame(selected);
@@ -2168,6 +2255,24 @@ class _MainScreenState extends State<MainScreen>
   /// transforms; the next joystick drag will use the new resolver.
   void setJoystick3d(bool enabled) {
     setState(() => _joystick3d = enabled);
+  }
+
+  /// Honesty-gap 1 fix: JoystickWidget's 2D/3D pill → host flips
+  /// [_joystick3d]. The next joystick drag routes through the new
+  /// resolver (2D = planar screen-space rotation around camera.forward;
+  /// 3D = full 3-axis applyJoystickTransform via [Joystick3dResolver]).
+  void _toggleJoystick3D() => setJoystick3d(!_joystick3d);
+
+  /// Honesty-gap 1 fix: JoystickWidget's Lock pill → host flips
+  /// [_joystickLock]. When on, the input handlers early-return so drags
+  /// have no transform effect; the gizmo renderer also draws the lock
+  /// indicator. The widget's knob still tracks visually and snaps back.
+  void _toggleJoystickLock() {
+    setState(() {
+      _joystickLock = _joystickLock == JoystickLock.on
+          ? JoystickLock.off
+          : JoystickLock.on;
+    });
   }
 
   Vector3 _selectionPivot(List<Stroke> selected) {
@@ -3032,6 +3137,43 @@ class _MainScreenState extends State<MainScreen>
   // tutorial overlay. When a sub-mode is active, the launcher is replaced
   // by that mode's panel (slider + Done / Cancel).
 
+  /// Builds the v0.53 [GuidePanel] overlay. The panel's mode callback
+  /// translates the engine's [Guide3DType] into the host's [_GuideMode]
+  /// and routes through the existing [setGuideMode] / [setGuideDrawMode]
+  /// setters. The shape callback routes to [insertPrimitive]. The
+  /// remaining knobs (size / axis / segments / angle / snap / ribbon) are
+  /// captured into the [_guide*] fields for the F2 milestone.
+  Widget _buildGuidePanel() {
+    return GuidePanel(
+      onModeChanged: (mode) {
+        switch (mode) {
+          case Guide3DType.drawn:
+            setGuideDrawMode(true);
+            setGuideMode(_GuideMode.none);
+          case Guide3DType.lofted:
+            setGuideDrawMode(false);
+            setGuideMode(_GuideMode.loft);
+          case Guide3DType.bent:
+            setGuideDrawMode(false);
+            setGuideMode(_GuideMode.bend);
+          case Guide3DType.primitive:
+            setGuideDrawMode(false);
+            setGuideMode(_GuideMode.primitive);
+        }
+      },
+      onPrimitiveKindChanged: insertPrimitive,
+      onPrimitiveSizeChanged: (v) =>
+          setState(() => _guidePrimitiveSize = v),
+      onLoftAxisChanged: (a) => setState(() => _guideLoftAxis = a),
+      onLoftSegmentsChanged: (n) => setState(() => _guideLoftSegments = n),
+      onBendAngleChanged: (v) => setState(() => _guideBendAngle = v),
+      onBendAxisChanged: (a) => setState(() => _guideBendAxis = a),
+      onSnapChanged: (v) => setState(() => _guideSnap = v),
+      onRibbonChanged: (v) => setState(() => _guideRibbon = v),
+      onClose: () => setState(() => _guidePanelVisible = false),
+    );
+  }
+
   Widget _buildGuideOverlay() {
     switch (_guideMode) {
       case _GuideMode.none:
@@ -3301,4 +3443,55 @@ class _CapturedViewport {
   final int width;
   final int height;
   final List<int> rgba;
+}
+
+/// Floating rose/pink toggle button for the v0.53 [GuidePanel] overlay.
+/// Sits in the bottom-right corner of the editor Stack; tapping it flips
+/// [_MainScreenState._guidePanelVisible]. Stateless + self-contained.
+class _GuidePanelToggleButton extends StatelessWidget {
+  const _GuidePanelToggleButton({required this.visible, required this.onTap});
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: visible ? 'Hide 3D Guide panel' : 'Show 3D Guide panel',
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFFF472B6),
+                Color(0xFFA78BFA),
+                Color(0xFFFB923C),
+              ],
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: const Color(0xFFF472B6).withValues(alpha: 0.45),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            visible
+                ? Icons.close_rounded
+                : Icons.view_in_ar_rounded,
+            color: Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
 }
