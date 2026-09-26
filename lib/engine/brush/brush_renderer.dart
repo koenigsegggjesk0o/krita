@@ -173,4 +173,35 @@ class BrushRenderer {
   static List<RenderedSegment> sortBackToFront(
           Iterable<RenderedSegment> segments) =>
       [...segments]..sort((a, b) => a.depth.compareTo(b.depth));
+
+  /// Projects [stroke]'s world points to screen-space [Offset]s using
+  /// [cam]'s projection function. Points behind the camera (clipW <= 0)
+  /// are culled. Returns the surviving points in stroke order.
+  ///
+  /// This is the polyline-projection counterpart to [renderStroke]
+  /// (which produces ribbon quads). Use it when the consumer needs a
+  /// flat polyline (e.g. the legacy canvas painter that draws strokes
+  /// as [CanvasStroke] polylines) instead of ribbon segments. The
+  /// camera position + projection function are supplied by [cam] so
+  /// this module doesn't duplicate the host's matrix math.
+  ///
+  /// The clip-space culling rule (clipW <= 0 → behind camera) is the
+  /// standard perspective-projection near-plane test. The host's
+  /// existing inline projection (lib/screens/main_screen.dart
+  /// [_buildCanvasScene]) uses an NDC z-range test instead — both
+  /// rules cull points outside the visible frustum, but the clipW
+  /// test is the more conventional form. Behaviour is equivalent for
+  /// any perspective projection where the near plane is in front of
+  /// the camera.
+  List<Offset> projectStroke(Stroke stroke, CameraContext cam) {
+    if (stroke.isEmpty) return const <Offset>[];
+    final out = <Offset>[];
+    for (var i = 0; i < stroke.length; i++) {
+      final world = stroke.worldPosition(i);
+      final (screen, clipW) = cam.project(world);
+      if (clipW <= 0) continue; // behind camera / degenerate.
+      out.add(screen);
+    }
+    return out;
+  }
 }

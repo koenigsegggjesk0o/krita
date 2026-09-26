@@ -68,7 +68,7 @@
 //     behaviour (colour + strokeWidth).
 
 import 'dart:async';
-import 'dart:convert' show jsonDecode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:io' show Directory, File, Platform;
 import 'dart:math' as dmath;
 import 'dart:typed_data';
@@ -102,6 +102,8 @@ import 'package:feather_krita/core/math/sphere.dart' as math show Sphere;
 import 'package:feather_krita/core/math/scalar_math.dart' as scalarmath
     show wrapAngle;
 import 'package:feather_krita/engine/curves/stroke3d.dart';
+import 'package:feather_krita/engine/curves/curve3d.dart';
+import 'package:feather_krita/engine/curves/curve_serializer.dart';
 import 'package:feather_krita/engine/guide3d/guide_manager.dart';
 import 'package:feather_krita/engine/guide3d/guide3d_type.dart';
 import 'package:feather_krita/engine/guide3d/guide_snap.dart';
@@ -232,6 +234,67 @@ class MainScreen extends StatefulWidget {
   /// [Guide3DRenderer.orangeStartColor] (0xFFFF8A00).
   @visibleForTesting
   static const int kGuideRibbonStartLineColor = 0xFFFF8A00;
+
+  /// v0.57-B: JSON key under which the curves-form stroke block is stored
+  /// in a `.feather` project file (written by [_shortcutSave], read by
+  /// [_shortcutOpen]). Pinned as a @visibleForTesting constant so
+  /// [test/curve_serializer_wiring_test.dart] can round-trip the block
+  /// without pumping the full [MainScreen] widget.
+  @visibleForTesting
+  static const String kCurvesBlockKey = 'curves';
+
+  /// v0.57-B: serializes the curves-system source of truth
+  /// ([_MainScreenState._stroke3Ds]) into a JSON-compatible map keyed by
+  /// stroke id (as a string). Each [Stroke3D] is converted to a
+  /// [BezierCurve3D] via [Stroke3D.toBezier] (the canonical fitted-curve
+  /// form) and then serialized via [CurveSerializer.toJson]. The result
+  /// is embedded in the `.feather` project file under
+  /// [kCurvesBlockKey] so the curves form survives a save/load round-trip
+  /// — previously only the rendered [Stroke] polyline was persisted, and
+  /// the curves-system form was lost on reload.
+  ///
+  /// Pure + static so it is unit-testable without pumping [MainScreen]
+  /// (mirrors the [effectiveMaxUndoFor] pattern from v56-B). The host
+  /// calls this from [_shortcutSave].
+  @visibleForTesting
+  static Map<String, dynamic> serializeStrokesAsCurves(
+      Map<int, Stroke3D> stroke3Ds) {
+    final out = <String, dynamic>{};
+    for (final entry in stroke3Ds.entries) {
+      final curve = entry.value.toBezier();
+      out[entry.key.toString()] = CurveSerializer.toJson(curve);
+    }
+    return out;
+  }
+
+  /// v0.57-B: deserializes the curves block written by
+  /// [serializeStrokesAsCurves] back into a [Curve3D] map keyed by
+  /// stroke id. Each entry is restored via [CurveSerializer.fromJson].
+  /// Malformed entries are skipped (a warning is logged via the
+  /// [CrashLog] in the host; here we just skip silently so a single
+  /// bad entry doesn't abort the whole load).
+  ///
+  /// Pure + static so it is unit-testable without pumping [MainScreen].
+  /// The host calls this from [_shortcutOpen] and stores the result in
+  /// [_MainScreenState._loadedCurves].
+  @visibleForTesting
+  static Map<int, Curve3D> deserializeCurvesFromJson(
+      Map<String, dynamic> json) {
+    final out = <int, Curve3D>{};
+    for (final entry in json.entries) {
+      final id = int.tryParse(entry.key);
+      if (id == null) continue;
+      final raw = entry.value;
+      if (raw is! Map) continue;
+      try {
+        out[id] = CurveSerializer.fromJson(raw.cast<String, dynamic>());
+      } catch (_) {
+        // Skip malformed entries — the host's load path is permissive
+        // (one bad curve shouldn't abort the whole project open).
+      }
+    }
+    return out;
+  }
 
   /// Effective undo depth for a document with [strokeCount] strokes.
   ///
@@ -593,6 +656,23 @@ class _MainScreenState extends State<MainScreen>
   /// rendered Strokes so exporters can choose either view).
   final Map<int, Stroke3D> _stroke3Ds = <int, Stroke3D>{};
 
+  /// v0.57-B: the curves-form (BezierCurve3D) of each stroke, as
+  /// deserialized from a `.feather` project file's `curves` block by
+  /// [_shortcutOpen] via [MainScreen.deserializeCurvesFromJson]. Empty
+  /// on a fresh document + on legacy project files that predate the
+  /// curves block. Exposed via [loadedCurves] for tests + future
+  /// curve-edit UI. This is the runtime consumer of
+  /// [CurveSerializer.fromJson] — the curves survive a save/load
+  /// round-trip so the curves-system form is no longer lost on reload.
+  final Map<int, Curve3D> _loadedCurves = <int, Curve3D>{};
+
+  /// v0.57-B: read-only view of [_loadedCurves] for tests + future
+  /// curve-edit UI. @visibleForTesting so [test/curve_serializer_wiring_test.dart]
+  /// can assert the round-trip without pumping the full [MainScreen].
+  @visibleForTesting
+  Map<int, Curve3D> get loadedCurves =>
+      Map<int, Curve3D>.unmodifiable(_loadedCurves);
+
   // ----- Assistance subsystems (v0.54-A wiring) ---------------------------
   //
   // Four assistance modules shipped with tests but were never called at
@@ -652,6 +732,14 @@ class _MainScreenState extends State<MainScreen>
   /// "strokes that drop below 2 points are removed" rule that lived
   /// inline in [_eraseAt] before v57-C).
   final EraserEngine _eraser = EraserEngine();
+
+  /// v57-C: Brush renderer (stroke → ribbon segments / polyline
+  /// projection). Used by [_buildCanvasScene] to project each stroke's
+  /// world points to screen-space via [BrushRenderer.projectStroke]
+  /// (replacing the inline projection loop). Stateless — the camera
+  /// context is supplied per-call so the renderer stays independent of
+  /// the host's camera state.
+  final BrushRenderer _brushRenderer = BrushRenderer();
 
   /// When false (default), the joystick handlers route through
   /// [Joystick2dResolver] (view-based: move = camera-right/up plane,
@@ -1244,19 +1332,40 @@ class _MainScreenState extends State<MainScreen>
         ? 1.0
         : _viewportSize.width / _viewportSize.height;
     final vp = _camera.viewProjectionMatrix(aspect);
+    // v57-C: build a CameraContext that wraps the host's view-projection
+    // matrix + viewport mapping. The project function returns
+    // (Offset, clipW) where clipW is a sentinel (1.0 = visible,
+    // -1.0 = culled by the near-far ndc.z-range test) so
+    // [BrushRenderer.projectStroke]'s `clipW <= 0` cull reproduces
+    // the EXACT behaviour of the original inline projection loop
+    // (cull points with ndc.z outside [-1, 1]). The actual clip-space
+    // W is not needed by projectStroke — only renderStroke uses it
+    // for perspective-correct width scaling, and we don't call
+    // renderStroke here.
+    final cam = CameraContext(
+      cameraPos: _camera.position,
+      project: (world) {
+        final clip = vp.transform(Vector4(world.x, world.y, world.z, 1.0));
+        if (clip.w == 0) return (Offset.zero, 0.0);
+        final ndcX = clip.x / clip.w;
+        final ndcY = clip.y / clip.w;
+        final ndcZ = clip.z / clip.w;
+        // Cull points outside the near-far range — matches the
+        // original inline ndc.z-range test in _buildCanvasScene.
+        if (ndcZ <= -1.0 || ndcZ >= 1.0) return (Offset.zero, -1.0);
+        final sx = (ndcX * 0.5 + 0.5) * _viewportSize.width;
+        final sy = (1.0 - (ndcY * 0.5 + 0.5)) * _viewportSize.height;
+        return (Offset(sx, sy), 1.0);
+      },
+    );
     final screenStrokes = <CanvasStroke>[];
     for (final stroke in _strokes) {
       if (!stroke.isVisible) continue;
-      final points = <Offset>[];
-      for (final p in stroke.points) {
-        final world = stroke.transform.transform3(p.position.clone());
-        final ndc = vp.transform3(world.clone());
-        // Clip points behind the camera / outside the near-far range.
-        if (ndc.z <= -1.0 || ndc.z >= 1.0) continue;
-        final sx = (ndc.x * 0.5 + 0.5) * _viewportSize.width;
-        final sy = (1.0 - (ndc.y * 0.5 + 0.5)) * _viewportSize.height;
-        points.add(Offset(sx, sy));
-      }
+      // v57-C: delegate the world→screen projection to
+      // [BrushRenderer.projectStroke] (was an inline loop). Behaviour
+      // is identical — the CameraContext above encodes the same
+      // ndc.z-range cull + NDC→screen mapping the inline loop used.
+      final points = _brushRenderer.projectStroke(stroke, cam);
       if (points.length < 2) continue;
       final mat = _strokeMaterials[stroke.id] ?? FeatherMaterial.shadeless;
       screenStrokes.add(CanvasStroke(
@@ -2062,7 +2171,17 @@ class _MainScreenState extends State<MainScreen>
         created: now,
         modified: now,
       );
-      File(path).writeAsStringSync(model.toJson().toString());
+      // v0.57-B: serialize the curves-system source of truth
+      // (_stroke3Ds) via CurveSerializer.toJson and embed it in the
+      // project file under the `curves` key. This persists the fitted-
+      // Bezier form of each stroke so it survives a save/load round-trip
+      // (previously only the rendered Stroke polyline was persisted —
+      // the curves form was lost on reload). The block is read back by
+      // [_shortcutOpen] via [MainScreen.deserializeCurvesFromJson].
+      final doc = model.toJson();
+      doc[MainScreen.kCurvesBlockKey] =
+          MainScreen.serializeStrokesAsCurves(_stroke3Ds);
+      File(path).writeAsStringSync(jsonEncode(doc));
       _lastExportPath = path;
       _showExportSnackBar('Project saved', path);
     } catch (e) {
@@ -2091,6 +2210,18 @@ class _MainScreenState extends State<MainScreen>
         ..addAll(model.scene.strokes);
       _selectionModel.clear();
       _rebuildStroke3Ds();
+      // v0.57-B: deserialize the curves block (written by [_shortcutSave]
+      // via [MainScreen.serializeStrokesAsCurves]) back into a Curve3D
+      // map. Each entry is restored via [CurveSerializer.fromJson]. The
+      // block is absent on legacy project files (pre-v0.57-B) — in that
+      // case _loadedCurves stays empty (no regression). Malformed entries
+      // are skipped permissively by [deserializeCurvesFromJson].
+      _loadedCurves.clear();
+      final curvesBlock = json[MainScreen.kCurvesBlockKey];
+      if (curvesBlock is Map) {
+        _loadedCurves.addAll(
+            MainScreen.deserializeCurvesFromJson(curvesBlock.cast<String, dynamic>()));
+      }
       _camera.yaw = model.camera.yaw;
       _camera.pitch = model.camera.pitch;
       _camera.distance = model.camera.distance;
