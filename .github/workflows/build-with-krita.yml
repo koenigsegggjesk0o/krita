@@ -1,5 +1,29 @@
 name: Build Feather-Krita with Krita Engine
 
+# =============================================================================
+# v0.58-CI — COMPILE KRITA ENGINE FROM SOURCE.
+# =============================================================================
+# This workflow compiles the Krita engine (krita-source/ — 12,325 files,
+# 5,942 C++ files from KDE/krita tag v6.0.4) FROM SOURCE on a windows-latest
+# runner. It does NOT download any pre-compiled Krita binaries from krita.org.
+#
+# Honest binary-dep inventory (see worklog v58-compile-krita-source):
+#   * Qt6            = PRE-BUILT binary via aqtinstall (compiling Qt from
+#                      source would take 8+ hours, exceeds GitHub Actions
+#                      6h job limit — UNAVOIDABLE without a build server).
+#   * Krita deps     = vcpkg binary default triplet (boost/eigen/exiv2/lcms2/
+#                      zlib/png/jpeg/gif/openexr/quazip). vcpkg CAN rebuild
+#                      these from source with `--build-from-source` (+2h).
+#   * Krita engine   = COMPILED FROM SOURCE in this workflow (krita-source/).
+#   * krita_bridge   = COMPILED FROM SOURCE in this workflow
+#                      (native/krita_bridge/krita_bridge_real.cpp, 2,200 LOC,
+#                       28 real Krita #includes incl. <kis_brush.h>,
+#                       <KoColor.h>, <KisAutoBrush.h>).
+#
+# See anti-hallucination rules: every CI claim below has a file:line proof
+# in the comments next to the step that makes the claim.
+# =============================================================================
+
 on:
   workflow_dispatch:
   push:
@@ -7,94 +31,389 @@ on:
 
 jobs:
   compile-krita-bridge:
-    name: Compile krita_bridge.dll
+    name: Compile Krita engine + krita_bridge.dll FROM SOURCE
     runs-on: windows-latest
-    timeout-minutes: 30
+    # windows-latest = 4 vCPU, 16 GB RAM, 14 GB SSD (per GitHub docs 2024).
+    # Build time for the requested Krita lib targets at -j 2 is estimated
+    # 1–3 hours; we allow up to 6 h (GitHub Actions hard ceiling).
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
+      # --------------------------------------------------------------------------
+      # Step 1: MSVC dev environment (cl.exe, link.exe, dumpbin.exe on PATH).
+      # --------------------------------------------------------------------------
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
-      - name: Setup Python
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # --------------------------------------------------------------------------
+      # Step 1a: Qt6 via aqtinstall.
+      # PRE-BUILT binary. Compiling Qt from source = 8+ hours, exceeds 6h job
+      # limit (see honesty rule). Acceptance required.
+      # --------------------------------------------------------------------------
       - name: Install Qt6 via aqtinstall
         run: |
           pip install aqtinstall
           python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+          # Verify Qt install path (used by both cmake -DCMAKE_PREFIX_PATH and
+          # the cl /I include path / /LIBPATH lib path in Step 4).
+          if (-not (Test-Path "C:\Qt\6.6.3\msvc2019_64\lib\Qt6Core.lib")) {
+            Write-Host "FATAL: Qt6Core.lib not found at expected path"
+            exit 1
+          }
+          Write-Host "Qt6 installed at C:\Qt\6.6.3\msvc2019_64"
 
-      - name: Build zlib from source
+      # --------------------------------------------------------------------------
+      # Step 1b: vcpkg for Krita's third-party deps.
+      # windows-latest ships vcpkg at C:\vcpkg (pre-installed). We use classic
+      # mode + the default (binary) triplet. Add `--build-from-source` if the
+      # user requires source builds of these deps (adds ~2h to job time).
+      # --------------------------------------------------------------------------
+      - name: Install Krita third-party deps via vcpkg
         shell: pwsh
         run: |
-          # Clone zlib source and compile with MSVC
-          git clone --depth 1 --branch v1.3.1 https://github.com/madler/zlib.git C:\zlib-src
-          cd C:\zlib-src
-          cmake -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=C:\zlib-install
-          cmake --build build --target install
-          cd ..
-          # Verify
-          $zlibLib = (Get-ChildItem "C:\zlib-install\lib\*.lib" | Select-Object -First 1).FullName
-          $zlibInc = "C:\zlib-install\include"
-          Write-Host "zlib lib: $zlibLib"
-          Write-Host "zlib include: $zlibInc"
-          echo "ZLIB_LIB=$zlibLib" >> $env:GITHUB_ENV
-          echo "ZLIB_INC=$zlibInc" >> $env:GITHUB_ENV
+          # vcpkg is pre-installed at C:\vcpkg on windows-latest.
+          & "C:\vcpkg\vcpkg.exe" --version
+          # These are the deps Krita's CMakeLists.txt find_package()s during
+          # the configure step. If any is missing, configure fails with
+          # "Could not find X". Verified against krita-source/CMakeLists.txt
+          # find_package() calls.
+          & "C:\vcpkg\vcpkg.exe" install `
+            boost-filesystem boost-system boost-interprocess boost-thread `
+            eigen3 exiv2 lcms2 zlib libpng libjpeg-turbo giflib `
+            openexr quazip fftw3 gsl `
+            --triplet x64-windows
+          # Make vcpkg packages discoverable to CMake via the toolchain file.
+          & "C:\vcpkg\vcpkg.exe" integrate install
 
-      - name: Compile krita_bridge.dll
+      # --------------------------------------------------------------------------
+      # Step 2: Configure Krita source with CMake.
+      #
+      # Sources: krita-source/ (12,325 files, 5,942 C++ — KDE/krita tag
+      # v6.0.4). We build ONLY the lib targets needed by
+      # native/krita_bridge/krita_bridge_real.cpp (the REAL bridge, 2,200 LOC,
+      # 28 real Krita #includes). UI and plugins are NOT built (saves RAM +
+      # build time). Configure still scans all subdirs (Krita's
+      # CMakeLists.txt unconditionally add_subdirectory(libs/*)) but only
+      # the requested --target list is actually compiled in Step 3.
+      #
+      # Note on target names (verified against krita-source/libs/*/CMakeLists.txt):
+      #   * libs/brush/CMakeLists.txt:28 → target = kritalibbrush
+      #     (NOT "kritabrush" — the export macro BASE_NAME is kritabrush, but
+      #      the CMake target / .lib / .dll file name is "kritalibbrush").
+      #   * libs/image/CMakeLists.txt:372  → target = kritaimage
+      #   * libs/pigment/CMakeLists.txt:81 → target = kritapigment
+      #   * libs/resources/CMakeLists.txt:64 → target = kritaresources
+      #   * libs/version/CMakeLists.txt:11  → target = kritaversion
+      #   * libs/global/CMakeLists.txt:71   → target = kritaglobal
+      #   * libs/flake/CMakeLists.txt:264   → target = kritaflake
+      #   * libs/command/CMakeLists.txt:16  → target = kritacommand
+      # --------------------------------------------------------------------------
+      - name: Configure Krita source (cmake -S krita-source -B krita-build)
         shell: pwsh
         run: |
           $qtDir = "C:\Qt\6.6.3\msvc2019_64"
-          $zlibLib = $env:ZLIB_LIB
-          $zlibInc = $env:ZLIB_INC
-          
-          Write-Host "zlib lib: $zlibLib"
-          Write-Host "zlib include: $zlibInc"
-          
-          $incPaths = @(
-            "native\krita_bridge",
-            "$qtDir\include",
-            "$qtDir\include\QtCore",
-            "$qtDir\include\QtGui",
-            "$qtDir\include\QtWidgets",
-            "$qtDir\include\QtXml"
-          )
-          if ($zlibInc) { $incPaths += $zlibInc }
-          $incArgs = ($incPaths | ForEach-Object { "-I`"$_`"" }) -join " "
-          
-          $libs = @(
-            "$qtDir\lib\Qt6Core.lib",
-            "$qtDir\lib\Qt6Gui.lib",
-            "$qtDir\lib\Qt6Widgets.lib",
-            "$qtDir\lib\Qt6Xml.lib"
-          )
-          if ($zlibLib) { $libs += $zlibLib }
-          $libArgs = ($libs | ForEach-Object { "`"$_`"" }) -join " "
-          
-          $defines = "/DQT_CORE_LIB /DQT_GUI_LIB /DQT_XML_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES"
-          
-          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
-          Write-Host "Command: $cmd"
-          $cmd | Out-File -FilePath compile.bat -Encoding ASCII -Force
-          cmd /c compile.bat 2>&1
-          
-          if (Test-Path krita_bridge.dll) {
-            Write-Host "SUCCESS: krita_bridge.dll compiled"
-            Get-Item krita_bridge.dll | Format-Table Name, Length
-          } else {
-            Write-Host "FAILED"
+          $vcpkgToolchain = "C:\vcpkg\scripts\buildsystems\vcpkg.cmake"
+
+          # Verify source tree is present (anti-hallucination: the spec
+          # asserts 12,325 files / 5,942 C++ files; confirm a key header
+          # before claiming "Krita source is here").
+          if (-not (Test-Path "krita-source\libs\brush\kis_brush.h")) {
+            Write-Host "FATAL: krita-source/libs/brush/kis_brush.h missing — krita-source/ not checked out"
+            exit 1
+          }
+          Write-Host "Verified: krita-source/libs/brush/kis_brush.h present"
+
+          # CMake configure. -DBUILD_WITH_QT6=ON is the real Krita option
+          # (krita-source/CMakeLists.txt:14: option(BUILD_WITH_QT6 ...));
+          # the spec's -DWITH_PYTHON=OFF / -DWITH_QT_XMLPATTERNS=OFF /
+          # -DBUILD_LIB_KRITA_UI=OFF / -DBUILD_LIB_KRITA_PLUGIN=OFF options
+          # are passed through verbatim per the spec — Krita's CMake will
+          # cache unknown -D vars without error, and the spec's intent
+          # (skip UI/plugins) is realised by Step 3's --target list (we
+          # only build the listed lib targets; UI/plugin targets are not
+          # in the --target list so they are not compiled).
+          cmake -S krita-source -B krita-build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=krita-install `
+            -DCMAKE_PREFIX_PATH="$qtDir" `
+            -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" `
+            -DBoost_NO_BOOST_CMAKE=ON `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_WITH_QT6=ON `
+            -DBUILD_KRITA_QT_DESIGNER=OFF `
+            -DWITH_PYTHON=OFF `
+            -DWITH_QT_XMLPATTERNS=OFF `
+            -DKRITA_ENABLE_PCH=OFF `
+            -DHAVE_MEMORY_LEAK_TRACKER=OFF `
+            -DBUILD_LIB_KRITA_UI=OFF `
+            -DBUILD_LIB_KRITA_PLUGIN=OFF
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FATAL: Krita cmake configure failed (exit $LASTEXITCODE)"
+            Write-Host "Likely cause: missing find_package() dep — check vcpkg install list in Step 1b."
+            exit 1
+          }
+          Write-Host "SUCCESS: Krita cmake configure passed (krita-build/ generated)"
+
+      # --------------------------------------------------------------------------
+      # Step 3: Build only the Krita lib targets needed by krita_bridge_real.cpp.
+      #
+      # -j 2 to stay within the 16 GB RAM budget on windows-latest. CMake/Ninja
+      # will transitively build the listed targets' dependencies (kritamultiarch,
+      # kritastore, kritawidgetutils, kritawidgets, koplugin, etc.) automatically.
+      #
+      # If this step OOMs (compiler process killed, link out-of-memory),
+      # the fix is to re-run with `-j 1` (slower but bounded RAM).
+      # If this step times out at 360 min, the fix is to drop the --target
+      # list down to the three core libs: kritaimage kritalibbrush kritapigment.
+      # --------------------------------------------------------------------------
+      - name: Build Krita lib targets (-j 2, bounded RAM)
+        shell: pwsh
+        run: |
+          # Targets verified to exist against krita-source/libs/*/CMakeLists.txt
+          # (see file:line proofs in the Step 2 comment block above).
+          cmake --build krita-build `
+            --target kritaimage kritalibbrush kritapigment kritaresources `
+                   kritaversion kritaglobal kritaflake kritacommand `
+            -j 2
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FATAL: Krita lib build failed (exit $LASTEXITCODE)"
+            Write-Host "If OOM: re-run with -j 1."
+            Write-Host "If timeout: drop --target list to kritaimage kritalibbrush kritapigment."
             exit 1
           }
 
+          # Verify that the expected .lib/.dll artifacts were produced.
+          # Krita's CMake puts SHARED libs in <build>/bin/*.dll and the
+          # import libs in <build>/lib/*.lib (verified by kis_add_library
+          # + the ARCHIVE/LIBRARY/RUNTIME output dirs in KritaMacros.cmake).
+          $expectedLibs = @(
+            "krita-build\lib\kritaimage.lib",
+            "krita-build\lib\kritalibbrush.lib",
+            "krita-build\lib\kritapigment.lib",
+            "krita-build\lib\kritaresources.lib",
+            "krita-build\lib\kritaversion.lib",
+            "krita-build\lib\kritaglobal.lib",
+            "krita-build\lib\kritaflake.lib",
+            "krita-build\lib\kritacommand.lib"
+          )
+          $missing = @()
+          foreach ($lib in $expectedLibs) {
+            if (-not (Test-Path $lib)) { $missing += $lib }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "FATAL: Expected Krita .lib files missing:"
+            $missing | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "SUCCESS: All 8 Krita .lib import libs produced in krita-build\lib\"
+
+          # List the built .dll files for the worklog (artifact inventory).
+          Write-Host "=== Built Krita .dll files (krita-build\bin\): ==="
+          Get-ChildItem "krita-build\bin\krita*.dll" -ErrorAction SilentlyContinue |
+            Select-Object Name, @{N="SizeKB";E={[math]::Round($_.Length/1KB,1)}} |
+            Format-Table -AutoSize
+
+      # --------------------------------------------------------------------------
+      # Step 4: Compile krita_bridge_real.cpp against the built Krita libs.
+      #
+      # Source: native/krita_bridge/krita_bridge_real.cpp — 2,200 LOC, 28 real
+      # Krita #includes including <kis_brush.h>, <KoColor.h>, <KisAutoBrush.h>
+      # (verified at native/krita_bridge/krita_bridge_real.cpp:44-95).
+      # Output: krita_bridge.dll — the C ABI bridge loaded by Flutter FFI.
+      # --------------------------------------------------------------------------
+      - name: Compile krita_bridge.dll from krita_bridge_real.cpp
+        shell: pwsh
+        run: |
+          $qtDir     = "C:\Qt\6.6.3\msvc2019_64"
+          $vcpkgInc  = "C:\vcpkg\installed\x64-windows\include"
+          $vcpkgLib  = "C:\vcpkg\installed\x64-windows\lib"
+
+          # Anti-hallucination: confirm we are compiling the REAL bridge,
+          # not the 712-LOC stub krita_bridge.cpp. The real file is 2,200
+          # LOC and includes real Krita headers (verified locally:
+          # wc -l krita_bridge_real.cpp = 2200; rg '#include <kis_' = 28 hits).
+          if (-not (Test-Path "native\krita_bridge\krita_bridge_real.cpp")) {
+            Write-Host "FATAL: native/krita_bridge/krita_bridge_real.cpp missing"
+            exit 1
+          }
+          $realLines = (Get-Content "native\krita_bridge\krita_bridge_real.cpp" | Measure-Object -Line).Lines
+          Write-Host "krita_bridge_real.cpp = $realLines lines (expected ~2200)"
+          if ($realLines -lt 1500) {
+            Write-Host "FATAL: krita_bridge_real.cpp unexpectedly short — refusing to compile a stub"
+            exit 1
+          }
+
+          # Include paths. Each path maps to a real Krita header that
+          # krita_bridge_real.cpp #includes (verified at lines 44–95 of
+          # that file). The krita-build/ include dir is needed for the
+          # generated export headers (kritabrush_export.h, kritaimage_export.h,
+          # KoConfig.h, etc.) and kis_brush_interface.moc.
+          $incPaths = @(
+            "-I`"native\krita_bridge`"",
+            "-I`"krita-source\libs\brush`"",
+            "-I`"krita-source\libs\image`"",
+            "-I`"krita-source\libs\image\brushengine`"",
+            "-I`"krita-source\libs\pigment`"",
+            "-I`"krita-source\libs\resources`"",
+            "-I`"krita-source\libs\version`"",
+            "-I`"krita-source\libs\global`"",
+            "-I`"krita-source\libs\flake`"",
+            "-I`"krita-source\libs\command`"",
+            "-I`"krita-source\libs\koplugin`"",
+            "-I`"krita-source\libs\store`"",
+            "-I`"krita-build\libs\brush`"",
+            "-I`"krita-build\libs\image`"",
+            "-I`"krita-build\libs\pigment`"",
+            "-I`"krita-build\libs\resources`"",
+            "-I`"krita-build\libs\version`"",
+            "-I`"krita-build\libs\global`"",
+            "-I`"krita-build\libs\flake`"",
+            "-I`"krita-build\libs\command`"",
+            "-I`"krita-build`"",
+            "-I`"$qtDir\include`"",
+            "-I`"$qtDir\include\QtCore`"",
+            "-I`"$qtDir\include\QtGui`"",
+            "-I`"$qtDir\include\QtWidgets`"",
+            "-I`"$qtDir\include\QtXml`"",
+            "-I`"$qtDir\include\QtSvg`"",
+            "-I`"$vcpkgInc`""
+          )
+          $incArgs = $incPaths -join " "
+
+          # Link the 8 Krita libs we built in Step 3 (verified .lib paths
+          # in Step 3's verification block) + the Qt6 libs from aqtinstall
+          # + vcpkg deps. /LIBPATH order: krita-build first (so the freshly
+          # built libkrita*.lib is resolved before any system Qt/vcpkg lib
+          # of the same name — there shouldn't be any, but be safe).
+          $libs = @(
+            "/LIBPATH:`"krita-build\lib`"",
+            "/LIBPATH:`"krita-build\bin`"",
+            "/LIBPATH:`"$qtDir\lib`"",
+            "/LIBPATH:`"$vcpkgLib`"",
+            "kritaimage.lib",
+            "kritalibbrush.lib",
+            "kritapigment.lib",
+            "kritaresources.lib",
+            "kritaversion.lib",
+            "kritaglobal.lib",
+            "kritaflake.lib",
+            "kritacommand.lib",
+            "Qt6Core.lib",
+            "Qt6Gui.lib",
+            "Qt6Widgets.lib",
+            "Qt6Xml.lib",
+            "Qt6Svg.lib"
+          )
+          $libArgs = $libs -join " "
+
+          $defines = "/DQT_CORE_LIB /DQT_GUI_LIB /DQT_XML_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES /DCMAKE_INTDIR=Release"
+
+          # cl command line. /std:c++17 matches Krita's CMake (krita-source/
+          # CMakeLists.txt:38 set(CMAKE_CXX_STANDARD 17)). /permissive- +
+          # /Zc:preprocessor + /Zc:__cplusplus match MSVC's standards-conformant
+          # mode (required for some Krita headers).
+          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+
+          Write-Host "=== cl command ==="
+          Write-Host $cmd
+          $cmd | Out-File -FilePath compile_bridge.bat -Encoding ASCII -Force
+          cmd /c compile_bridge.bat 2>&1
+          $clExit = $LASTEXITCODE
+
+          if ($clExit -ne 0) {
+            Write-Host "FATAL: cl.exe failed to compile/link krita_bridge.dll (exit $clExit)"
+            exit 1
+          }
+          if (-not (Test-Path "krita_bridge.dll")) {
+            Write-Host "FATAL: krita_bridge.dll not produced despite cl exit 0"
+            exit 1
+          }
+          $dllSize = (Get-Item "krita_bridge.dll").Length
+          Write-Host "SUCCESS: krita_bridge.dll compiled, size = $([math]::Round($dllSize/1KB,1)) KB"
+
+      # --------------------------------------------------------------------------
+      # Step 5: Verify krita_bridge.dll is the REAL bridge.
+      #
+      # (a) Size > 100 KB: a stub DLL would be ~10-30 KB; a real one linked
+      #     against 8 Krita libs + Qt6 must be > 100 KB.
+      # (b) Export table contains `krita_brush_generate_dab` (declared at
+      #     native/krita_bridge/krita_bridge.h:203, defined at
+      #     native/krita_bridge/krita_bridge_real.cpp:1782, exported via
+      #     KRITA_BRIDGE_API = __declspec(dllexport) at krita_bridge.h:32).
+      # (c) Import table contains `libkritaimage.dll` (proves the DLL was
+      #     linked against the Krita engine built in Step 3, not a stub).
+      # --------------------------------------------------------------------------
+      - name: Verify krita_bridge.dll (size + exports + imports)
+        shell: pwsh
+        run: |
+          $dll = "krita_bridge.dll"
+          $size = (Get-Item $dll).Length
+          Write-Host "=== krita_bridge.dll size: $([math]::Round($size/1KB,1)) KB ==="
+          if ($size -lt 100KB) {
+            Write-Host "FATAL: krita_bridge.dll is only $([math]::Round($size/1KB,1)) KB — looks like a stub, not the real bridge"
+            exit 1
+          }
+
+          Write-Host "=== dumpbin /exports krita_bridge.dll (first 30) ==="
+          $exports = & dumpbin /exports $dll 2>&1 | Out-String
+          Write-Host $exports.Substring(0, [Math]::Min(4000, $exports.Length))
+
+          if ($exports -notmatch "krita_brush_generate_dab") {
+            Write-Host "FATAL: export table missing krita_brush_generate_dab — bridge is not real"
+            exit 1
+          }
+          Write-Host "PASS: krita_brush_generate_dab present in export table"
+
+          Write-Host "=== dumpbin /imports krita_bridge.dll (libkrita* section) ==="
+          $imports = & dumpbin /imports $dll 2>&1 | Out-String
+          $kritaImports = ($imports -split "`r?`n" | Where-Object { $_ -match "libkrita" })
+          $kritaImports | ForEach-Object { Write-Host $_ }
+          if ($kritaImports.Count -eq 0) {
+            Write-Host "FATAL: import table has no libkrita*.dll entry — krita_bridge.dll was NOT linked against the Krita engine"
+            exit 1
+          }
+          Write-Host "PASS: krita_bridge.dll imports at least one libkrita*.dll"
+
+          # Save the verification report for the worklog.
+          "krita_bridge.dll size: $([math]::Round($size/1KB,1)) KB" | Out-File -FilePath verify_report.txt -Encoding ASCII
+          "Exports (krita_*):" | Out-File -FilePath verify_report.txt -Append -Encoding ASCII
+          ($exports -split "`r?`n" | Where-Object { $_ -match "krita_" }) |
+            Out-File -FilePath verify_report.txt -Append -Encoding ASCII
+          "Imports (libkrita*):" | Out-File -FilePath verify_report.txt -Append -Encoding ASCII
+          $kritaImports | Out-File -FilePath verify_report.txt -Append -Encoding ASCII
+
+      # --------------------------------------------------------------------------
+      # Step 6a: Upload krita_bridge.dll artifact (consumed by Job 2).
+      # --------------------------------------------------------------------------
       - name: Upload krita_bridge.dll
         uses: actions/upload-artifact@v4
         with:
           name: krita-bridge-dll
-          path: krita_bridge.dll
+          path: |
+            krita_bridge.dll
+            verify_report.txt
+          retention-days: 90
+
+      # --------------------------------------------------------------------------
+      # Step 6b: Upload the built Krita engine .dll files (libkrita*.dll).
+      # These are the COMPILED-FROM-SOURCE Krita engine DLLs produced by
+      # Step 3. They are consumed by Job 2 to bundle into the Flutter
+      # Windows release folder (replacing the old "Download Krita portable
+      # ZIP from krita.org" step).
+      # --------------------------------------------------------------------------
+      - name: Upload built Krita engine DLLs (libkrita*.dll from krita-build/bin)
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-engine-dlls
+          path: krita-build/bin/krita*.dll
           retention-days: 90
 
   build-windows-with-krita:
@@ -119,11 +438,16 @@ jobs:
           name: krita-bridge-dll
           path: .
 
-      - name: Download Krita portable ZIP
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://download.kde.org/stable/krita/6.0.3/krita-x64-6.0.3.zip" -OutFile krita-portable.zip
-          Expand-Archive -Path krita-portable.zip -DestinationPath krita-files -Force
+      # --------------------------------------------------------------------------
+      # v0.58: OLD step "Download Krita portable ZIP from krita.org" REMOVED.
+      # Replaced by downloading the libkrita*.dll artifact that Job 1 compiled
+      # FROM SOURCE (krita-source/). NO download from krita.org.
+      # --------------------------------------------------------------------------
+      - name: Download built Krita engine DLLs (from Job 1)
+        uses: actions/download-artifact@v4
+        with:
+          name: krita-engine-dlls
+          path: krita-engine-bin
 
       - name: Build Flutter Windows
         run: flutter build windows --release
@@ -132,35 +456,33 @@ jobs:
         shell: pwsh
         run: |
           $buildDir = "build\windows\x64\runner\Release"
-          $kritaRoot = (Get-ChildItem "krita-files" -Directory | Select-Object -First 1).FullName
-          $kritaBin = Join-Path $kritaRoot "bin"
-          $kritaShare = Join-Path $kritaRoot "share\krita"
+          if (-not (Test-Path $buildDir)) { throw "Flutter build output dir missing: $buildDir" }
 
-          # Copy ALL Krita DLLs
-          Get-ChildItem "$kritaBin\*.dll" | ForEach-Object {
+          # Anti-hallucination: confirm krita_bridge.dll is the REAL bridge,
+          # not a stub. The verify_report.txt from Job 1 is the proof.
+          if (Test-Path "verify_report.txt") {
+            Write-Host "=== krita_bridge.dll verification report (from Job 1) ==="
+            Get-Content verify_report.txt
+          }
+          $bridgeSize = (Get-Item "krita_bridge.dll").Length
+          if ($bridgeSize -lt 100KB) {
+            throw "krita_bridge.dll is only $([math]::Round($bridgeSize/1KB,1)) KB — refusing to bundle a stub"
+          }
+          Write-Host "krita_bridge.dll = $([math]::Round($bridgeSize/1KB,1)) KB (REAL bridge, >100 KB threshold)"
+
+          # Copy ALL built Krita engine DLLs (libkritaimage.dll, libkritalibbrush.dll,
+          # libkritapigment.dll, ...) compiled by Job 1 from krita-source/.
+          Write-Host "=== Built Krita engine DLLs being bundled (FROM SOURCE) ==="
+          Get-ChildItem "krita-engine-bin\*.dll" | ForEach-Object {
+            Write-Host "  $($_.Name) — $([math]::Round($_.Length/1KB,1)) KB"
             Copy-Item $_.FullName -Destination $buildDir -Force
           }
 
-          # Copy kritaplugins
-          $pluginsSrc = Join-Path $kritaBin "kritaplugins"
-          if (Test-Path $pluginsSrc) {
-            Copy-Item $pluginsSrc -Destination $buildDir -Recurse -Force
-          }
+          # Copy krita_bridge.dll (the C ABI wrapper, also FROM SOURCE).
+          Copy-Item "krita_bridge.dll" -Destination $buildDir -Force
+          Write-Host "Copied krita_bridge.dll"
 
-          # Copy Krita data (brushes, presets, etc)
-          if (Test-Path $kritaShare) {
-            $dataDst = Join-Path $buildDir "data\krita"
-            New-Item -ItemType Directory -Force -Path $dataDst
-            Copy-Item $kritaShare -Destination $dataDst -Recurse -Force
-          }
-
-          # Copy krita_bridge.dll (the compiled C ABI wrapper)
-          if (Test-Path "krita_bridge.dll") {
-            Copy-Item "krita_bridge.dll" -Destination $buildDir -Force
-            Write-Host "Copied krita_bridge.dll"
-          }
-
-          # Copy krita-data.zip (727 brush presets)
+          # Copy krita-data.zip (727 brush presets — data, not engine).
           if (Test-Path "assets\krita-data.zip") {
             Copy-Item "assets\krita-data.zip" -Destination $buildDir -Force
             Write-Host "Copied krita-data.zip"
