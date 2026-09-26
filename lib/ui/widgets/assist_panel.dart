@@ -26,6 +26,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../engine/assistance/mirror_assist.dart' show MirrorAxis;
 import '../theme/feather_colors.dart';
 import '../theme/feather_typography.dart';
 import '../theme/glassmorphism.dart';
@@ -46,6 +47,9 @@ class AssistPanel extends StatefulWidget {
     this.initialStableStrokesIntensity = 0.5,
     this.onStableStrokesChanged,
     this.onStableStrokesIntensityChanged,
+    // ----- Mirror (v0.54-A §3) -----
+    this.initialMirrorAxes = const <MirrorAxis>{},
+    this.onMirrorAxisToggled,
     // ----- Close -----
     this.onClose,
   });
@@ -53,10 +57,15 @@ class AssistPanel extends StatefulWidget {
   // ----- Initial values (one-shot, read in initState) -------------------
   final bool initialStableStrokes;
   final double initialStableStrokesIntensity;
+  final Set<MirrorAxis> initialMirrorAxes;
 
   // ----- Change callbacks ----------------------------------------------
   final ValueChanged<bool>? onStableStrokesChanged;
   final ValueChanged<double>? onStableStrokesIntensityChanged;
+
+  /// Fired when the user taps one of the X / Y / Z mirror-axis chips.
+  /// The host toggles the axis in its [MirrorAssist.activeAxes] set.
+  final ValueChanged<MirrorAxis>? onMirrorAxisToggled;
 
   /// Fired when the user taps the panel's close button.
   final VoidCallback? onClose;
@@ -68,12 +77,14 @@ class AssistPanel extends StatefulWidget {
 class _AssistPanelState extends State<AssistPanel> {
   late bool _stableStrokes;
   late double _stableStrokesIntensity;
+  late Set<MirrorAxis> _mirrorAxes;
 
   @override
   void initState() {
     super.initState();
     _stableStrokes = widget.initialStableStrokes;
     _stableStrokesIntensity = widget.initialStableStrokesIntensity;
+    _mirrorAxes = Set<MirrorAxis>.of(widget.initialMirrorAxes);
   }
 
   /// The rose/pink gradient used by the panel header — matches the
@@ -109,6 +120,10 @@ class _AssistPanelState extends State<AssistPanel> {
                 _sectionLabel('Stable Strokes', palette),
                 const SizedBox(height: 8),
                 _buildStableStrokesSection(palette),
+                const Divider(height: 28),
+                _sectionLabel('Mirror', palette),
+                const SizedBox(height: 8),
+                _buildMirrorSection(palette),
               ],
             ),
           ),
@@ -198,6 +213,66 @@ class _AssistPanelState extends State<AssistPanel> {
                     : null,
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ----- Mirror section (v0.54-A §3) -----------------------------------
+
+  Widget _buildMirrorSection(FeatherPalette palette) {
+    // Per-axis colour swatches (per mirror_assist.dart docs: X=red, Y=green,
+    // Z=blue). Each chip toggles its axis in the host's MirrorAssist set.
+    const axisColours = <MirrorAxis, Color>{
+      MirrorAxis.x: Color(0xFFFF3B30),
+      MirrorAxis.y: Color(0xFF34C759),
+      MirrorAxis.z: Color(0xFF0A84FF),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Active axes produce 2\u2070 copies of each committed stroke (X = red, Y = green, Z = blue).',
+          style: FeatherTypography.micro
+              .copyWith(color: palette.textTertiary),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (final axis in const [MirrorAxis.x, MirrorAxis.y, MirrorAxis.z])
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                      right: axis == MirrorAxis.z ? 0 : 8),
+                  child: _MirrorAxisChip(
+                    axis: axis,
+                    colour: axisColours[axis]!,
+                    active: _mirrorAxes.contains(axis),
+                    palette: palette,
+                    onTap: () {
+                      setState(() {
+                        if (_mirrorAxes.contains(axis)) {
+                          _mirrorAxes.remove(axis);
+                        } else {
+                          _mirrorAxes.add(axis);
+                        }
+                      });
+                      widget.onMirrorAxisToggled?.call(axis);
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _mirrorAxes.isEmpty
+              ? 'Mirror off'
+              : 'Mirror on \u2014 ${1 << _mirrorAxes.length} copies per stroke',
+          style: FeatherTypography.caption.copyWith(
+            color: _mirrorAxes.isEmpty ? palette.textTertiary : FeatherPalette.accentPink,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -321,6 +396,60 @@ class _CloseButton extends StatelessWidget {
         ),
         child: const Icon(Icons.close_rounded,
             color: Colors.white, size: 16),
+      ),
+    );
+  }
+}
+
+/// A single X / Y / Z mirror-axis toggle chip. Renders the axis letter
+/// on a coloured swatch (red / green / blue per mirror_assist.dart docs).
+/// Tapping toggles the axis in the host's [MirrorAssist.activeAxes] set.
+class _MirrorAxisChip extends StatelessWidget {
+  const _MirrorAxisChip({
+    required this.axis,
+    required this.colour,
+    required this.active,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final MirrorAxis axis;
+  final Color colour;
+  final bool active;
+  final FeatherPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: 'Mirror ${axis.name.toUpperCase()} axis',
+        child: Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: active ? colour.withValues(alpha: 0.22) : palette.panelFill,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: active ? colour : palette.panelBorder,
+              width: active ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                axis.name.toUpperCase(),
+                style: FeatherTypography.bodyStrong.copyWith(
+                  color: active ? colour : palette.textSecondary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

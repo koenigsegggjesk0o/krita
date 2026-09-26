@@ -3,8 +3,8 @@
 //
 // curve_renderer.dart — Builds triangle meshes from [Curve3D]s.
 //
-// AUDIT (v0.54-B): this module is now WIRED. The previous header (v0.54-C)
-// correctly flagged it as dead code with a misleading "used by glTF/OBJ
+// AUDIT (v0.54-B): this module is now WIRED. AUDIT_FINAL.md gap #6
+// originally flagged it as dead code with a misleading "used by glTF/OBJ
 // exporters" claim — neither exporter consumed it at the time. v0.54-B
 // closed the gap by adding an optional `emitTubes` mode to
 // [GltfExporter.exportJson]: when on, each stroke that has a matching
@@ -15,6 +15,13 @@
 // LINE_STRIPs. Strokes without a matching [Stroke3D] fall back to
 // LINE_STRIP. The OBJ exporter still does NOT use this module — it has
 // its own parallel-transport tube builder.
+//
+// v0.54-C re-verified (read-only): grep across lib/ confirms the only
+// importer of `curve_renderer` / `CurveRenderer` is now
+// `lib/io/gltf_exporter.dart` (import at line 35, used at line 292);
+// `obj_exporter.dart` does NOT import it (it has its own inline
+// parallel-transport tube builder). The header doc is now accurate —
+// no further doc fix needed from v0.54-C.
 //
 // Curves by themselves have no volume — to render them as lit 3D
 // geometry (with thickness, pressure variation, and a real surface

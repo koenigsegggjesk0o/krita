@@ -85,6 +85,7 @@ import 'package:feather_krita/core/camera/orbit_camera.dart';
 import 'package:feather_krita/core/scene/scene.dart';
 import 'package:feather_krita/data/models/project_model.dart';
 import 'package:feather_krita/engine/assistance/assistance_wiring.dart';
+import 'package:feather_krita/engine/assistance/mirror_assist.dart';
 import 'package:feather_krita/engine/assistance/stable_strokes.dart';
 import 'package:feather_krita/engine/brush/brush_engine.dart';
 import 'package:feather_krita/engine/brush/brush_settings.dart';
@@ -425,6 +426,14 @@ class _MainScreenState extends State<MainScreen>
   /// floating rose/pink button in the bottom-right of the canvas.
   bool _assistPanelVisible = false;
 
+  /// Mirror assistance instance (v0.54-A §3). Owns the active X/Y/Z axis
+  /// set. When [_mirrorAssist.isEnabled] (any axis active) OR the
+  /// [FeatherTool.mirror] dock tool is selected, each committed draw
+  /// stroke is reflected into 2^N - 1 editable copies (see
+  /// [_onStrokeEnd]). The axis set is mutated from the assist panel's
+  /// X/Y/Z chips via [onMirrorAxisToggled].
+  final MirrorAssist _mirrorAssist = MirrorAssist();
+
   /// When false (default), the joystick handlers route through
   /// [Joystick2dResolver] (view-based: move = camera-right/up plane,
   /// rotate = around camera forward, scale = uniform around the
@@ -480,11 +489,32 @@ class _MainScreenState extends State<MainScreen>
   // and hands it to the canvas viewport's painter, which draws it on top
   // of the 3D stroke ribbons via `canvas.drawImage`.
   //
+  // Verdict on the live paint path (audited v0.54-C):
+  //
+  //   _onPanUpdate (canvas_viewport.dart)
+  //     → onStrokeUpdate callback (editor_screen.dart → main_screen.dart
+  //       `onStrokeUpdate: _onStrokeUpdate` wiring)
+  //     → _onStrokeUpdate (this file)
+  //     → gated by `_realBackendActive && _guideMode != bend && !_guideDrawMode`
+  //       → _paintRealDab (this file)
+  //     → backend.generateDab(BrushInput(...))
+  //     → KritaBrushController.generateDab (krita_brush_controller.dart)
+  //     → FFI _native.generateDab → `krita_brush_generate_dab`
+  //       (krita_bindings.dart lookup)
+  //
+  // So the host DOES call `backend.generateDab` on the live paint path —
+  // but only when `_realBackendActive == true`, i.e. the native
+  // `krita_bridge` library loaded successfully at boot (Windows/Linux/
+  // Android where the artifact is bundled; iOS/macOS/web fall back).
+  //
   // When the real engine is NOT available (the boot probe fell back to
-  // [KritaFallbackEngine]), this entire path is skipped — the editor
-  // keeps painting through the 3D polyline renderer only (current
+  // [KritaFallbackEngine]), the `_realBackendActive` gate short-circuits
+  // and the host NEVER calls `backend.generateDab` on the live path — the
+  // editor keeps painting through the 3D polyline renderer only (current
   // behaviour, no regression). The fallback engine still implements
-  // `generateDab` for tests, but the host never calls it for rendering.
+  // `generateDab` for tests (and for the smoke-test / synthetic-dab paths
+  // in lib/engine/krita_bridge/krita_smoke_test.dart), but the host's
+  // rendering loop never reaches it.
 
   /// True when the real native Krita brush backend is live (the FFI
   /// bridge loaded and a brush handle was allocated). Set in [initState]
@@ -649,6 +679,7 @@ class _MainScreenState extends State<MainScreen>
                   drawingEnabled: _tool == FeatherTool.draw ||
                       _tool == FeatherTool.eraser ||
                       _tool == FeatherTool.vacuum ||
+                      _tool == FeatherTool.mirror ||
                       _guideMode == _GuideMode.bend,
                   onStrokeStart: _onStrokeStart,
                   onStrokeUpdate: _onStrokeUpdate,
@@ -1217,6 +1248,19 @@ class _MainScreenState extends State<MainScreen>
         } else if (_liquify.isEditing) {
           _liquify.apply();
         }
+        // Entering the mirror tool (v0.54-A §3) opens the assist panel
+        // and defaults the mirror axis set to {X} when no axis is
+        // active — the most common single-axis mirror. The user can
+        // then toggle Y / Z in the panel. Leaving the mirror tool does
+        // NOT clear the axis set (the mirror ASSIST is independent of
+        // the tool; the artist may keep mirror on while drawing with
+        // the draw tool).
+        if (_tool == FeatherTool.mirror) {
+          _assistPanelVisible = true;
+          if (_mirrorAssist.activeAxes.isEmpty) {
+            _mirrorAssist.activeAxes = {MirrorAxis.x};
+          }
+        }
       }
       _color = s.color;
       _brushSize = s.size;
@@ -1590,7 +1634,10 @@ class _MainScreenState extends State<MainScreen>
     // sample) and is converted to a Stroke for rendering in
     // [_onStrokeEnd]. Bend / guide-draw / eraser / vacuum don't need a
     // Stroke3D — they're either guide-creation paths or erase paths.
-    if (_tool == FeatherTool.draw &&
+    // The mirror tool (v0.54-A §3) also captures a Stroke3D so the
+    // committed stroke + its mirror copies share the same source.
+    if ((_tool == FeatherTool.draw ||
+            _tool == FeatherTool.mirror) &&
         !_guideDrawMode &&
         _guideMode != _GuideMode.bend) {
       _liveStroke3D = Stroke3D(
@@ -1890,6 +1937,40 @@ class _MainScreenState extends State<MainScreen>
     _strokeMaterials[stroke.id] = _material;
     // Register with the scene graph + active layer.
     _scene.addCurve(curveId: 'stroke-${stroke.id}');
+    // Mirror assistance (v0.54-A §3): when the mirror assist has any
+    // active axis OR the FeatherTool.mirror dock tool is selected,
+    // reflect the committed (smoothed + simplified) Stroke3D into
+    // 2^N - 1 editable copies and commit each as its own stroke. Per
+    // mirror_assist.dart: "the stroke manager registers each copy as
+    // its own curve in the active group, so mirror-drawn strokes remain
+    // independently editable." The mirror tool with no axes set
+    // defaults to {X} for the stroke (the most common single-axis
+    // mirror) without mutating the persistent [_mirrorAssist] state.
+    //
+    // HONESTY NOTE (PROGRESS_SATURDAY §1.4 "eraser strokes must stay
+    // eraser on mirror paths"): the eraser TOOL doesn't reach this
+    // commit path (it returns early above), so mirror copies are ONLY
+    // produced for paint strokes. Mirror-ERASE (erasing at mirrored
+    // positions simultaneously) is NOT wired — the eraser mutates
+    // existing strokes live in [_onStrokeUpdate] and has no mirror
+    // counterpart. Documented honestly.
+    final mirrorActive = _mirrorAssist.isEnabled || _tool == FeatherTool.mirror;
+    if (mirrorActive) {
+      final assist = (_tool == FeatherTool.mirror && !_mirrorAssist.isEnabled)
+          ? MirrorAssist(activeAxes: const {MirrorAxis.x})
+          : _mirrorAssist;
+      final copies = mirrorStroke(simplified, assist);
+      for (final copy in copies) {
+        final copyStroke = _stroke3DToStroke(copy);
+        copyStroke.id = _nextStrokeId++;
+        copyStroke.color = stroke.color;
+        copyStroke.thickness = stroke.thickness;
+        _strokes.add(copyStroke);
+        _stroke3Ds[copyStroke.id] = copy;
+        _strokeMaterials[copyStroke.id] = _material;
+        _scene.addCurve(curveId: 'stroke-${copyStroke.id}');
+      }
+    }
     setState(() {});
   }
 
