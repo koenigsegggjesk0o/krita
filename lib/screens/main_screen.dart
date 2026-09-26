@@ -118,6 +118,7 @@ import 'package:feather_krita/engine/krita_bridge/krita_canvas_controller.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_engine.dart';
 import 'package:feather_krita/engine/krita_bridge/krita_fallback.dart'
     show KritaBrushBackend;
+import 'package:feather_krita/engine/krita_bridge/krita_preset_loader.dart';
 import 'package:feather_krita/engine/liquify/liquify_brush.dart';
 import 'package:feather_krita/engine/liquify/liquify_engine.dart';
 import 'package:feather_krita/engine/liquify/liquify_renderer.dart';
@@ -401,6 +402,17 @@ class _MainScreenState extends State<MainScreen>
   // A future favorite-toggle UI task will swap the host to the heavier
   // BrushPreset + call these APIs directly.
   final PresetRepository _presetRepo = PresetRepository();
+
+  // v0.57-C: pure-Dart preset-path helpers (looksLikeKppPath +
+  // parsePresetNameFromPath) from KritaPresetLoader. The loader is
+  // stateless so a single const instance serves the host. The engine-
+  // roundtrip methods (loadPreset / scanDirectory / applyParamMap) are
+  // NOT wired here — the host's [_scanDiskPresets] is deliberately
+  // filesystem-only (fast boot scan, no .kpp parse per file), and
+  // [_onPickPreset] calls backend.loadPreset directly + reads scalars.
+  // Those engine-roundtrip surfaces are kept in krita_preset_loader.dart
+  // as lower-level helpers (testability + future param editor UI).
+  static const KritaPresetLoader _presetLoader = KritaPresetLoader();
 
   // ----- UI state ---------------------------------------------------------
 
@@ -3645,6 +3657,12 @@ class _MainScreenState extends State<MainScreen>
     // BrushPreset.loadFromFile (real .kpp parse) on every file, which
     // the boot scan deliberately avoids to stay fast with hundreds of
     // stock presets.
+    //
+    // v0.57-C: the per-file extension filter + display-name parsing
+    // now delegate to [KritaPresetLoader.looksLikeKppPath] /
+    // [KritaPresetLoader.parsePresetNameFromPath] (pure-Dart helpers,
+    // no engine roundtrip) — single source of truth for the .kpp
+    // path-parsing contract, shared with the future file picker.
     final List<Directory> dirs;
     try {
       dirs = _presetRepo.searchDirs();
@@ -3657,16 +3675,17 @@ class _MainScreenState extends State<MainScreen>
         if (!dir.existsSync()) continue;
         await for (final entity in dir.list(recursive: true)) {
           if (entity is! File) continue;
-          if (!entity.path.toLowerCase().endsWith('.kpp')) continue;
-          final fileName = entity.uri.pathSegments.last;
-          var stem = fileName.replaceAll('.kpp', '').replaceAll('.KPP', '');
-          stem = stem.replaceAll('_', ' ');
-          if (stem.isEmpty) stem = fileName;
+          if (!_presetLoader.looksLikeKppPath(entity.path)) continue;
+          // parsePresetNameFromPath returns 'Untitled' for empty stems
+          // (replacing the previous 'use fileName' fallback — 'Untitled'
+          // is the conventional placeholder and matches the file-picker
+          // surface this helper was designed for).
+          final stem = _presetLoader.parsePresetNameFromPath(entity.path);
           // Derive a stable display colour from the file stem so the
           // picker strip has visual variety without parsing the .kpp.
           final hue = (stem.hashCode & 0xFFFF) % 360;
           scanned.add(BrushPreset(
-            id: 'disk_$fileName',
+            id: 'disk_${entity.uri.pathSegments.last}',
             name: stem,
             previewColor: HSLColor.fromAHSL(
                     1.0, hue.toDouble(), 0.18, 0.28)

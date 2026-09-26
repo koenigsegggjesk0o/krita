@@ -25,6 +25,23 @@
 // Dart — that path is CI-proven inside the C bridge and re-implementing
 // it would diverge from the engine's own parser. The Dart side trusts
 // the bridge's parse and only adds orchestration + UI metadata.
+//
+// v0.57-C wiring (honest status): the host
+// (lib/screens/main_screen.dart `_scanDiskPresets`) wires ONLY the two
+// pure-Dart helpers [looksLikeKppPath] + [parsePresetNameFromPath] —
+// they replace the inline `.endsWith('.kpp')` + stem-replace logic so
+// the .kpp path-parsing contract has a single source of truth (shared
+// with the future file picker). The engine-roundtrip methods
+// [loadPreset] / [scanDirectory] / [applyParamMap] are NOT wired into
+// the host: `_scanDiskPresets` is deliberately filesystem-only (fast
+// boot scan, no per-file .kpp parse), and `_onPickPreset` calls
+// `backend.loadPreset` directly + reads scalar getters (the snapshot
+// metadata `loadPreset` returns is not yet consumed by any UI). Those
+// engine-roundtrip surfaces are kept as lower-level helpers for
+// testability + a future param-editor UI; they are exercised by
+// test/engine/krita_bridge/krita_preset_loader_test.dart.
+//
+// Tests: test/engine/krita_bridge/krita_preset_loader_test.dart.
 
 import 'dart:io';
 
