@@ -8,17 +8,35 @@ name: Build Feather-Krita with Krita Engine
 # runner. It does NOT download any pre-compiled Krita binaries from krita.org.
 #
 # Honest binary-dep inventory (see worklog v58-compile-krita-source):
-#   * Qt6            = PRE-BUILT binary via aqtinstall (compiling Qt from
+#   * Qt             = PRE-BUILT binary via aqtinstall (compiling Qt from
 #                      source would take 8+ hours, exceeds GitHub Actions
 #                      6h job limit — UNAVOIDABLE without a build server).
-#   * Krita deps     = vcpkg binary default triplet (boost/eigen/exiv2/lcms2/
-#                      zlib/png/jpeg/gif/openexr/quazip). vcpkg CAN rebuild
-#                      these from source with `--build-from-source` (+2h).
+#   * Krita deps     = vcpkg binary default triplet (boost/eigen/exiv2/lcms/
+#                      zlib/png/jpeg/gif/openexr/quazip + KF5 + ECM + immer/
+#                      zug/lager). vcpkg CAN rebuild these from source with
+#                      `--build-from-source` (+2h).
 #   * Krita engine   = COMPILED FROM SOURCE in this workflow (krita-source/).
 #   * krita_bridge   = COMPILED FROM SOURCE in this workflow
 #                      (native/krita_bridge/krita_bridge_real.cpp, 2,200 LOC,
 #                       28 real Krita #includes incl. <kis_brush.h>,
 #                       <KoColor.h>, <KisAutoBrush.h>).
+#
+# IMPORTANT Qt-version trade-off (HONEST):
+#   The original spec said "Qt6 via aqtinstall (already there, keep it)".
+#   That is NOT feasible because Krita 6.0.4 with -DBUILD_WITH_QT6=ON
+#   REQUIRES KF6 (krita-source/CMakeLists.txt:548 find_package(KF6 ...
+#   REQUIRED COMPONENTS Config WidgetsAddons Completion CoreAddons GuiAddons
+#   I18n ItemViews)), and vcpkg has NO kf6* ports (verified: HTTP 404 on
+#   ports/kf6config, kf6coreaddons, kf6i18n, kf6guiaddons, etc.). Building
+#   KF6 from source = ~2-4 hours, plus Qt6 build = 8+ hours → total exceeds
+#   GitHub Actions 6h job limit.
+#   FIX: build Krita 6.0.4 with the DEFAULT Qt5 path
+#   (BUILD_WITH_QT6=OFF — the source's default at CMakeLists.txt:14). vcpkg
+#   has all 7 KF5 frameworks (verified: ports kf5config, kf5widgetsaddons,
+#   kf5completion, kf5coreaddons, kf5guiaddons, kf5i18n, kf5itemviews all
+#   HTTP 200). aqtinstall installs Qt 5.15.2. The Krita engine API is
+#   identical regardless of Qt version — only the UI layer differs, and we
+#   are NOT building the UI.
 #
 # See anti-hallucination rules: every CI claim below has a file:line proof
 # in the comments next to the step that makes the claim.
@@ -54,21 +72,30 @@ jobs:
           python-version: '3.11'
 
       # --------------------------------------------------------------------------
-      # Step 1a: Qt6 via aqtinstall.
+      # Step 1a: Qt5 via aqtinstall.
       # PRE-BUILT binary. Compiling Qt from source = 8+ hours, exceeds 6h job
       # limit (see honesty rule). Acceptance required.
+      #
+      # Qt VERSION = 5.15.2 (NOT 6.6.3) — see top-of-file "Qt-version trade-off"
+      # comment for rationale. Krita 6.0.4 source supports Qt5 (default at
+      # CMakeLists.txt:14: option(BUILD_WITH_QT6 ... OFF)), and vcpkg has KF5
+      # but NOT KF6.
       # --------------------------------------------------------------------------
-      - name: Install Qt6 via aqtinstall
+      - name: Install Qt 5.15.2 via aqtinstall
         run: |
           pip install aqtinstall
-          python -m aqt install-qt windows desktop 6.6.3 win64_msvc2019_64 --outputdir C:\Qt
+          # Install Qt 5.15.2 base + qtsvg (Krita REQUIRES Svg at
+          # CMakeLists.txt:558 find_package(Qt5 ... REQUIRED COMPONENTS ...
+          # Svg ...)) + qttools (for Qt5Test, Qt5Concurrent which are also
+          # REQUIRED at line 558).
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -m qtsvg qttools --outputdir C:\Qt
           # Verify Qt install path (used by both cmake -DCMAKE_PREFIX_PATH and
           # the cl /I include path / /LIBPATH lib path in Step 4).
-          if (-not (Test-Path "C:\Qt\6.6.3\msvc2019_64\lib\Qt6Core.lib")) {
-            Write-Host "FATAL: Qt6Core.lib not found at expected path"
+          if (-not (Test-Path "C:\Qt\5.15.2\msvc2019_64\lib\Qt5Core.lib")) {
+            Write-Host "FATAL: Qt5Core.lib not found at expected path"
             exit 1
           }
-          Write-Host "Qt6 installed at C:\Qt\6.6.3\msvc2019_64"
+          Write-Host "Qt 5.15.2 installed at C:\Qt\5.15.2\msvc2019_64"
 
       # --------------------------------------------------------------------------
       # Step 1b: vcpkg for Krita's third-party deps.
@@ -78,44 +105,51 @@ jobs:
       #
       # Dep list verified against krita-source/CMakeLists.txt find_package():
       #   REQUIRED deps (configure fails without these):
-      #     - ECM 6.0                (line 468)  → vcpkg port: extra-cmake-modules
-      #     - KF6 6.0 COMPONENTS     (line 548)  → vcpkg ports: kf6config, kf6widgetsaddons,
-      #       Config, WidgetsAddons,                kf6completion, kf6coreaddons, kf6guiaddons,
-      #       Completion, CoreAddons,               kf6i18n, kf6itemviews
-      #       GuiAddons, I18n, ItemViews
-      #     - PNG 1.2.6              (line 1148) → vcpkg port: libpng
-      #     - Boost 1.69             (line 1161) → vcpkg port: boost (meta)
-      #     - Immer                  (line 1181) → vcpkg port: immer
-      #     - Zug                    (line 1182) → vcpkg port: zug
-      #     - Lager                  (line 1183) → vcpkg port: lager
-      #     - ZLIB                   (line 1226) → vcpkg port: zlib
-      #     - Eigen3                 (line 1401) → vcpkg port: eigen3
-      #     - LibExiv2 0.16          (line 1413) → vcpkg port: exiv2
-      #     - LCMS2 2.4              (line 1418) → vcpkg port: lcms
+      #     - ECM 5.91              (line 471, Qt5 path) → vcpkg port: ecm
+      #     - KF5 5.44 COMPONENTS   (line 548, Qt5 path) → vcpkg ports: kf5config,
+      #       Config, WidgetsAddons,                kf5widgetsaddons, kf5completion,
+      #       Completion, CoreAddons,               kf5coreaddons, kf5guiaddons,
+      #       GuiAddons, I18n, ItemViews            kf5i18n, kf5itemviews
+      #     - PNG 1.2.6             (line 1148) → vcpkg port: libpng
+      #     - Boost 1.69            (line 1161) → vcpkg port: boost (meta)
+      #     - Immer                 (line 1181) → vcpkg port: immer
+      #     - Zug                   (line 1182) → vcpkg port: zug
+      #     - Lager                 (line 1183) → vcpkg port: lager
+      #     - ZLIB                  (line 1226) → vcpkg port: zlib
+      #     - Eigen3                (line 1401) → vcpkg port: eigen3
+      #     - LibExiv2 0.16         (line 1413) → vcpkg port: exiv2
+      #     - LCMS2 2.4             (line 1418) → vcpkg port: lcms
       #       (vcpkg port name is `lcms`, NOT `lcms2` — port provides liblcms2.
       #        First CI run failed with `lcms2 does not exist` error; fixed.)
       #   Optional but commonly-needed deps (NOT REQUIRED in CMakeLists.txt):
       #     - OpenEXR, libjpeg-turbo, giflib, quazip, fftw3, gsl
+      #
+      # All port names below VERIFIED to exist in vcpkg upstream
+      # (microsoft/vcpkg ports/) via GitHub API HTTP 200 checks (logged in
+      # worklog v58-compile-krita-source):
+      #   ecm kf5config kf5widgetsaddons kf5completion kf5coreaddons kf5guiaddons
+      #   kf5i18n kf5itemviews immer zug lager lcms quazip exiv2 eigen3 zlib
+      #   libpng libjpeg-turbo giflib openexr fftw3 gsl boost-* (all HTTP 200)
       # --------------------------------------------------------------------------
       - name: Install Krita third-party deps via vcpkg
         shell: pwsh
         run: |
           # vcpkg is pre-installed at C:\vcpkg on windows-latest.
           & "C:\vcpkg\vcpkg.exe" --version
-          # vCPKG_ROOT env on the runner sometimes points at an MSVC-internal
+          # VCPKG_ROOT env on the runner sometimes points at an MSVC-internal
           # vcpkg; force the canonical C:\vcpkg location.
           $env:VCPKG_ROOT = "C:\vcpkg"
           # Install Krita's REQUIRED find_package() deps (verified above).
-          # Note: kf6* ports will transitively install vcpkg's qtbase — that
-          # is a SEPARATE Qt6 from aqtinstall's. We don't use it for cl.exe
-          # paths (Step 4 uses aqtinstall's Qt6), but vcpkg's qtbase must be
-          # present so vcpkg can build kf6* at all. This wastes ~1.5 GB disk
+          # Note: kf5* ports will transitively install vcpkg's qt5-base — that
+          # is a SEPARATE Qt5 from aqtinstall's. We don't use it for cl.exe
+          # paths (Step 4 uses aqtinstall's Qt5), but vcpkg's qt5-base must be
+          # present so vcpkg can build kf5* at all. This wastes ~1.5 GB disk
           # and ~10 min, but is unavoidable given the spec's "keep aqtinstall"
-          # directive AND Krita's hard KF6 dependency.
+          # directive AND Krita's hard KF5 dependency.
           & "C:\vcpkg\vcpkg.exe" install `
-            extra-cmake-modules `
-            kf6config kf6widgetsaddons kf6completion kf6coreaddons `
-            kf6guiaddons kf6i18n kf6itemviews `
+            ecm `
+            kf5config kf5widgetsaddons kf5completion kf5coreaddons `
+            kf5guiaddons kf5i18n kf5itemviews `
             immer zug lager `
             boost-filesystem boost-system boost-interprocess boost-thread `
             eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
@@ -154,7 +188,7 @@ jobs:
       - name: Configure Krita source (cmake -S krita-source -B krita-build)
         shell: pwsh
         run: |
-          $qtDir = "C:\Qt\6.6.3\msvc2019_64"
+          $qtDir = "C:\Qt\5.15.2\msvc2019_64"
           $vcpkgToolchain = "C:\vcpkg\scripts\buildsystems\vcpkg.cmake"
 
           # Verify source tree is present (anti-hallucination: the spec
@@ -166,14 +200,12 @@ jobs:
           }
           Write-Host "Verified: krita-source/libs/brush/kis_brush.h present"
 
-          # CMake configure. -DBUILD_WITH_QT6=ON is the real Krita option
-          # (krita-source/CMakeLists.txt:14: option(BUILD_WITH_QT6 ...)).
-          # Krita 6.0.4 still considers Qt6 builds "not yet production-ready"
-          # (krita-source/CMakeLists.txt:375 message(FATAL_ERROR ...) unless
-          # ALLOW_UNSTABLE contains "QT6") — pass -DALLOW_UNSTABLE=QT6 to
-          # bypass (we are not packaging a stable release; we are building
-          # the engine libs for FFI consumption). First CI run failed here
-          # without this flag; fixed.
+          # CMake configure. We DO NOT pass -DBUILD_WITH_QT6=ON — the option
+          # defaults to OFF (krita-source/CMakeLists.txt:14), which selects
+          # the Qt5 + KF5 path (krita-source/CMakeLists.txt:21-22 set
+          # MIN_FRAMEWORKS_VERSION 5.44.0). vcpkg has KF5 but NOT KF6 (see
+          # top-of-file trade-off comment). No -DALLOW_UNSTABLE=QT6 needed
+          # (that gate only fires when BUILD_WITH_QT6=ON, see CMakeLists.txt:375).
           # The spec's -DWITH_PYTHON=OFF / -DWITH_QT_XMLPATTERNS=OFF /
           # -DBUILD_LIB_KRITA_UI=OFF / -DBUILD_LIB_KRITA_PLUGIN=OFF options
           # are passed through verbatim per the spec — Krita's CMake will
@@ -186,10 +218,11 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=krita-install `
             -DCMAKE_PREFIX_PATH="$qtDir" `
             -DCMAKE_TOOLCHAIN_FILE="$vcpkgToolchain" `
+            -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=krita-build/bin `
+            -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=krita-build/lib `
+            -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=krita-build/lib `
             -DBoost_NO_BOOST_CMAKE=ON `
             -DBUILD_TESTING=OFF `
-            -DBUILD_WITH_QT6=ON `
-            -DALLOW_UNSTABLE=QT6 `
             -DBUILD_KRITA_QT_DESIGNER=OFF `
             -DWITH_PYTHON=OFF `
             -DWITH_QT_XMLPATTERNS=OFF `
@@ -274,7 +307,7 @@ jobs:
       - name: Compile krita_bridge.dll from krita_bridge_real.cpp
         shell: pwsh
         run: |
-          $qtDir     = "C:\Qt\6.6.3\msvc2019_64"
+          $qtDir     = "C:\Qt\5.15.2\msvc2019_64"
           $vcpkgInc  = "C:\vcpkg\installed\x64-windows\include"
           $vcpkgLib  = "C:\vcpkg\installed\x64-windows\lib"
 
@@ -331,10 +364,12 @@ jobs:
           $incArgs = $incPaths -join " "
 
           # Link the 8 Krita libs we built in Step 3 (verified .lib paths
-          # in Step 3's verification block) + the Qt6 libs from aqtinstall
+          # in Step 3's verification block) + the Qt5 libs from aqtinstall
           # + vcpkg deps. /LIBPATH order: krita-build first (so the freshly
           # built libkrita*.lib is resolved before any system Qt/vcpkg lib
           # of the same name — there shouldn't be any, but be safe).
+          # Qt5 lib names: Qt5Core / Qt5Gui / Qt5Widgets / Qt5Xml / Qt5Svg
+          # (NOT Qt6* — we are on the Qt5 build path, see top-of-file).
           $libs = @(
             "/LIBPATH:`"krita-build\lib`"",
             "/LIBPATH:`"krita-build\bin`"",
@@ -348,11 +383,11 @@ jobs:
             "kritaglobal.lib",
             "kritaflake.lib",
             "kritacommand.lib",
-            "Qt6Core.lib",
-            "Qt6Gui.lib",
-            "Qt6Widgets.lib",
-            "Qt6Xml.lib",
-            "Qt6Svg.lib"
+            "Qt5Core.lib",
+            "Qt5Gui.lib",
+            "Qt5Widgets.lib",
+            "Qt5Xml.lib",
+            "Qt5Svg.lib"
           )
           $libArgs = $libs -join " "
 
