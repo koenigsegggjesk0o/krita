@@ -3556,3 +3556,38 @@ Stage Summary:
   * The Phong shininess (64) + specularStrength (0.8) defaults are picked from the brief's suggestions ("e.g. 64.0", "e.g. 0.8") — they are NOT tuned against real-world metal reference photos. Chrome (96/1.0) and gold (56/0.7) factory presets are aesthetic guesses.
   * test/engine/material_test.dart line 39 test NAME ("only shaded responds to light / casts shadows") is now slightly misleading (metallic is also lit + casts shadows). The test BODY still passes (only checks shadeless/glow/cutout as false). Did NOT touch that test file — it's OUT OF SCOPE per the brief. Flagged for a future test-rename task.
   * The v0.56-B agent's uncommitted undo-OOM work (modified main_screen.dart + untracked test/undo_oom_test.dart) is preserved in my local working tree, NOT committed by me. If that agent pushes separately, there's no conflict (different code regions — undo stack vs material enum).
+
+---
+Task ID: v56-B-undo-oom
+Agent: Opus (general-purpose)
+Task: Fix undo stack OOM — reduce _maxUndo 40→20 + dynamic cap when stroke count high.
+
+Work Log:
+- Mandatory first steps: `export PATH="/home/z/flutter/bin:$PATH"`; `git pull --rebase origin feather-krita-flutter` (Already up to date at ecec2b9a — HEAD verified matches the brief). Read worklog.md last 50 lines (v0.55-B feather-features entry).
+- Verified gap (grep proof): `grep -n "_maxUndo\|_undoStack\|_redoStack" lib/screens/main_screen.dart` matched the brief exactly — original line 205 `static const int _maxUndo = 40;`, original line 3324 `_undoStack.add(_strokes.map((s) => s.copy()).toList());` (deep-copy of the ENTIRE stroke list per snapshot), original line 3325 `if (_undoStack.length > _maxUndo) _undoStack.removeAt(0);`. At 1000 strokes × 40 snapshots ≈ 40 000 Stroke copies ≈ 200 MB — real OOM risk. Gap CONFIRMED.
+- Brief mismatch (minor, reported honestly): the brief said "Line 3350: same pattern for redo" + step 3 "Replace the hardcoded `_maxUndo` check at lines 3325 and the redo equivalent". Verified there is NO redo-side cap check in the code — `_maxUndo` is referenced as a cap ONLY at the one site (original line 3325) inside `_pushUndo()`. The `_redo()` method's push to `_undoStack` (original line 3350) is a deep-copy add with NO cap, and `_redoStack` is never explicitly capped. This is SAFE without an added cap: `_redoStack` is cleared on every `_pushUndo()` (original line 3326) and can only re-grow to the depth of a prior undo run, so it is implicitly bounded by the (now dynamic) undo cap. Adding a new cap to the redo path would be a behaviour change beyond the brief's stated fix and could break undo/redo symmetry, so I left it unchanged and documented why. Only the one `_maxUndo` cap check was rewired.
+- Fix (Option A — conservative, no behaviour gimmick):
+  * Added a `@visibleForTesting` static block on the public `MainScreen` widget (lib/screens/main_screen.dart:194-211): `kBaseMaxUndo = 20`, `kLargeDocMaxUndo = 10`, `kLargeDocStrokeThreshold = 200`, and a pure `effectiveMaxUndoFor(int strokeCount) => strokeCount > 200 ? 10 : 20`. Pure function of stroke count so it is unit-testable without pumping MainScreen (which needs engine + FFI init).
+  * Changed `_maxUndo` 40 → 20 at lib/screens/main_screen.dart:244 (now `static const int _maxUndo = MainScreen.kBaseMaxUndo;` — single source of truth for "20", avoids the unused-field warning, honours the brief's "keep a `_maxUndo` field = 20" requirement).
+  * Added the memory-aware getter `int get _effectiveMaxUndo` at lib/screens/main_screen.dart:253-255 (returns `_maxUndo` for normal docs, `MainScreen.kLargeDocMaxUndo` (10) when `_strokes.length > MainScreen.kLargeDocStrokeThreshold`).
+  * Wired the dynamic cap: replaced the hardcoded cap check in `_pushUndo()` at lib/screens/main_screen.dart:3377 (`if (_undoStack.length > _effectiveMaxUndo) _undoStack.removeAt(0);`). The deep-copy push itself (lib/screens/main_screen.dart:3373) is unchanged — out of scope per "do NOT touch _onStrokeUpdate / paint loop".
+- Did NOT touch: `_onStrokeUpdate`, `_onStrokeEnd`, any paint-loop code, the redo path, any engine/core/IO file, lib/engine/material/* (concurrent v0.56-C agent owns that). Only the two files in SCOPE.
+- Validation:
+  * `flutter analyze lib/screens/main_screen.dart test/undo_oom_test.dart` → No issues found! (0 errors / 0 warnings / 0 infos).
+  * `flutter analyze lib/` → No issues found! (the 2 transient errors I saw mid-run in lib/engine/material/metallic_material.dart belonged to the concurrent v0.56-C agent's in-progress work; they were committed/fixed by that agent as cc86f6c6 and are no longer present).
+  * `flutter test test/undo_oom_test.dart` → 3/3 pass (returns 20 when ≤200; returns 10 when >200; threshold constants pinned).
+  * `flutter test test/engine/` → 267/267 pass (All tests passed!, exit 0).
+  * `flutter test test/core/` → 172/172 pass (All tests passed!).
+  * Total regression: 267 engine + 172 core = 439 tests, 0 failures.
+
+Stage Summary:
+- Files modified: lib/screens/main_screen.dart (+55 / -2 = net +53 lines: the @visibleForTesting static block + _maxUndo change + _effectiveMaxUndo getter + _pushUndo cap rewire with doc comment), test/undo_oom_test.dart (NEW, ~58 lines, 3 tests).
+- _maxUndo before/after: 40 → 20 (base cap halved); dynamic effective cap 10 when stroke count > 200.
+- Memory savings estimate: at 1000 strokes the undo stack held 40 deep-copy snapshots × 1000 strokes = 40 000 Stroke copies; after the fix a normal doc holds 20 snapshots (20 000 copies, ≈100 MB saved) and a >200-stroke doc holds only 10 snapshots (10 000 copies, ≈150 MB saved vs the old 40). The 5 KB/stroke figure is the v0.55-C estimate already in the file's own comment (lib/screens/main_screen.dart ~line 247); the savings are proportional to it. NOT measured with a memory profiler on a real device — estimate only.
+- Test results: 3 new + 439 regression = 442 tests pass, 0 failures, 0 analyze errors.
+- Commit: f2f18ca6 (pushed to origin/feather-krita-flutter; remote advanced ffc9e257..f2f18ca6). Linear history, no force, no conflict with the concurrent v0.56-C MetallicMaterial commits (cc86f6c6 + ffc9e257) — different code regions.
+- HONEST remaining / NOT verified:
+  * The dynamic cap is exercised by the pure-function unit test only (MainScreen.effectiveMaxUndoFor). The end-to-end behaviour — i.e. that a real pumped MainScreen with >200 strokes actually trims _undoStack to 10 — is NOT covered by an automated test, because pumping MainScreen requires engine init + FFI probe (out of test scope, as v0.55-B also noted). Verified by code inspection + flutter analyze only.
+  * Memory savings are an ESTIMATE from the stroke-count math + the existing ~5 KB/stroke comment, NOT a measurement from an Android memory profiler. A real OOM-repro test (draw 1000 strokes on a low-RAM device, observe heap) was not performed.
+  * The redo stack has no explicit cap (see brief-mismatch note above). It is implicitly bounded by the undo cap + cleared on every _pushUndo, so it cannot grow unbounded — but if a future change stops clearing _redoStack on _pushUndo, the redo stack could grow. Flagging this as a latent assumption, not a bug.
+  * Option B (delta-undo, store only the diff per action) was deliberately NOT attempted — the brief said avoid unless Option A is <5 lines. Option A was ~15 lines + 3 tests, well within the time box. A future delta-undo refactor would cut memory another ~10× but is a large change to _pushUndo/_undo/_redo symmetry.
