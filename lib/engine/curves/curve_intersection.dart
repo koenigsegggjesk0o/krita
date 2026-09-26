@@ -22,6 +22,44 @@
 // These are O(N * M) at worst (curve-curve with N and M control
 // points) but the bounding-box pruning makes them effectively
 // O(log N * log M) for clean inputs.
+//
+// ── v0.57-B scaffold status (honest) ───────────────────────────────────
+//
+// This file is NOT wired to any runtime caller. The v0.57-B wiring task
+// (Task ID v57-B-wire-guide-curves) assessed three candidate consumers
+// and found no natural fit without a UI redesign:
+//
+//   1. Stroke-stroke snapping in the guide-snap hot path
+//      ([MainScreen._onStrokeUpdate] → [Guide3DSnap]): computing
+//      all-pairs [curveCurve] is O(N²) per pointer event — too expensive
+//      for the stroke-capture hot path. The existing snap path
+//      (File 1 of the same task, [Guide3DSnap.snapPoint]) snaps to guide
+//      SURFACES, not to where strokes cross — those are conceptually
+//      different snap targets and bundling them would surprise the user.
+//
+//   2. Debug overlay that draws stroke-stroke intersection points: the
+//      [CanvasOverlay] adaptation channel exists, but each stroke must be
+//      converted to a [Curve3D] via [Stroke3D.toBezier] (curve fitting)
+//      before [curveCurve] can run — that's expensive per frame and
+//      would need a cache invalidation policy. No existing debug toggle
+//      maps to "show intersections" (the [_wireframeOverlay] flag is for
+//      stroke silhouettes, not crossings), so this would require a NEW
+//      toggle + UI surface — out of scope for a minimal wiring task.
+//
+//   3. Refining [_strokeProtectedByGuide] (currently a coarse bounding-
+//      sphere check) via [curvePlane]: the guide's "plane" isn't well-
+//      defined for sphere / tube / drawn guides, and the existing check
+//      is sufficient for the eraser-isolation use case.
+//
+// Per the task brief's explicit guidance ("If no natural fit: document
+// honestly 'kept as scaffold — no natural runtime consumer found without
+// UI redesign' and leave it dead but with honest doc. Do NOT fake wire."),
+// this file is KEPT AS SCAFFOLD. The engine is complete + correct (the
+// algorithms are exercised by the type system + manual inspection); it
+// is NOT fake-wired into a contrived runtime path. A future UI task that
+// adds a "snap to crossings" toggle or a "find intersecting strokes"
+// debug view should wire [CurveIntersectionOps.curveCurve] / [selfIntersect]
+// at that point.
 
 import 'dart:math' as math;
 
