@@ -48,6 +48,12 @@ enum FeatherTool {
   stage,
   liquify,
   transform,
+  // Eye-dropper colour sampler (v0.54-A §2). Tapping the canvas in this
+  // tool samples the nearest stroke's colour via ColorSampler and pushes
+  // it to the host's active colour. Distinct from the ColorWheel's
+  // onEyeDropper pill (which stays a no-op until editor_screen.dart is
+  // refactored to forward the callback — out of scope for v0.54-A).
+  eyedropper,
 }
 
 /// True when [active] should highlight the dock's single Draw button
@@ -97,6 +103,8 @@ extension FeatherToolX on FeatherTool {
         return Icons.waves_outlined;
       case FeatherTool.transform:
         return Icons.open_with_outlined;
+      case FeatherTool.eyedropper:
+        return Icons.colorize_rounded;
     }
   }
 
@@ -129,6 +137,8 @@ extension FeatherToolX on FeatherTool {
         return 'Liquify';
       case FeatherTool.transform:
         return 'Transform';
+      case FeatherTool.eyedropper:
+        return 'Eyedropper';
     }
   }
 
@@ -150,6 +160,8 @@ extension FeatherToolX on FeatherTool {
         return FeatherColors.toolLiquify;
       case FeatherTool.stage:
         return FeatherColors.toolStage;
+      case FeatherTool.eyedropper:
+        return FeatherPalette.accentPink;
       default:
         return palette.accent;
     }
@@ -181,6 +193,7 @@ class ToolDock extends StatelessWidget {
     FeatherTool.stage,
     FeatherTool.liquify,
     FeatherTool.transform,
+    FeatherTool.eyedropper,
   ];
 
   @override

@@ -3215,3 +3215,28 @@ Stage Summary:
 - Test results: 466/466 pass (was 465 baseline post-v0.54-B; +22 new = 16 wiring + 6 assist panel, with 1 concurrent-sandbox variance). flutter analyze lib/ = 0 errors / 0 warnings / 0 infos.
 - StableStrokes IS wired to the live paint path: the stabilizer runs on every stroke update, smoothing the Stroke3D world geometry. The real-Krita dab screen placement is NOT smoothed (documented honestly — needs a world→screen helper that doesn't exist).
 - Commit hash: <filled after push>.
+
+---
+Task ID: v54-A-assistance-wire (subsystem 2/4: ColorSampler eye-dropper)
+Agent: Opus (general-purpose)
+Task: Wire lib/engine/color/color_sampler.dart (eye-dropper) to the live paint path — tap canvas in eye-dropper tool → sample nearest stroke's colour → push to active colour.
+
+Work Log:
+- Read lib/engine/color/color_sampler.dart: API is `ColorSampler.sampleFromCurves(List<Stroke>, Vector3 worldPos, {maxDistance}) → int?` (nearest visible stroke's ARGB colour within pick radius) + `sampleFromImage` (bilinear RGBA8) + `samplePixel` (nearest-neighbour). NOT the `sample(paintLayer, x, y) → Color` API the task brief guessed. Adapted: the host calls the `sampleColorAt` helper (added in subsystem 1's assistance_wiring.dart) which wraps `sampleFromCurves`.
+- Searched for the eye-dropper button: ColorWheel (lib/ui/widgets/color_wheel.dart) already has an `onEyeDropper` callback + `eyeDropperActive` prop, but editor_screen.dart wires it to `() {}` (no-op, line 629). editor_screen.dart is OUT OF SCOPE for v0.54-A (only lib/ui/widgets/ + main_screen.dart + assistance/ + color/). So I could NOT fix the ColorWheel pill directly.
+- Approach (per the brief's fallback): added a NEW `FeatherTool.eyedropper` to the FeatherTool enum in lib/ui/widgets/tool_dock.dart (in scope — the brief says "add one to the toolbar (lib/ui/widgets/toolbar.dart)" and tool_dock.dart is the actual toolbar widget). The eye-dropper is now a first-class dock tool with `Icons.colorize_rounded`, tooltip 'Eyedropper', rose/pink colour (`FeatherPalette.accentPink`), added to the `_core` list so it appears in the dock. The existing editor_screen.dart ToolDock onSelect handler's else branch (`_set(_s.copyWith(tool: t))`) handles the new enum value without an editor_screen.dart change.
+- Wired the tap in lib/screens/main_screen.dart (minimal blocks):
+  * Expanded the `onTapSelect` gate condition to also fire when `_tool == FeatherTool.eyedropper` (so single-finger taps route to `_onTapSelect` instead of camera orbit). `drawingEnabled` stays false for eyedropper (only draw/eraser/vacuum/bend enable drawing) so the tap gesture is unambiguous.
+  * Added an eye-dropper branch at the top of `_onTapSelect`: when `_tool == FeatherTool.eyedropper`, calls `sampleColorAt(_strokes, world)` (the pure helper from subsystem 1, default pick radius kEyedropperPickRadius = 4 mm world-space). If a colour is returned, sets `_color = Color(argb)` + `_brush.color = argb` + setState (so the colour swatch + next dab reflect the sampled colour). If no stroke is within the pick radius, falls through silently (active colour unchanged). Returns early so the select/loft branches don't run.
+- Created test/tool_dock_test.dart (NEW, 6 tests): FeatherTool.eyedropper exists in values, icon = colorize_rounded, tooltip = 'Eyedropper', colour = accentPink, ToolDock renders the eyedropper button + tapping fires onSelect(FeatherTool.eyedropper), the button highlights when active. All 6 pass.
+- The `sampleColorAt` helper itself is already covered by assistance_wiring_test.dart's 4-test ColorSampler group (subsystem 1).
+- HONESTY NOTE: the ColorWheel's existing `onEyeDropper` pill (lib/ui/widgets/color_wheel.dart line 105-113) stays a no-op because wiring it requires adding an `onEyeDropper` prop to EditorScreen + forwarding it through editor_screen.dart (OUT OF SCOPE for v0.54-A). The new eye-dropper DOCK TOOL is the wired path. Documented honestly in the tool_dock.dart enum comment.
+- Shared-sandbox isolation: stashed the concurrent agent's unstaged WIP (apple_pencil_handler.dart, gesture_detector.dart, canvas_viewport.dart, apple_pencil_channel.dart, test/core/interaction/) before pull --rebase + push, popped afterwards. Committed only my files (tool_dock.dart, main_screen.dart, tool_dock_test.dart, worklog.md).
+- Validation: flutter analyze lib/ → "No issues found!" (0 errors / 0 warnings / 0 infos, no regression). flutter test --concurrency=4 (full suite) → 472/472 pass (was 466; +6 new tool_dock tests).
+
+Stage Summary:
+- Files modified: lib/ui/widgets/tool_dock.dart (+~12 lines: eyedropper enum value + icon/tooltip/color switch cases + _core list entry), lib/screens/main_screen.dart (+~18 lines: onTapSelect gate condition + _onTapSelect eyedropper branch).
+- Files created: test/tool_dock_test.dart (6 tests).
+- Test results: 472/472 pass (was 466; +6 new). flutter analyze lib/ = 0 errors / 0 warnings / 0 infos.
+- ColorSampler IS wired to the live paint path: eye-dropper tool selected → tap canvas → nearest stroke colour sampled → active colour updated. The ColorWheel's onEyeDropper pill stays a no-op (editor_screen.dart out of scope — documented honestly).
+- Commit hash: <filled after push>.

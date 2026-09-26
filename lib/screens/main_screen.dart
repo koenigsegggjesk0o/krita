@@ -678,11 +678,14 @@ class _MainScreenState extends State<MainScreen>
                   onExport: _showExportSheet,
                   onShare: _shareLastExport,
                   // Tool-gated gesture callbacks: tap-select only fires in the
-                  // Select tool OR in Loft mode (where taps add strokes to the
-                  // loft curve selection). Liquify drag only in the Liquify tool.
-                  // The viewport uses their presence (vs null) to route single-
-                  // finger gestures away from camera orbit.
+                  // Select tool, the Eye-dropper tool (v0.54-A §2 — samples
+                  // the nearest stroke's colour), OR in Loft mode (where taps
+                  // add strokes to the loft curve selection). Liquify drag
+                  // only in the Liquify tool. The viewport uses their presence
+                  // (vs null) to route single-finger gestures away from
+                  // camera orbit.
                   onTapSelect: (_tool == FeatherTool.select ||
+                          _tool == FeatherTool.eyedropper ||
                           _guideMode == _GuideMode.loft)
                       ? _onTapSelect
                       : null,
@@ -2472,6 +2475,23 @@ class _MainScreenState extends State<MainScreen>
   void _onTapSelect(Offset screenPos) {
     final world = _screenToWorld(screenPos);
     if (world == null) return;
+    // Eye-dropper tool (v0.54-A §2): sample the nearest visible stroke's
+    // colour via ColorSampler and push it to the host's active colour.
+    // Falls through silently when no stroke is within the pick radius
+    // (the active colour stays unchanged). The brush engine + brush
+    // panel are synced so the next dab / the colour swatch reflect the
+    // sampled colour. The pick radius is the world-space default
+    // (kEyedropperPickRadius = 4 mm) — generous enough for finger taps.
+    if (_tool == FeatherTool.eyedropper) {
+      final argb = sampleColorAt(_strokes, world);
+      if (argb != null) {
+        setState(() {
+          _color = Color(argb);
+          _brush.color = argb;
+        });
+      }
+      return;
+    }
     // Loft mode: tap adds / removes the nearest stroke from the loft curve
     // selection (and rebuilds the live loft preview).
     if (_guideMode == _GuideMode.loft) {
