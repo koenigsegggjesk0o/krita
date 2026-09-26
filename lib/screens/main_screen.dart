@@ -1442,18 +1442,18 @@ class _MainScreenState extends State<MainScreen>
 
   /// Maps the UI-side [FeatherMaterial] enum (emitted by the
   /// [MaterialPicker]) to the canvas viewport's rendering hint enum
-  /// [CanvasMaterial]. The two enums mirror the same four Feather
-  /// material kinds; this converter keeps the canvas viewport decoupled
-  /// from the picker (it doesn't import material_picker.dart).
+  /// [CanvasMaterial]. The two enums mirror the same Feather material
+  /// kinds; this converter keeps the canvas viewport decoupled from
+  /// the picker (it doesn't import material_picker.dart).
   ///
-  /// HONESTY NOTE (v55-B): the picker now exposes a 5th kind —
-  /// [FeatherMaterial.metallic] — for UI parity with Feather 3D's
-  /// material chip row. The engine's [MaterialType] enum has 4 kinds
-  /// only (no dedicated MetallicMaterial class), so `metallic` is
-  /// mapped to [CanvasMaterial.shaded] (the closest visual match:
-  /// Lambert diffuse + Phong specular). A real metallic BRDF (e.g.
-  /// Cook-Torrance) would require a new engine material class — out
-  /// of scope for this UI feature-parity task.
+  /// v0.56-C: the picker's 5th kind — [FeatherMaterial.metallic] —
+  /// now maps to a REAL [CanvasMaterial.metallic] render branch (a
+  /// Lambert + Phong tube plus a thin chrome catch-light, see
+  /// _paintMetallicTube in canvas_viewport.dart). The engine side is
+  /// backed by [MetallicMaterial] (lib/engine/material/
+  /// metallic_material.dart) — a Lambert + high-spec Phong +
+  /// environment-reflection-tint BRDF. The v55-B fake mapping
+  /// (metallic → shaded) is gone.
   CanvasMaterial _toCanvasMaterial(FeatherMaterial m) {
     switch (m) {
       case FeatherMaterial.shadeless:
@@ -1465,10 +1465,9 @@ class _MainScreenState extends State<MainScreen>
       case FeatherMaterial.cutout:
         return CanvasMaterial.cutout;
       case FeatherMaterial.metallic:
-        // UI affordance only — no engine MetallicMaterial yet. Renders
-        // through the shaded Lambert + Phong path so strokes still pick
-        // up the lit look. See the file-level honesty note above.
-        return CanvasMaterial.shaded;
+        // Real metallic render path (v0.56-C). See _paintMetallicTube
+        // in canvas_viewport.dart + MetallicMaterial in the engine.
+        return CanvasMaterial.metallic;
     }
   }
 

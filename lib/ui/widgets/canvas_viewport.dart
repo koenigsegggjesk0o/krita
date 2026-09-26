@@ -40,11 +40,15 @@
 //   5. optionally taper width with per-vertex depth (perspective).
 //
 // Materials:
-//   • [CanvasMaterial.flat]    — legacy solid color (no shading).
-//   • [CanvasMaterial.shaded]  — the 3-pass Lambert tube (default).
-//   • [CanvasMaterial.glow]    — additive blend + blurred bloom halo.
-//   • [CanvasMaterial.guide]   — translucent ribbon with grid hatch
-//                                (used to render Guide3D surfaces).
+//   • [CanvasMaterial.flat]     — legacy solid color (no shading).
+//   • [CanvasMaterial.shaded]   — the 3-pass Lambert tube (default).
+//   • [CanvasMaterial.glow]     — additive blend + blurred bloom halo.
+//   • [CanvasMaterial.cutout]   — reads as the scene background color.
+//   • [CanvasMaterial.guide]    — translucent ribbon with grid hatch
+//                                 (used to render Guide3D surfaces).
+//   • [CanvasMaterial.metallic] — Lambert + Phong tube + thin chrome
+//                                 catch-light (v0.56-C; backed by the
+//                                 real MetallicMaterial engine class).
 
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -155,6 +159,12 @@ enum CanvasMaterial {
 
   /// Translucent surface with grid hatch — used by Guide3D meshes.
   guide,
+
+  /// Polished metal — reuses the [shaded] Lambert + Phong tube path
+  /// but adds a thin near-white specular catch-light on the lit side
+  /// to read as shiny metal (v0.56-C). Backed by the real
+  /// [MetallicMaterial] engine class.
+  metallic,
 }
 
 class CanvasStroke {
@@ -789,6 +799,9 @@ class _CanvasPainter extends CustomPainter {
       case CanvasMaterial.guide:
         _paintGuideRibbon(canvas, stroke);
         break;
+      case CanvasMaterial.metallic:
+        _paintMetallicTube(canvas, stroke);
+        break;
     }
   }
 
@@ -931,6 +944,55 @@ class _CanvasPainter extends CustomPainter {
           ..blendMode = additive ? BlendMode.plus : BlendMode.srcOver,
       );
     }
+  }
+
+  // ── Metallic material (v0.56-C) ───────────────────────────────────────
+
+  /// Draws a stroke as a polished-metal tube: reuses the Lambert +
+  /// Phong [shaded] path (for the ambient floor + diffuse + highlight
+  /// passes) then adds a thin, near-white specular catch-light on the
+  /// lit side. The catch-light is the signature metal tell — a tight,
+  /// bright reflection of the light source that reads as chrome even
+  /// at low base-color saturation.
+  ///
+  /// This is the canvas-painter mirror of the engine's
+  /// [MetallicMaterial] (lib/engine/material/metallic_material.dart).
+  /// The engine class drives the per-fragment BRDF for offline
+  /// evaluation / export; this painter drives the on-screen look.
+  void _paintMetallicTube(Canvas canvas, CanvasStroke stroke) {
+    // Base Lambert + Phong tube (same passes as [CanvasMaterial.shaded]).
+    _paintShadedTube(canvas, stroke, additive: false);
+
+    final pts = stroke.points;
+    final n = pts.length;
+    if (n < 2) return;
+    final geom = _strokeGeometry(stroke);
+    if (geom == null) return;
+    final normals = geom.normals;
+    final litSigns = geom.litSigns;
+    final halfWidths = geom.halfWidths;
+
+    // Catch-light pass: a near-white, ultra-thin polyline offset onto
+    // the lit side. Tight factor (0.18) + thin width (0.12 * w) gives
+    // the crisp chrome reflection look.
+    final catchPath = _offsetPolyline(pts, normals, litSigns, halfWidths,
+        side: 1.0, factor: 0.18);
+    final catchCol = HSVColor.fromAHSV(
+      stroke.color.a,
+      0.0, // neutral hue — chrome catch-light is white
+      0.0,
+      1.0, // full-bright white
+    ).toColor();
+    canvas.drawPath(
+      catchPath,
+      Paint()
+        ..color = catchCol.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width * 0.12
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = BlendMode.srcOver,
+    );
   }
 
   // ── Glow material ────────────────────────────────────────────────────

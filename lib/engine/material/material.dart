@@ -7,11 +7,11 @@
 // are 3D curves that respond to light. Use materials to add depth and
 // vibrancy to your work."
 //
-// Every curve carries one [FeatherMaterial]. The four concrete kinds —
-// Shadeless, Shaded, Glow, Cutout — live in sibling files and implement
-// [shade]. This base class holds the shared state (type, baseColor,
-// opacity, optional pattern) and the JSON dispatch that reconstructs the
-// right subclass from a saved project.
+// Every curve carries one [FeatherMaterial]. The five concrete kinds —
+// Shadeless, Shaded, Glow, Cutout, Metallic — live in sibling files and
+// implement [shade]. This base class holds the shared state (type,
+// baseColor, opacity, optional pattern) and the JSON dispatch that
+// reconstructs the right subclass from a saved project.
 //
 // A [ShadeContext] bundles everything a material needs to evaluate one
 // fragment: the surface normal + view direction (for Shaded's lighting),
@@ -26,6 +26,7 @@ import 'package:feather_krita/engine/material/cutout_material.dart';
 import 'package:feather_krita/engine/material/glow_material.dart';
 import 'package:feather_krita/engine/material/light_rig.dart';
 import 'package:feather_krita/engine/material/material_type.dart';
+import 'package:feather_krita/engine/material/metallic_material.dart';
 import 'package:feather_krita/engine/material/pattern_generator.dart';
 import 'package:feather_krita/engine/material/shadeless_material.dart';
 import 'package:feather_krita/engine/material/shaded_material.dart';
@@ -83,8 +84,8 @@ abstract class FeatherMaterial {
   /// Curve opacity in [0, 1] (docs: the brush's opacity slider).
   double opacity;
 
-  /// Optional procedural pattern. Forced null for Glow/Cutout by the
-  /// docs' rule (only Shadeless and Shaded accept patterns).
+  /// Optional procedural pattern. Forced null for Glow/Cutout/Metallic
+  /// by the docs' rule (only Shadeless and Shaded accept patterns).
   PatternSettings? pattern;
 
   /// Whether this material is drawn with additive blending.
@@ -132,8 +133,32 @@ abstract class FeatherMaterial {
         return GlowMaterial(baseColor: color, opacity: opacity);
       case MaterialType.cutout:
         return CutoutMaterial(opacity: opacity);
+      case MaterialType.metallic:
+        // Metallic does not accept a pattern (materialTypeSupportsPattern
+        // is false); the base constructor already nulled [pattern]. We
+        // also restore the metallic-specific knobs from JSON if present,
+        // falling back to the defaults.
+        return MetallicMaterial(
+          baseColor: color,
+          opacity: opacity,
+          specularColor: _readColor(json['specularColor'],
+              const Color.fromARGB(255, 255, 255, 255)),
+          specularStrength:
+              (json['specularStrength'] as num?)?.toDouble() ?? 0.8,
+          shininess: (json['shininess'] as num?)?.toDouble() ?? 64.0,
+          envColor: _readColor(
+              json['envColor'], const Color.fromARGB(255, 180, 210, 240)),
+          envStrength: (json['envStrength'] as num?)?.toDouble() ?? 0.2,
+        );
     }
   }
+}
+
+/// Decodes a 0xAARRGGBB int from JSON into a [Color], returning [fallback]
+/// when the value is missing or not an int.
+Color _readColor(Object? v, Color fallback) {
+  if (v is int) return Color(v);
+  return fallback;
 }
 
 /// Packs an ARGB int from 0..1 linear channels.

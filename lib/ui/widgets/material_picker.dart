@@ -8,14 +8,14 @@
 //   * Shaded    — light + shadows. Patterns allowed.
 //   * Glow      — glow-area effect, no light/shadow, no patterns.
 //   * Cutout    — responds to the world/background, no patterns.
-//   * Metallic  — shiny metal highlight (UI affordance). HONESTY NOTE:
-//                 the engine's [MaterialType] enum has 4 kinds only — no
-//                 dedicated [MetallicMaterial] class exists. The host maps
-//                 [FeatherMaterial.metallic] → [CanvasMaterial.shaded] so
-//                 strokes pick up the Lambert + Phong lit look from the
-//                 ShadedMaterial path. A real metallic BRDF would require
-//                 a new engine material class (out of scope for the UI
-//                 feature-parity task — see v55-B worklog entry).
+//   * Metallic  — polished metal: Lambert + high-spec Phong + sky-color
+//                 environment reflection tint. v0.56-C made this a REAL
+//                 engine material (see lib/engine/material/
+//                 metallic_material.dart) — the host maps
+//                 [FeatherMaterial.metallic] → [CanvasMaterial.metallic]
+//                 so strokes render through the chrome catch-light path.
+//                 Patterns are NOT supported on Metallic (polished metal
+//                 has no engraving in the Feather doc model).
 //
 // Patterns (Shadeless/Shaded only): Dot, Line, Cross, Terrazzo, Stippled Dot.
 // Each pattern has a slide for intensity / angle / contrast.
