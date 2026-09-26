@@ -77,7 +77,7 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, LogicalKeyboardKey;
 import 'package:share_plus/share_plus.dart';
 import 'package:vector_math/vector_math_64.dart' hide Colors;
 
@@ -123,7 +123,9 @@ import 'package:feather_krita/io/obj_exporter.dart';
 import 'package:feather_krita/io/png_exporter.dart';
 import 'package:feather_krita/models/stroke.dart';
 import 'package:feather_krita/ui/screens/editor_screen.dart';
+import 'package:feather_krita/ui/theme/feather_colors.dart';
 import 'package:feather_krita/ui/theme/feather_typography.dart';
+import 'package:feather_krita/ui/widgets/about_dialog.dart';
 import 'package:feather_krita/ui/widgets/brush_picker.dart'
     show BrushPreset;
 import 'package:feather_krita/ui/widgets/editor_shortcuts.dart';
@@ -136,6 +138,9 @@ import 'package:feather_krita/ui/widgets/right_panel.dart'
 import 'package:feather_krita/ui/widgets/tool_dock.dart' show FeatherTool;
 import 'package:feather_krita/ui/widgets/liquify_panel.dart'
     show LiquifyMode;
+import 'package:feather_krita/utils/app_version.dart';
+import 'package:feather_krita/utils/crash_log.dart';
+import 'package:feather_krita/utils/paint_perf.dart';
 import 'package:feather_krita/ui/widgets/canvas_viewport.dart'
     show
         CanvasMaterial,
@@ -189,6 +194,25 @@ class _MainScreenState extends State<MainScreen>
   final List<List<Stroke>> _undoStack = <List<Stroke>>[];
   final List<List<Stroke>> _redoStack = <List<Stroke>>[];
   static const int _maxUndo = 40;
+
+  // v0.55-C: stroke soft-cap (memory hygiene).
+  //
+  // The host stores every committed stroke in [_strokes] (and a parallel
+  // deep-copy snapshot in [_undoStack] / [_redoStack], capped by [_maxUndo]).
+  // Each Stroke carries a position + pressure list, and each Stroke3D in
+  // [_stroke3Ds] carries the per-sample world geometry. At ~5 KB / stroke
+  // (Stroke + Stroke3D + scene-graph reference + material map entry) the
+  // host's document memory crosses ~5 MB at 1000 strokes and ~50 MB at
+  // 10000 strokes — the latter is the OOM risk the brief flagged.
+  //
+  // We do NOT auto-merge or auto-delete the oldest stroke (that would
+  // destroy the user's work silently). Instead we surface a soft warning
+  // SnackBar the moment the stroke count crosses [kStrokeSoftCap], nudging
+  // the user to merge / export / clear. The warning fires exactly once per
+  // threshold-cross (re-arms if the count drops back below and re-crosses).
+  // The cap value + decision logic live in lib/utils/paint_perf.dart so
+  // they're unit-testable in isolation.
+  bool _strokeCapWarned = false;
 
   // ----- UI state ---------------------------------------------------------
 
@@ -530,6 +554,20 @@ class _MainScreenState extends State<MainScreen>
   /// [_onStrokeUpdate].
   bool _realBackendActive = false;
 
+  /// v0.55-A: True after the first-run engine-load info dialog has been
+  /// shown once for this MainScreen instance. The dialog fires from a
+  /// post-frame callback in [initState] when [_realBackendActive] is
+  /// false — a CLEAR, user-readable explanation instead of letting the
+  /// fallback be silent. The flag guards against re-showing it on a
+  /// hot-reload or a setState round-trip.
+  bool _engineDialogShown = false;
+
+  /// v0.55-A: The GitHub Releases URL shown in the engine-load info
+  /// dialog + the About dialog. Kept as a static const so the dialog
+  /// tests can assert against it without a host.
+  static const String kGitHubReleasesUrl =
+      'https://github.com/koenigsegggjesk0o/krita/releases';
+
   /// The host-side paint canvas that composite-stamps real Krita dabs.
   /// Lazily allocated to the viewport size on the first dab; resized
   /// when the viewport changes (existing content preserved in the
@@ -553,6 +591,38 @@ class _MainScreenState extends State<MainScreen>
   /// rasterization are picked up by a follow-up rasterization scheduled
   /// when the in-flight one completes (if the canvas version advanced).
   bool _rasterizingPaint = false;
+
+  // v0.55-C: dab-generation throttle (paint-loop perf).
+  //
+  // The native krita_bridge's `krita_brush_generate_dab` is a SYNCHRONOUS
+  // FFI call (krita_brush_controller.dart:451). On a fast pen drag the
+  // GestureDetector's onPanUpdate fires per micro-pixel move — easily
+  // 200–500 events/sec on a 120 Hz Android tablet. Without a throttle the
+  // dab path runs generateDab → paintDab → schedule-rasterize on every
+  // event, saturating the UI isolate and dropping frames.
+  //
+  // The throttle below caps dab GENERATION (not stroke-sample capture) at
+  // ~60 Hz (16 ms). The Stroke3D capture (_liveStroke3D.addSample) still
+  // records every sample for curve fidelity; only the rasterized preview
+  // layer is throttled. The final dab on stroke-end fires unconditionally
+  // (see _onStrokeEnd → _paintRealDab flush) so the committed paint layer
+  // matches the curve.
+  //
+  // 16 ms is chosen to match the canonical 60 fps frame budget. On 120 Hz
+  // displays the dab layer renders at 60 Hz while the gesture stream stays
+  // at 120 Hz — visually identical to a 120 Hz dab stream because the
+  // rasterization (which is the actual visual bottleneck) is already
+  // coalesced in _scheduleRasterizePaint.
+  //
+  // The throttle window + decision function live in lib/utils/paint_perf.dart
+  // (kDabThrottle, shouldFireDab) so they're unit-testable in isolation.
+  DateTime? _lastDabTime;
+  /// The last screen-space position handed to [_onStrokeUpdate]. Used by
+  /// [_onStrokeEnd] to flush a final dab at the exact pen-lift position
+  /// (the throttle gate in [_onStrokeUpdate] may have skipped the most
+  /// recent update(s); without this flush, the rasterized paint layer
+  /// would lag the curve end-point by up to 16 ms of pen motion).
+  Offset? _lastStrokeScreenPos;
 
   // ----- Export wiring (TopBar buttons → exporters) ----------------------
   //
@@ -629,6 +699,21 @@ class _MainScreenState extends State<MainScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+
+    // v0.55-A: Surface a CLEAR first-run info dialog when the real
+    // native Krita bridge did NOT load. The probe already ran in
+    // main.dart (probeKritaEngine) and the splash screen already showed
+    // a warning banner — but the editor entering fallback mode silently
+    // was the class of bug that left first-run Windows users confused
+    // ("the app opened but brushes feel wrong"). The post-frame
+    // callback lets the first frame paint before we block on the dialog.
+    if (!_realBackendActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _engineDialogShown) return;
+        _engineDialogShown = true;
+        _showEngineLoadDialog();
+      });
+    }
   }
 
   @override
@@ -716,6 +801,10 @@ class _MainScreenState extends State<MainScreen>
                   // Export wiring: TopBar buttons → host exporter calls.
                   onExport: _showExportSheet,
                   onShare: _shareLastExport,
+                  // v0.55-A: Top-bar About / Help button →
+                  // [_showAboutDialog] (engine status, native lib path,
+                  // crash log path, GitHub Releases re-download link).
+                  onAbout: _showAboutDialog,
                   // Tool-gated gesture callbacks: tap-select only fires in the
                   // Select tool, the Eye-dropper tool (v0.54-A §2 — samples
                   // the nearest stroke's colour), OR in Loft mode (where taps
@@ -1151,6 +1240,15 @@ class _MainScreenState extends State<MainScreen>
   /// [CanvasMaterial]. The two enums mirror the same four Feather
   /// material kinds; this converter keeps the canvas viewport decoupled
   /// from the picker (it doesn't import material_picker.dart).
+  ///
+  /// HONESTY NOTE (v55-B): the picker now exposes a 5th kind —
+  /// [FeatherMaterial.metallic] — for UI parity with Feather 3D's
+  /// material chip row. The engine's [MaterialType] enum has 4 kinds
+  /// only (no dedicated MetallicMaterial class), so `metallic` is
+  /// mapped to [CanvasMaterial.shaded] (the closest visual match:
+  /// Lambert diffuse + Phong specular). A real metallic BRDF (e.g.
+  /// Cook-Torrance) would require a new engine material class — out
+  /// of scope for this UI feature-parity task.
   CanvasMaterial _toCanvasMaterial(FeatherMaterial m) {
     switch (m) {
       case FeatherMaterial.shadeless:
@@ -1161,6 +1259,11 @@ class _MainScreenState extends State<MainScreen>
         return CanvasMaterial.glow;
       case FeatherMaterial.cutout:
         return CanvasMaterial.cutout;
+      case FeatherMaterial.metallic:
+        // UI affordance only — no engine MetallicMaterial yet. Renders
+        // through the shaded Lambert + Phong path so strokes still pick
+        // up the lit look. See the file-level honesty note above.
+        return CanvasMaterial.shaded;
     }
   }
 
@@ -1656,9 +1759,18 @@ class _MainScreenState extends State<MainScreen>
       );
       _strokeStartTime = DateTime.now();
     }
+    // v0.55-C: reset the dab throttle so the first dab of the new stroke
+    // fires immediately (otherwise the first dab of every stroke would be
+    // skipped if the previous stroke ended < 16 ms ago — common on rapid
+    // tap-drag lifts).
+    _lastDabTime = null;
   }
 
   void _onStrokeUpdate(Offset screenPos) {
+    // v0.55-C: track the latest screen-space position so [_onStrokeEnd]
+    // can flush a final dab at the exact pen-lift point (the throttle gate
+    // below may skip the most recent update(s)).
+    _lastStrokeScreenPos = screenPos;
     // Eraser sub-mode: remove stroke POINTS within the erase radius
     // (per the Feather docs: "removes points from the center of the
     // curve, not the surrounding geometry"). Strokes covered by a 3D
@@ -1729,10 +1841,25 @@ class _MainScreenState extends State<MainScreen>
     // The fallback engine skips this path and keeps using the 3D polyline
     // renderer (current behaviour). Bend / guide-draw modes also skip —
     // those strokes are interpreted as guide paths, not paint.
+    //
+    // v0.55-C: dab throttle. generateDab is a synchronous FFI call into the
+    // native krita_bridge (krita_brush_controller.dart:451) and the
+    // GestureDetector fires onPanUpdate per micro-pixel move — without a
+    // gate, a fast pen drag would call generateDab → paintDab → schedule-
+    // rasterize 200–500×/sec on a 120 Hz tablet, saturating the UI isolate.
+    // We cap dab GENERATION at ~60 Hz (16 ms). Stroke3D capture above
+    // (_liveStroke3D.addSample) is NOT throttled — the curve geometry still
+    // records every sample for fidelity. The final dab of the stroke is
+    // flushed unconditionally in [_onStrokeEnd] so the committed paint
+    // layer matches the curve end-point.
     if (_realBackendActive &&
         _guideMode != _GuideMode.bend &&
         !_guideDrawMode) {
-      _paintRealDab(screenPos);
+      final now = DateTime.now();
+      if (shouldFireDab(_lastDabTime, now, kDabThrottle)) {
+        _paintRealDab(screenPos);
+        _lastDabTime = now;
+      }
     }
     setState(() {});
   }
@@ -1979,7 +2106,42 @@ class _MainScreenState extends State<MainScreen>
         _scene.addCurve(curveId: 'stroke-${copyStroke.id}');
       }
     }
+    // v0.55-C: dab throttle final-flush. The throttle gate in
+    // [_onStrokeUpdate] may have skipped the last few dabs (those within
+    // 16 ms of the previous dab). Fire one final dab at the exact pen-lift
+    // screen position so the rasterized paint layer matches the curve
+    // end-point. Only fires on the real-backend draw / mirror path (the
+    // same gate as [_onStrokeUpdate]'s dab block). Bend / guide-draw /
+    // eraser / vacuum all return early above before reaching this point.
+    if (_realBackendActive && _lastStrokeScreenPos != null) {
+      _paintRealDab(_lastStrokeScreenPos!);
+      _lastDabTime = DateTime.now();
+    }
+    _lastStrokeScreenPos = null;
+    // v0.55-C: stroke soft-cap warning. Fires a SnackBar exactly once when
+    // the stroke count crosses [kStrokeSoftCap] (1000), nudging the user
+    // to merge / export / clear before document memory pressure mounts.
+    // Re-arms if the count drops back below the cap (via undo / erase /
+    // vacuum) and re-crosses. Decision logic in lib/utils/paint_perf.dart.
+    _maybeWarnStrokeCap();
     setState(() {});
+  }
+
+  /// v0.55-C: surfaces the soft-cap warning SnackBar when the document
+  /// stroke count crosses [kStrokeSoftCap]. Idempotent per threshold-cross
+  /// (re-arms below the cap).
+  void _maybeWarnStrokeCap() {
+    final count = _strokes.length;
+    if (shouldWarnStrokeCap(count, kStrokeSoftCap, _strokeCapWarned)) {
+      _strokeCapWarned = true;
+      _showExportSnackBar(
+        'Many strokes ($count) — consider merging or exporting to keep the app responsive.',
+        null,
+      );
+    } else if (shouldRearmStrokeCap(count, kStrokeSoftCap, _strokeCapWarned)) {
+      // Re-arm so a future re-cross re-fires the warning.
+      _strokeCapWarned = false;
+    }
   }
 
   /// Builds a [Guide3D] from a finished pen stroke and adds it to the
@@ -2790,6 +2952,9 @@ class _MainScreenState extends State<MainScreen>
     // timestamps are lost (reverse-conversion from Stroke points),
     // but positions / pressures are preserved.
     _rebuildStroke3Ds();
+    // v0.55-C: re-arm the stroke soft-cap warning if undo dropped the
+    // count back below [_kStrokeSoftCap] (so a future re-cross refires).
+    _maybeWarnStrokeCap();
     setState(() {});
   }
 
@@ -2802,6 +2967,10 @@ class _MainScreenState extends State<MainScreen>
       ..addAll(next);
     _selectionModel.reconcile(_strokes);
     _rebuildStroke3Ds();
+    // v0.55-C: re-fire the stroke soft-cap warning if redo pushed the
+    // count back across [_kStrokeSoftCap] (the re-arm in _undo cleared
+    // the flag, so this is the re-cross).
+    _maybeWarnStrokeCap();
     setState(() {});
   }
 
@@ -3272,6 +3441,175 @@ class _MainScreenState extends State<MainScreen>
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  // ----- First-run engine-load info dialog (v0.55-A) --------------------
+  //
+  // The native Krita bridge load can fail silently on first-run Windows
+  // installs (DLL missing, wrong MSVC runtime, antivirus quarantine).
+  // Pre-v0.55-A the editor entered fallback mode with NO user-visible
+  // signal beyond the splash banner (which disappears after 200 ms).
+  // This dialog fires once per MainScreen mount when the real backend
+  // is NOT active — it explains the situation, tells the user where to
+  // re-download, and offers a "View crash log" shortcut.
+
+  /// Shows the first-run engine-load info dialog. Idempotent-guarded by
+  /// [_engineDialogShown] in [initState]. Wired to fire from a post-frame
+  /// callback so the first frame paints before the dialog blocks input.
+  void _showEngineLoadDialog() {
+    final ctx = context;
+    if (!mounted) return;
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        final palette = Theme.of(dialogCtx).brightness == Brightness.dark
+            ? FeatherColors.dark
+            : FeatherColors.light;
+        return AlertDialog(
+          backgroundColor: palette.panelFill,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: palette.panelBorder),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: FeatherPalette.accentOrange, size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Krita engine not loaded',
+                  style: FeatherTypography.h1
+                      .copyWith(color: palette.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Feather-Krita could not load the real Krita brush '
+                  'engine (krita_bridge.dll). The app will run in '
+                  'fallback mode with reduced features.',
+                  style: FeatherTypography.body
+                      .copyWith(color: palette.textPrimary, height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Please re-download from GitHub Releases if this '
+                  'persists. If the file is present, the MSVC 2019+ '
+                  'runtime may be missing or the DLL may have been '
+                  'quarantined by antivirus.',
+                  style: FeatherTypography.body
+                      .copyWith(color: palette.textSecondary, height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    await Clipboard.setData(
+                        const ClipboardData(text: kGitHubReleasesUrl));
+                    if (dialogCtx.mounted) {
+                      ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                        const SnackBar(
+                          content: Text('GitHub URL copied to clipboard'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Icon(Icons.open_in_new_rounded,
+                            size: 16, color: FeatherPalette.accentBlue),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            kGitHubReleasesUrl,
+                            style: FeatherTypography.caption.copyWith(
+                              color: FeatherPalette.accentBlue,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: Text('Continue in fallback mode',
+                  style: TextStyle(color: palette.textPrimary)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ----- About / Help dialog (v0.55-A) ----------------------------------
+  //
+  // Constructed from the live engine + crash-log path state so the user
+  // can self-diagnose at any time (not just the first run). Wired to the
+  // TopBar's onAbout button via the EditorScreen prop.
+
+  /// Builds the [FeatherAboutInfo] props from the live host state.
+  Future<FeatherAboutInfo> _buildAboutInfo() async {
+    final caps = _krita.capabilities;
+    final nativeLibPath = caps?.libraryPath ?? '';
+    final engineVersion = caps?.versionString ??
+        _krita.version() ??
+        'FeatherBridge-Fallback/1.0';
+    final crashPath = await CrashLog.path();
+    return FeatherAboutInfo(
+      appVersion: kAppVersion,
+      appVersionLabel: kAppVersionLabel,
+      engineReal: _realBackendActive,
+      engineStatusText: _realBackendActive
+          ? 'Real Krita bridge loaded'
+          : 'Fallback — native bridge not loaded',
+      nativeLibPath: nativeLibPath,
+      engineVersionString: engineVersion,
+      crashLogPath: crashPath,
+      gitHubReleasesUrl: kGitHubReleasesUrl,
+    );
+  }
+
+  /// Opens the About / Help dialog. Wired to the TopBar's onAbout button.
+  Future<void> _showAboutDialog() async {
+    final ctx = context;
+    if (!mounted) return;
+    final info = await _buildAboutInfo();
+    if (!mounted) return;
+    showDialog<void>(
+      context: ctx,
+      builder: (_) => FeatherAboutDialog(
+        info: info,
+        onCopyCrashLog: () async {
+          final text = await CrashLog.readAll() ?? '(crash log is empty)';
+          await Clipboard.setData(ClipboardData(text: text));
+          if (ctx.mounted) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              const SnackBar(
+                content: Text('Crash log copied to clipboard'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        },
+      ),
+    );
   }
 
   /// Captures the [RepaintBoundary] wrapping the [EditorScreen] via

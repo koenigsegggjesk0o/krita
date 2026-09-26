@@ -3,11 +3,19 @@
 //
 // material_picker.dart — Material type + pattern picker.
 //
-// Feather 3D materials (from brushes_materials.txt):
+// Feather 3D materials (from brushes_materials.txt + the Feather 3D UI):
 //   * Shadeless — flat, no light response. Patterns allowed.
 //   * Shaded    — light + shadows. Patterns allowed.
 //   * Glow      — glow-area effect, no light/shadow, no patterns.
 //   * Cutout    — responds to the world/background, no patterns.
+//   * Metallic  — shiny metal highlight (UI affordance). HONESTY NOTE:
+//                 the engine's [MaterialType] enum has 4 kinds only — no
+//                 dedicated [MetallicMaterial] class exists. The host maps
+//                 [FeatherMaterial.metallic] → [CanvasMaterial.shaded] so
+//                 strokes pick up the Lambert + Phong lit look from the
+//                 ShadedMaterial path. A real metallic BRDF would require
+//                 a new engine material class (out of scope for the UI
+//                 feature-parity task — see v55-B worklog entry).
 //
 // Patterns (Shadeless/Shaded only): Dot, Line, Cross, Terrazzo, Stippled Dot.
 // Each pattern has a slide for intensity / angle / contrast.
@@ -23,7 +31,7 @@ import '../theme/feather_typography.dart';
 import '../theme/glassmorphism.dart';
 import 'glass_panel.dart';
 
-enum FeatherMaterial { shadeless, shaded, glow, cutout }
+enum FeatherMaterial { shadeless, shaded, glow, cutout, metallic }
 
 extension FeatherMaterialX on FeatherMaterial {
   String get label {
@@ -36,6 +44,8 @@ extension FeatherMaterialX on FeatherMaterial {
         return 'Glow';
       case FeatherMaterial.cutout:
         return 'Cutout';
+      case FeatherMaterial.metallic:
+        return 'Metallic';
     }
   }
 
@@ -49,6 +59,8 @@ extension FeatherMaterialX on FeatherMaterial {
         return Icons.light_mode_outlined;
       case FeatherMaterial.cutout:
         return Icons.content_cut_rounded;
+      case FeatherMaterial.metallic:
+        return Icons.auto_fix_high_rounded;
     }
   }
 
