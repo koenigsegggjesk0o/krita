@@ -3116,3 +3116,41 @@ Stage Summary:
 - Lint info count: lib/ was already 0/0/0 (the 12 documented deprecations were fixed by prior commits 52a0ba88 + 00abde39). Whole-repo analyze went from 4 issues (pre-existing test-file warnings) to 5 issues (4 pre-existing + 1 from concurrent lightrig_test.dart) — none of which are mine. All 13 new test files analyze clean.
 - Commit hash: 797e17ba (pushed to origin/feather-krita-flutter).
 - No blockers. The 5 remaining analyzer issues are all out of scope (3 unused imports + 1 leading underscore in pre-existing test files I was forbidden to modify; 1 super-parameter in a concurrent agent's untracked lightrig_test.dart). No lib/ files touched.
+
+---
+Task ID: v53-B-joystick-lightrig
+Agent: Opus (general-purpose)
+Task: Close 2 honesty gaps — joystick 2D/3D+Lock dead UI, painter inline Lambert → MaterialLightRig.
+
+Work Log:
+- Resumed a previous attempt that timed out with uncommitted changes in lib/screens/main_screen.dart, lib/ui/screens/editor_screen.dart, lib/ui/widgets/canvas_viewport.dart + an untracked test/lightrig_test.dart. Ran `git status` + `git diff` on all three lib files to inspect the partial work.
+- Read AUDIT_FINAL.md lines 234-260 for the 2 honesty gaps:
+  * Gap 1: JoystickWidget.onToggle3D / onLockToggle callbacks are not forwarded by editor_screen.dart — the host's setJoystick3d exists but is never called.
+  * Gap 2: Painter (_CanvasPainter._strokeGeometry in canvas_viewport.dart) computed the per-vertex lit sign with an inline 2D Lambert `sign(dot(normal, -lightDir))` instead of routing through MaterialLightRig.evaluate (the lighting model the Shaded material + BrushRenderer use).
+- Read lib/engine/material/light_rig.dart to confirm the MaterialLightRig API: `evaluate(Vec3 normal, Vec3 viewDir) → LightResult{diffuse, specular}` where `diffuse = ambient + (1-ambient)*intensity*max(0, N·(-L))`. The lit-sign decision can be derived from `diffuse > ambient` (lit side) vs `diffuse == ambient` (shadow side).
+- Read lib/ui/widgets/joystick_widget.dart to confirm the widget already exposes is3D / locked / onToggle3D / onLockToggle props — the only gap was that editor_screen.dart didn't forward them and main_screen.dart didn't supply them.
+- Verified the previous attempt's work was complete and correct:
+  * editor_screen.dart: added `isJoystick3D`, `joystickLocked`, `onToggle3D`, `onLockToggle` fields to EditorScreen + forwarded them to the JoystickWidget constructor call (`is3D: widget.isJoystick3D, locked: widget.joystickLocked, onToggle3D: widget.onToggle3D, onLockToggle: widget.onLockToggle`).
+  * canvas_viewport.dart: added `MaterialLightRig? lightRig` field to CanvasScene + a top-level `litSignFromRig(rig, normal, viewDir)` helper that routes through `rig.evaluate(normal, viewDir).diffuse > rig.ambient ? 1.0 : -1.0`. The `_CanvasPainter._strokeGeometry` now branches: when `scene.lightRig != null`, it builds a 3D Vec3 from the 2D screen-space normal (z=0) and calls `litSignFromRig(rig, n3, viewDir)`; otherwise it falls back to the legacy inline `sign(dot(n, -lightDir))` (preserves existing test behaviour where CanvasScene is constructed without a rig).
+  * main_screen.dart: forwards `isJoystick3D: _joystick3d, joystickLocked: _joystickLocked, onToggle3D: _toggleJoystick3D, onLockToggle: _toggleJoystickLock` to EditorScreen. The lock gate `if (_joystickLocked) return;` is in _onJoystickMove / _onJoystickRotate / _onJoystickScale. The 2D/3D resolver switch (`if (_joystick3d) ... Joystick3dResolver ... else Joystick2dResolver`) is in _resolveJoystickDelta. Added `_buildLightRig()` that constructs a MaterialLightRig from the same (azimuth, elevation) the legacy 2D lightDir is derived from, and passes it as `CanvasScene.lightRig`.
+- Confirmed test/lightrig_test.dart was complete (4 tests in 1 group): (1) litSignFromRig returns +1 when normal faces the light, -1 when it faces away; (2) litSignFromRig actually calls MaterialLightRig.evaluate (via a counting mock _CountingRig, asserts call count); (3) flipping the rig's key-light direction flips the lit sign; (4) lit sign is independent of view direction sign (diffuse-only decision).
+- Fixed one super-parameter lint in test/lightrig_test.dart: `_CountingRig({required Vec3 direction, double ambient = 0.35}) : super(direction: direction, ambient: ambient)` was flagged as `use_super_parameters`. Replaced with `_CountingRig({required Vec3 direction}) : super(direction: direction, ambient: 0.35)` (the ambient param was never overridden at call sites, so removing it is the cleanest fix).
+- Validation:
+  * `flutter analyze lib/` → "No issues found!" (0 errors / 0 warnings / 0 infos — no regression; lib/ stays at the documented 0/0/0 baseline).
+  * `flutter test test/lightrig_test.dart` → 4/4 pass.
+  * `flutter test` (full suite) → "All tests passed!" 424 tests (244 pre-existing + 9 v53-A guide_panel + 167 v53-C core/engine/io + 4 v53-B lightrig = 424).
+  * `flutter analyze` (whole repo) → 4 issues total, all in pre-existing test files outside this task's scope (3 unused imports in test/core/math/mesh_test.dart + test/engine/curves_test.dart, 1 leading underscore in test/engine/curves_test.dart). The previous "info • Parameter 'ambient' could be a super parameter" in lightrig_test.dart is gone after my fix.
+- Pre-push: stashed my 4 WIP files (lib/screens/main_screen.dart, lib/ui/screens/editor_screen.dart, lib/ui/widgets/canvas_viewport.dart, test/lightrig_test.dart) so `git pull --rebase` could run cleanly (no remote changes to integrate; up to date). Popped the stash, staged all 4 files, committed, pushed 7ea7504c successfully.
+- Did NOT touch: lib/engine/guide3d/ (v53-A owns it), lib/engine/transform/ engine code (only consumed the existing Joystick2dResolver / Joystick3dResolver API), lib/engine/material/light_rig.dart (only consumed the existing MaterialLightRig.evaluate API), test/guide_panel_test.dart (v53-A's), test/core/math/* (v53-C's), pre-existing test files (curves_test.dart, mesh_test.dart, etc.).
+
+Stage Summary:
+- Files modified:
+  * lib/ui/screens/editor_screen.dart (+25 lines: 4 new fields on EditorScreen + forwarded to JoystickWidget constructor).
+  * lib/ui/widgets/canvas_viewport.dart (+83 lines: MaterialLightRig? lightRig field on CanvasScene + top-level litSignFromRig helper + _CanvasPainter._strokeGeometry rig-bound branch).
+  * lib/screens/main_screen.dart (+43 lines: _buildLightRig() helper + CanvasScene.lightRig wiring + isJoystick3D / joystickLocked / onToggle3D / onLockToggle forwarding to EditorScreen).
+- Files created:
+  * test/lightrig_test.dart (4 tests in 1 group — verifies litSignFromRig routes through MaterialLightRig.evaluate).
+- Test results: 424/424 pass (was 424, stayed 424 — no regression; the 4 lightrig tests were already counted in the v53-C agent's 424 figure because they were in the working tree when v53-C ran its baseline).
+- Lint: lib/ stays at 0/0/0 (no regression). Whole-repo analyze dropped from 5 → 4 issues (fixed the super-parameter lint in lightrig_test.dart; the remaining 4 are all in pre-existing test files outside this task's scope).
+- Commit hash: 7ea7504c (pushed to origin/feather-krita-flutter).
+- No blockers. Both honesty gaps from AUDIT_FINAL.md are closed: the joystick 2D/3D + Lock pills are live UI (forward callbacks + state mirror + lock gate + resolver switch), and the canvas painter derives its per-vertex lit sign from MaterialLightRig.evaluate (shared lighting model with the Shaded material + BrushRenderer) instead of the legacy inline 2D Lambert.
