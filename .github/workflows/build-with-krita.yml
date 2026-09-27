@@ -813,10 +813,15 @@ jobs:
           $defines = "/DQT_CORE_LIB /DQT_GUI_LIB /DQT_XML_LIB /DQT_NO_DEBUG /DNDEBUG /D_USE_MATH_DEFINES /DCMAKE_INTDIR=Release"
 
           # cl command line. /std:c++17 matches Krita's CMake (krita-source/
-          # CMakeLists.txt:38 set(CMAKE_CXX_STANDARD 17)). /permissive- +
-          # /Zc:preprocessor + /Zc:__cplusplus match MSVC's standards-conformant
-          # mode (required for some Krita headers).
-          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /permissive- /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+          # CMakeLists.txt:38 set(CMAKE_CXX_STANDARD 17)). /Zc:preprocessor +
+          # /Zc:__cplusplus keep standards-conformant preprocessing/macros.
+          # NO /permissive-: run 36341917912 step 12 — under /permissive- MSVC
+          # enables the alternative-token keywords xor/and/or (xor->^ etc.),
+          # so instantiating KoColorSpaceMaths (libs/pigment/KoColorSpaceMaths.h
+          # 236/240/244 declare functions NAMED xor/and/or) hits C3193 '^'
+          # requires /clr + C2059 <parameter-list>. Step 11 compiles the same
+          # header under MSVC default permissive mode — match it.
+          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
 
           Write-Host "=== cl command ==="
           Write-Host $cmd
