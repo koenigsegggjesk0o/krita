@@ -64,6 +64,77 @@ jobs:
       - uses: actions/checkout@v4
 
       # --------------------------------------------------------------------------
+      # Step 0-: Patch lock adapters for MSVC (run 36296237583, step 10).
+      # MSVC STL defines std::unique_lock methods IN-CLASS, so instantiating
+      # unique_lock<Adapter> compiles ALL member bodies incl. try_lock()
+      # (GCC/libstdc++ defines them out-of-class -> lazy instantiation ->
+      # never compiled). Creating any KisAdaptedLock-derived object
+      # instantiates the whole chain, so every adapter exposing only
+      # lock()/unlock() dies with C2039 'try_lock' at mutex(195).
+      # Upstream only ever built with GCC; krita-source/ is vendored
+      # read-only, so we patch the checked-out copy at CI time. Two
+      # adapters are instantiated by the 8 built targets:
+      #   * detail::KisDatabaseTransactionLockAdapter (kritaresources,
+      #     KisResourceCacheDb.cpp [70/1032] FAILED in run 36296237583)
+      #   * KoShapeBulkActionLockAdapter (kritaflake, ~10 command TUs
+      #     create KoShapeBulkActionLock objects)
+      # Proven safe (no object creation in built closure): KisCursorOverride
+      # (compiled ok at [42]), KisBlockBackgroundFrameGeneration, and the
+      # KisAcyclicSignalConnector Blocker typedef (never instantiated).
+      # Idempotent: skips if try_lock already present.
+      # --------------------------------------------------------------------------
+      - name: Patch lock adapters for MSVC (try_lock, run 36296237583)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $patches = @(
+            @{
+              File   = "krita-source\libs\resources\KisDatabaseTransactionLock.h"
+              Anchor = "    void commit();"
+              Lines  = @(
+                '    bool try_lock()',
+                '    {',
+                '        if (m_transactionStarted) {',
+                '            return false;',
+                '        }',
+                '        lock();',
+                '        return true;',
+                '    }'
+              )
+            }
+            @{
+              File   = "krita-source\libs\flake\KoShapeBulkActionLock.h"
+              Anchor = "    void unlock();"
+              Lines  = @(
+                '    bool try_lock()',
+                '    {',
+                '        lock(); // bulk action cannot fail; MSVC Lockable completeness only',
+                '        return true;',
+                '    }'
+              )
+            }
+          )
+          foreach ($p in $patches) {
+            if (-not (Test-Path $p.File)) {
+              Write-Host "FATAL: file not found: $($p.File)"
+              exit 1
+            }
+            $text = Get-Content $p.File -Raw
+            if ($text -match "try_lock\s*\(") {
+              Write-Host "SKIP (already patched): $($p.File)"
+              continue
+            }
+            if (-not $text.Contains($p.Anchor)) {
+              Write-Host "FATAL: anchor '$($p.Anchor.Trim())' not found in $($p.File) — upstream layout changed?"
+              exit 1
+            }
+            $insert = $p.Anchor + "`r`n" + ($p.Lines -join "`r`n")
+            Set-Content -Path $p.File -Value ($text.Replace($p.Anchor, $insert)) -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $($p.File) (added try_lock after '$($p.Anchor.Trim())')"
+          }
+          Write-Host "MSVC lock-adapter patch complete"
+
+      # --------------------------------------------------------------------------
       # Step 0: Free disk space. FAILED VERIFIED in run 36229966283 step 6:
       #   "fatal error C1085: Cannot write precompiled header file ...
       #    There is not enough space on the disk." (qt5-winextras build).
