@@ -240,12 +240,28 @@ jobs:
           #   * openexr / fftw3 / gsl — OPTIONAL in krita-source/CMakeLists.txt
           #               (find_package without REQUIRED, lines 1188/1234/1300);
           #               none is used by the 8 lib targets we build
+          # BOOST MODULES (run 36285625960): step 10's first compile died with
+          # C1083 'boost/accumulators/accumulators.hpp' — the include PATH was
+          # fine (-external:IC:\vcpkg\installed\x64-windows\include present in
+          # cl.exe cmdline); the HEADER was missing because only 4 boost
+          # modules were installed. Enumerated ALL boost families included by
+          # krita-source/libs (grep '#include <boost/'): accumulators bind
+          # concept(→concept-check) graph heap iterator math pending(ships IN
+          # boost-graph repo, no boost-pending port exists — verified)
+          # phoenix polygon pool preprocessor(property-map dep) property_map
+          # random spirit variant2. All usage is header-only (no random_device,
+          # only template special_functions) → no lib linking needed. All port
+          # names verified HTTP 200 in microsoft/vcpkg/ports/.
           & "C:\vcpkg\vcpkg.exe" install `
             ecm `
             kf5config kf5widgetsaddons kf5completion kf5coreaddons `
             kf5guiaddons kf5i18n kf5itemviews `
             immer zug lager `
             boost-filesystem boost-system boost-interprocess boost-thread `
+            boost-accumulators boost-bind boost-concept-check boost-graph `
+            boost-heap boost-iterator boost-math boost-phoenix `
+            boost-polygon boost-pool boost-property-map boost-random `
+            boost-spirit boost-variant2 `
             eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
             fontconfig libunibreak fribidi xsimd `
             --triplet x64-windows
