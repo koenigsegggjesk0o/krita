@@ -425,6 +425,14 @@ jobs:
           # random spirit variant2. All usage is header-only (no random_device,
           # only template special_functions) → no lib linking needed. All port
           # names verified HTTP 200 in microsoft/vcpkg/ports/.
+          # run 36327118320: [999/1032] kis_convex_hull.cpp C1083
+          # 'boost/geometry.hpp' — the enumeration above missed 4 families
+          # actually used by krita-source: geometry (kis_convex_hull.cpp,
+          # palettize plugin) circular_buffer (KisFilteredRollingMean.h,
+          # kis_speed_smoother.cpp) multi_array (kis_inpaint.cpp) tti
+          # (KisPaintOpOptionWidgetUtils.h, KisOptionTuple.h). Added all 4;
+          # circular_buffer may arrive transitively via accumulators but is
+          # pinned explicitly for safety.
           & "C:\vcpkg\vcpkg.exe" install `
             ecm `
             kf5config kf5widgetsaddons kf5completion kf5coreaddons `
@@ -435,6 +443,7 @@ jobs:
             boost-heap boost-iterator boost-math boost-phoenix `
             boost-polygon boost-pool boost-property-map boost-random `
             boost-spirit boost-variant2 `
+            boost-geometry boost-circular-buffer boost-multi-array boost-tti `
             eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
             fontconfig libunibreak fribidi xsimd `
             gsl `
