@@ -532,6 +532,29 @@ jobs:
         run: |
           # Targets verified to exist against krita-source/libs/*/CMakeLists.txt
           # (see file:line proofs in the Step 2 comment block above).
+          # CL env var: cl.exe prepends its contents to EVERY compile — injects
+          # /D__SSE4_1__=1 into all TUs (run 36302052912, step 11 [287/1032]).
+          # Root cause: Krita's multiarch build compiles per-arch copies of
+          # KoOptimizedCompositeOpFactoryPerArch.cpp with -DXSIMD_IMPL=SSSE3 /
+          # SSE4_1 (krita-source/cmake/modules/xsimd/xsimdMacros.cmake:243-320,
+          # hardcoded ONLY list SSE2 SSSE3 SSE4_1 AVX AVX2+FMA in
+          # krita-source/CMakeLists.txt:1477). XSIMD_IMPL=SSSE3|SSE4_1 makes
+          # xsimd_extensions/config/xsimd_arch.hpp set current_arch=ssse3|sse4_1,
+          # but MSVC NEVER defines __SSSE3__ / __SSE4_1__ (GCC-only macros;
+          # upstream Krita builds Windows with MinGW GCC, so MSVC is untested)
+          # → xsimd XSIMD_WITH_SSE4_1=0 (xsimd_config.hpp:138-141 #ifdef
+          # __SSE4_1__) → sse4_1::supported()==false → C2338 "usage of batch
+          # type with unsupported architecture" + C2440 cannot convert __m128i
+          # to batch<unsigned int> (xsimd_sse2.hpp:635 broadcast). Version
+          # pinning does NOT help: xsimd 9.0.1 has identical #ifdef __SSSE3__
+          # logic. Fix: defining __SSE4_1__ triggers xsimd's MSVC cascade
+          # (xsimd_config.hpp:608-624) enabling SSE4_1→SSSE3→SSE3→SSE2; per-arch
+          # TUs then compile (SSSE3/SSE4.1 intrinsics are always available in
+          # MSVC x64 headers). Runtime dispatch stays CPUID-based (safe); every
+          # x64 CPU since 2007 has SSE4.1. Scalar TU unaffected (common::
+          # supported()==true, xsimd_common_arch.hpp:29-34). AVX/AVX2 TUs
+          # already fine: /arch:AVX2 makes MSVC define __AVX2__.
+          $env:CL = "/D__SSE4_1__=1"
           cmake --build krita-build `
             --target kritaimage kritalibbrush kritapigment kritaresources `
                    kritaversion kritaglobal kritaflake kritacommand `
