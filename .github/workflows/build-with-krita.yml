@@ -82,8 +82,10 @@ jobs:
       # (compiled ok at [42]), KisBlockBackgroundFrameGeneration, and the
       # KisAcyclicSignalConnector Blocker typedef (never instantiated).
       # Idempotent: skips if try_lock already present.
+      # Plus a second CI-time patch below: drop KRITAGLOBAL_EXPORT from the
+      # header-only KisScopedPerformanceLogger (LNK2001, run 36308032023).
       # --------------------------------------------------------------------------
-      - name: Patch lock adapters for MSVC (try_lock, run 36296237583)
+      - name: Patch krita-source for MSVC (try_lock + perf logger, runs 36296237583+36308032023)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -133,6 +135,32 @@ jobs:
             Write-Host "PATCHED: $($p.File) (added try_lock after '$($p.Anchor.Trim())')"
           }
           Write-Host "MSVC lock-adapter patch complete"
+
+          # Fix 2 (run 36308032023, step 11 [575/1032]): kritaflake.dll link
+          # LNK2001 x2 — KisScopedPerformanceLogger ctor+dtor (__imp_). The
+          # class is HEADER-ONLY (inline ctor/dtor, no .cpp anywhere) yet
+          # declared KRITAGLOBAL_EXPORT. No TU inside kritaglobal ever
+          # instantiates it (only users: libs/ui — not built, and libs/flake
+          # KoToolBase.cpp), so MSVC emits no out-of-line copies into
+          # kritaglobal.dll; consumers compiled with dllimport -> unresolved.
+          # GCC/MinGW upstream never hits this (inline symbols are weak in
+          # every TU). Fix: drop the export macro — each consumer compiles
+          # its own inline copy (true header-only semantics), zero cross-DLL
+          # references. Idempotent.
+          $perfFile = "krita-source\libs\global\KisScopedPerformanceLogger.h"
+          if (-not (Test-Path $perfFile)) {
+            Write-Host "FATAL: file not found: $perfFile"
+            exit 1
+          }
+          $perfText = Get-Content $perfFile -Raw
+          $perfBad  = "class KRITAGLOBAL_EXPORT KisScopedPerformanceLogger"
+          if ($perfText.Contains($perfBad)) {
+            Set-Content -Path $perfFile -Value $perfText.Replace($perfBad, "class KisScopedPerformanceLogger") -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $perfFile (dropped KRITAGLOBAL_EXPORT from header-only class)"
+          } else {
+            Write-Host "SKIP (already patched): $perfFile"
+          }
+          Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
       # Step 0: Free disk space. FAILED VERIFIED in run 36229966283 step 6:
