@@ -360,6 +360,13 @@ jobs:
           # iterates CMAKE_PREFIX_PATH into find_package HINTS, and vcpkg.cmake's
           # _find_package wrapper re-parses those args in a set() — backslash
           # paths hit "Invalid character escape '\Q'" (run 36259134659).
+          # CMAKE_DISABLE_FIND_PACKAGE_LibMyPaint: Krita's FindLibMyPaint.cmake:93
+          # does file(READ ${LibMyPaint_INCLUDE_DIR}/config.h) unguarded — with
+          # the OPTIONAL package absent that's "LibMyPaint_INCLUDE_DIR-NOTFOUND"
+          # → 2 CMake Errors (lines 93+95) mark configure incomplete → exit 1
+          # even with ALL REQUIRED deps found (run 36280294717). Skipping the
+          # find module entirely: no errors, HAVE_LIBMYPAINT=0, MyPaint brush
+          # engine disabled (optional; not needed for the bridge DLL).
           # NOTE: comment must sit OUTSIDE the backtick-continued command —
           # a # line inside it terminates the statement in PowerShell.
           cmake -S krita-source -B krita-build -G Ninja `
@@ -378,7 +385,8 @@ jobs:
             -DKRITA_ENABLE_PCH=OFF `
             -DHAVE_MEMORY_LEAK_TRACKER=OFF `
             -DBUILD_LIB_KRITA_UI=OFF `
-            -DBUILD_LIB_KRITA_PLUGIN=OFF
+            -DBUILD_LIB_KRITA_PLUGIN=OFF `
+            -DCMAKE_DISABLE_FIND_PACKAGE_LibMyPaint=TRUE
           if ($LASTEXITCODE -ne 0) {
             Write-Host "FATAL: Krita cmake configure failed (exit $LASTEXITCODE)"
             Write-Host "Likely cause: missing find_package() dep — check vcpkg install list in Step 1b."
