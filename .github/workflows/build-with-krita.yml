@@ -237,9 +237,21 @@ jobs:
           #               (Krita's FindQUAZIP.cmake wants QuaZip-Qt5 anyway;
           #               libs/resources includes <quazip.h> unconditionally,
           #               so kritaresources needs it — just not the Qt6 build)
-          #   * openexr / fftw3 / gsl — OPTIONAL in krita-source/CMakeLists.txt
-          #               (find_package without REQUIRED, lines 1188/1234/1300);
-          #               none is used by the 8 lib targets we build
+          #   * openexr / fftw3 — OPTIONAL in krita-source/CMakeLists.txt
+          #               (find_package without REQUIRED, lines 1234/1300);
+          #               not used by the 8 lib targets we build
+          # GSL RE-ADDED (run 36290940400): step 10 died in KisBezierUtils.cpp
+          # (kritaglobal) at lines 726/738/759 — C4430/C2988/C2143 on
+          # 'gsl_vector'. Upstream bug: my_f/my_fdf/my_df templates reference
+          # gsl_vector OUTSIDE the '#ifdef HAVE_GSL' guard, so HAVE_GSL=0 does
+          # NOT compile. Only fix is to PROVIDE gsl → HAVE_GSL=1. find_package
+          # (CMakeLists.txt:1188) uses krita's FindGSL.cmake, needs
+          # gsl/gsl_sf.h + gsl.lib + gslcblas.lib — vcpkg gsl port builds
+          # exactly those (verified port CMakeLists: add_library(gslcblas)
+          # + add_library(gsl)). kritaglobal links GSL::gsl when found
+          # (libs/global/CMakeLists.txt:101-102). 4 other files include
+          # config-gsl.h too (kis_algebra_2d, KisSpatialContainer,
+          # kis_polygonal_gradient_shape_strategy, tool_transform2).
           # BOOST MODULES (run 36285625960): step 10's first compile died with
           # C1083 'boost/accumulators/accumulators.hpp' — the include PATH was
           # fine (-external:IC:\vcpkg\installed\x64-windows\include present in
@@ -264,6 +276,7 @@ jobs:
             boost-spirit boost-variant2 `
             eigen3 exiv2 lcms zlib libpng libjpeg-turbo giflib `
             fontconfig libunibreak fribidi xsimd `
+            gsl `
             --triplet x64-windows
           if ($LASTEXITCODE -ne 0) {
             Write-Host "FATAL: vcpkg install failed (exit $LASTEXITCODE)"
