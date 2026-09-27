@@ -81,7 +81,11 @@ jobs:
           Write-Host "Free before: $before GB"
           Remove-Item "C:\Program Files (x86)\Android" -Recurse -Force
           Remove-Item "$env:LOCALAPPDATA\Android" -Recurse -Force
-          docker system prune -af --volumes
+          # docker daemon may be down on some runner images (run 36295977712:
+          # "failed to connect to the docker API at npipe" → exit 1 even though
+          # the prune is a no-op). Disk cleanup itself succeeds (29→38 GB);
+          # reset exit code so the step doesn't false-fail on daemon-less runners.
+          docker system prune -af --volumes 2>$null; $global:LASTEXITCODE = 0
           Remove-Item "C:\hostedtoolcache\windows\go" -Recurse -Force
           Remove-Item "C:\hostedtoolcache\windows\rust" -Recurse -Force
           Remove-Item "C:\hostedtoolcache\windows\CodeQL" -Recurse -Force
