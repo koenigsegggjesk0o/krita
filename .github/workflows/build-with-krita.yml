@@ -182,6 +182,42 @@ jobs:
           } else {
             Write-Host "SKIP (already patched): $zoomFile"
           }
+
+          # Fix 4 (run 36319188467, step 11 ~[660/1032]): kis_layer_utils.cpp
+          # C2027 'KisChangeCloneLayersCommand::Private' undefined (+C2118/
+          # C2148 negative-subscript sizeof in qscopedpointer.h). PIMPL header
+          # forward-declares struct Private + QScopedPointer<Private> d but
+          # declares NO dtor -> implicit inline dtor. MSVC must emit implicit
+          # members of dllexport classes eagerly in every including TU ->
+          # instantiates ~QScopedPointer -> needs sizeof(complete Private).
+          # GCC instantiates lazily at odr-use (only in the .cpp where Private
+          # is complete) -> upstream never notices. Fix: standard PIMPL
+          # discipline — declare ~T() override in the header (KUndo2Command
+          # dtor is virtual, verified kundo2stack.h:93) and define it
+          # out-of-line in the .cpp right after the Private definition.
+          # Idempotent via dtor-name presence check.
+          $cloneHdr = "krita-source\libs\image\commands_new\KisChangeCloneLayersCommand.h"
+          $cloneSrc = "krita-source\libs\image\commands_new\KisChangeCloneLayersCommand.cpp"
+          foreach ($f in @($cloneHdr, $cloneSrc)) {
+            if (-not (Test-Path $f)) { Write-Host "FATAL: file not found: $f"; exit 1 }
+          }
+          $hdrText = Get-Content $cloneHdr -Raw
+          $srcText = Get-Content $cloneSrc -Raw
+          if ($hdrText.Contains("~KisChangeCloneLayersCommand") -and $srcText.Contains("~KisChangeCloneLayersCommand::")) {
+            Write-Host "SKIP (already patched): KisChangeCloneLayersCommand dtor"
+          } else {
+            $hdrAnchor = "    KisChangeCloneLayersCommand(QList<KisCloneLayerSP> cloneLayers, KisLayerSP newSource, KUndo2Command *parent = 0);"
+            if (-not $hdrText.Contains($hdrAnchor)) { Write-Host "FATAL: header anchor not found — upstream layout changed?"; exit 1 }
+            $hdrNew = $hdrText.Replace($hdrAnchor, $hdrAnchor + "`r`n    ~KisChangeCloneLayersCommand() override;")
+            Set-Content -Path $cloneHdr -Value $hdrNew -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $cloneHdr (declared ~KisChangeCloneLayersCommand() override)"
+            $srcAnchor = "KisChangeCloneLayersCommand::KisChangeCloneLayersCommand(QList<KisCloneLayerSP> cloneLayers, KisLayerSP newSource, KUndo2Command *parent)"
+            if (-not $srcText.Contains($srcAnchor)) { Write-Host "FATAL: cpp anchor not found — upstream layout changed?"; exit 1 }
+            $dtorDef = "KisChangeCloneLayersCommand::~KisChangeCloneLayersCommand()`r`n{`r`n}`r`n`r`n"
+            $srcNew = $srcText.Replace($srcAnchor, $dtorDef + $srcAnchor)
+            Set-Content -Path $cloneSrc -Value $srcNew -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $cloneSrc (defined out-of-line dtor after Private)"
+          }
           Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
