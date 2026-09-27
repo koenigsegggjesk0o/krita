@@ -748,6 +748,32 @@ jobs:
             "-I`"krita-source\libs\command`"",
             "-I`"krita-source\libs\koplugin`"",
             "-I`"krita-source\libs\store`"",
+            # run 36349145673 step 12 C1083 KoPattern.h + local BFS include
+            # sweep over krita_bridge_real.cpp found 17 more unreachable
+            # source dirs — one-shot fix avoids a CI cycle per missing dir.
+            "-I`"krita-source\libs\image\filter`"",
+            "-I`"krita-source\libs\pigment\resources`"",
+            "-I`"krita-source\libs\psdutils`"",
+            "-I`"krita-source\plugins\paintops\libpaintop`"",
+            "-I`"krita-source\plugins\paintops\defaultpaintops\brush`"",
+            "-I`"krita-source\plugins\paintops\defaultpaintops\duplicate`"",
+            "-I`"krita-source\plugins\paintops\colorsmudge`"",
+            "-I`"krita-source\plugins\paintops\curvebrush`"",
+            "-I`"krita-source\plugins\paintops\deform`"",
+            "-I`"krita-source\plugins\paintops\experiment`"",
+            "-I`"krita-source\plugins\paintops\filterop`"",
+            "-I`"krita-source\plugins\paintops\gridbrush`"",
+            "-I`"krita-source\plugins\paintops\hairy`"",
+            "-I`"krita-source\plugins\paintops\hatching`"",
+            "-I`"krita-source\plugins\paintops\particle`"",
+            "-I`"krita-source\plugins\paintops\roundmarker`"",
+            "-I`"krita-source\plugins\paintops\sketch`"",
+            "-I`"krita-source\plugins\paintops\spray`"",
+            "-I`"krita-source\plugins\paintops\tangentnormal`"",
+            # BFS fixpoint sweep also needs these two (pulled in by paintop
+            # settings headers: kis_paintop_option.h, KisPopupButton.h)
+            "-I`"krita-source\libs\ui`"",
+            "-I`"krita-source\libs\widgetutils`"",
             "-I`"krita-build\libs\brush`"",
             "-I`"krita-build\libs\image`"",
             "-I`"krita-build\libs\pigment`"",
