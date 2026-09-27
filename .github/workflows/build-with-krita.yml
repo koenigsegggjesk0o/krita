@@ -160,6 +160,28 @@ jobs:
           } else {
             Write-Host "SKIP (already patched): $perfFile"
           }
+
+          # Fix 3 (run 36312753220, step 11 [596/1032]): KoZoomActionState.cpp
+          # C2672 'qMin': no matching overload — qMin(size()-1 /*int on Qt5
+          # MSVC*/, std::distance(...) /*ptrdiff_t=__int64 on Win64*/) makes
+          # template deduction ambiguous (int vs __int64). GCC/MinGW upstream
+          # tolerates this via identical-type deduction on LP64; MSVC LLP64
+          # does not. Fix: pin T=int explicitly and narrow the distance.
+          # Behavior identical (level counts far below int range). Idempotent.
+          $zoomFile = "krita-source\libs\widgets\KoZoomActionState.cpp"
+          if (-not (Test-Path $zoomFile)) {
+            Write-Host "FATAL: file not found: $zoomFile"
+            exit 1
+          }
+          $zoomText = Get-Content $zoomFile -Raw
+          $zoomBad  = "return qMin(standardLevels.size() - 1, std::distance(standardLevels.begin(), it));"
+          $zoomGood = "return qMin<int>(standardLevels.size() - 1, static_cast<int>(std::distance(standardLevels.begin(), it)));"
+          if ($zoomText.Contains($zoomBad)) {
+            Set-Content -Path $zoomFile -Value $zoomText.Replace($zoomBad, $zoomGood) -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $zoomFile (qMin<int> + static_cast<int> for MSVC mixed-type deduction)"
+          } else {
+            Write-Host "SKIP (already patched): $zoomFile"
+          }
           Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
