@@ -703,7 +703,15 @@ jobs:
       - name: Compile krita_bridge.dll from krita_bridge_real.cpp
         shell: pwsh
         run: |
-          $qtDir     = "C:\Qt\5.15.2\msvc2019_64"
+          # run 36334356085: aqt stock Qt 5.15.2 headers hit C3861/C2065
+          # 'stdext' (qvector.h:960, qlist.h:915, qvarlengtharray.h:109/553/
+          # 575) — MSVC 14.51 removed stdext::checked_array_iterator. The
+          # vcpkg qt5-base headers carry the MSVC compat patches and
+          # PROVABLY compile with this exact toolchain (all 1032 step-11
+          # targets in the same run). Point the bridge at vcpkg Qt5.
+          # vcpkg layout: headers directly under include\qt5 (no include\
+          # subdir), import libs in installed\x64-windows\lib.
+          $qtDir     = "C:\vcpkg\installed\x64-windows\include\qt5"
           $vcpkgInc  = "C:\vcpkg\installed\x64-windows\include"
           $vcpkgLib  = "C:\vcpkg\installed\x64-windows\lib"
 
@@ -749,18 +757,34 @@ jobs:
             "-I`"krita-build\libs\flake`"",
             "-I`"krita-build\libs\command`"",
             "-I`"krita-build`"",
-            "-I`"$qtDir\include`"",
-            "-I`"$qtDir\include\QtCore`"",
-            "-I`"$qtDir\include\QtGui`"",
-            "-I`"$qtDir\include\QtWidgets`"",
-            "-I`"$qtDir\include\QtXml`"",
-            "-I`"$qtDir\include\QtSvg`"",
+            "-I`"$qtDir`"",
+            "-I`"$qtDir\QtCore`"",
+            "-I`"$qtDir\QtGui`"",
+            "-I`"$qtDir\QtWidgets`"",
+            "-I`"$qtDir\QtXml`"",
+            "-I`"$qtDir\QtSvg`"",
+            # KF5 headers are nested per-package (klocalizedstring.h lives in
+            # KF5\KI18n\ — run 36334356085 step 12 C1083). Same set step 11's
+            # compile used, + eigen3/harfbuzz which Krita headers pull in.
+            "-I`"$vcpkgInc\KF5\KI18n`"",
+            "-I`"$vcpkgInc\KF5\KConfig`"",
+            "-I`"$vcpkgInc\KF5\KConfigCore`"",
+            "-I`"$vcpkgInc\KF5\KItemViews`"",
+            "-I`"$vcpkgInc\KF5\KConfigGui`"",
+            "-I`"$vcpkgInc\KF5\KWidgetsAddons`"",
+            "-I`"$vcpkgInc\KF5\KCoreAddons`"",
+            "-I`"$vcpkgInc\KF5\KGuiAddons`"",
+            "-I`"$vcpkgInc\KF5\KCompletion`"",
+            "-I`"$vcpkgInc\eigen3`"",
+            "-I`"$vcpkgInc\harfbuzz`"",
+            "-I`"$qtDir\QtSql`"",
+            "-I`"$qtDir\QtPrintSupport`"",
             "-I`"$vcpkgInc`""
           )
           $incArgs = $incPaths -join " "
 
           # Link the 8 Krita libs we built in Step 3 (verified .lib paths
-          # in Step 3's verification block) + the Qt5 libs from aqtinstall
+          # in Step 3's verification block) + the Qt5 import libs from vcpkg
           # + vcpkg deps. /LIBPATH order: krita-build first (so the freshly
           # built libkrita*.lib is resolved before any system Qt/vcpkg lib
           # of the same name — there shouldn't be any, but be safe).
@@ -769,7 +793,6 @@ jobs:
           $libs = @(
             "/LIBPATH:`"krita-build\lib`"",
             "/LIBPATH:`"krita-build\bin`"",
-            "/LIBPATH:`"$qtDir\lib`"",
             "/LIBPATH:`"$vcpkgLib`"",
             "kritaimage.lib",
             "kritalibbrush.lib",
