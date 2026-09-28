@@ -801,6 +801,24 @@ jobs:
               Write-Host "lager C3200 in-place patch applied: $h"
             }
           }
+          # run 36485211757 step 11 C3200: KisAutoBrushModel.cpp(40)
+          # with(...).xform(...) -> xform_cursor_node base clause passes
+          # cursor_node as a template-template arg (xform_nodes.hpp:123,125;
+          # same family in lens_nodes.hpp:74) — MSVC C3200 (SO 68000265).
+          # Same alias-template workaround (lager PR #177); headers include
+          # detail/nodes.hpp before opening namespace detail, so inserting
+          # the alias right after "namespace detail {" is safe. Idempotent.
+          foreach ($h in @("detail\xform_nodes.hpp","detail\lens_nodes.hpp")) {
+            $p = "C:\vcpkg\installed\x64-windows\include\lager\$h"
+            $txt = Get-Content $p -Raw
+            if ($txt -notmatch "msvc_hack_t") {
+              $txt = $txt.Replace("namespace detail {", "namespace detail {`ntemplate <typename T> using cursor_node_msvc_hack_t = cursor_node<T>;")
+              $txt = $txt.Replace("xform_reader_node<Xform, Parents, cursor_node>", "xform_reader_node<Xform, Parents, cursor_node_msvc_hack_t>")
+              $txt = $txt.Replace("lens_reader_node<Lens, ParentsPack, cursor_node>", "lens_reader_node<Lens, ParentsPack, cursor_node_msvc_hack_t>")
+              Set-Content $p $txt -Encoding utf8
+              Write-Host "lager detail C3200 in-place patch applied: $h"
+            }
+          }
           cmake --build krita-build `
             --target kritaimage kritalibbrush kritapigment kritaresources `
                    kritaversion kritaglobal kritaflake kritacommand `
