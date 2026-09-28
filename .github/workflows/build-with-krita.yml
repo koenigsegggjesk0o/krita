@@ -254,6 +254,60 @@ jobs:
             Set-Content -Path $gkSrc -Value $gkSNew -NoNewline -Encoding utf8
             Write-Host "PATCHED: $gkSrc (defined out-of-line dtor after Private)"
           }
+          # Fix 17 (run 36446871800, step 11 KisViewManager.cpp [1541/1918]):
+          # kis_shared_ptr.h(201) C2027 'KisFilterConfiguration' undefined,
+          # chain: kis_filter_manager.h(53) default argument
+          # 'KisFilterConfigurationSP overrideDefaultConfig = nullptr' ->
+          # nullptr conversion requires the complete KisPinnedSharedPtr
+          # specialization -> MSVC eagerly instantiates its IMPLICIT dtor
+          # (KisPinnedSharedPtr derives from KisSharedPtr) -> ~KisSharedPtr
+          # -> deref -> 'delete t' -> needs complete pointee. GCC/MinGW
+          # instantiates lazily at odr-use only, so upstream never hits it.
+          # Plain KisSharedPtr typedefs (KisNodeSP etc.) are safe: their dtor
+          # is user-declared inline (lazy). Only the 3 KisPinnedSharedPtr
+          # typedefs are dangerous: KisFilterConfigurationSP,
+          # KisPropertiesConfigurationSP, KisPaintOpSettingsSP.
+          # Mechanism-agnostic fix: make the pointee complete in every header
+          # with (a) a default arg on a Pinned SP (kis_filter_manager.h:53,
+          # kis_generator.h:70) or (b) a by-value Pinned SP member
+          # (kis_node_filter_interface.h, kis_painter_p.h,
+          # kis_multi_integer_filter_widget.h, kis_dlg_adj_layer_props.h,
+          # kis_dlg_generator_layer.h, kis_dlg_adjustment_layer.h,
+          # kis_dlg_stroke_selection_properties.h). All 2107 libs headers
+          # scanned; KisDocument/KisImportExport*/psd already complete or
+          # out of scope (psd target include path unverified -> skipped).
+          $fix17pairs = @(
+            'krita-source\libs\ui\kis_filter_manager.h|<kis_filter_configuration.h>|#include <kis_types.h>',
+            'krita-source\libs\image\generator\kis_generator.h|<kis_filter_configuration.h>|#include "kis_types.h"',
+            'krita-source\libs\image\kis_node_filter_interface.h|<kis_filter_configuration.h>|#include <kis_types.h>',
+            'krita-source\libs\image\kis_painter_p.h|<kis_filter_configuration.h>|#include "kis_paintop.h"',
+            'krita-source\libs\ui\widgets\kis_multi_integer_filter_widget.h|<kis_properties_configuration.h>|#include <kis_config_widget.h>',
+            'krita-source\libs\ui\dialogs\kis_dlg_adj_layer_props.h|<kis_filter_configuration.h>|#include "kis_types.h"',
+            'krita-source\libs\ui\dialogs\kis_dlg_generator_layer.h|<kis_filter_configuration.h>|#include "ui_wdgdlggeneratorlayer.h"',
+            'krita-source\libs\ui\dialogs\kis_dlg_adjustment_layer.h|<kis_filter_configuration.h>|#include "kis_types.h"',
+            'krita-source\libs\ui\dialogs\kis_dlg_stroke_selection_properties.h|<kis_properties_configuration.h>|#include <kis_types.h>'
+          )
+          foreach ($item17 in $fix17pairs) {
+            $sep17 = $item17.IndexOf('|')
+            $f17 = $item17.Substring(0, $sep17)
+            $rest17 = $item17.Substring($sep17 + 1)
+            $sep2 = $rest17.IndexOf('|')
+            $inc17 = $rest17.Substring(0, $sep2)
+            $anchor17 = $rest17.Substring($sep2 + 1)
+            if (-not (Test-Path $f17)) { Write-Host "FATAL: file not found: $f17"; exit 1 }
+            $t17 = Get-Content $f17 -Raw
+            $incLine17 = "#include $inc17"
+            if ($t17.Contains($incLine17)) {
+              Write-Host "SKIP (already has include): $f17"
+            } else {
+              if (-not $t17.Contains($anchor17)) { Write-Host "FATAL: anchor not found in $f17 : $anchor17"; exit 1 }
+              $idx17 = $t17.IndexOf($anchor17)
+              $end17 = $idx17 + $anchor17.Length
+              $t17 = $t17.Substring(0, $end17) + "`r`n" + $incLine17 + $t17.Substring($end17)
+              Set-Content -Path $f17 -Value $t17 -NoNewline -Encoding utf8
+              Write-Host "PATCHED: $f17 (added $incLine17)"
+            }
+          }
           Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
@@ -270,7 +324,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "SilentlyContinue"
-          $before = [math]::Round((Get-PSDrive C).Free/1GB,1)
+          $before = [Math]::Round((Get-PSDrive C).Free/1GB,1)
           Write-Host "Free before: $before GB"
           Remove-Item "C:\Program Files (x86)\Android" -Recurse -Force
           Remove-Item "$env:LOCALAPPDATA\Android" -Recurse -Force
@@ -285,8 +339,8 @@ jobs:
           Remove-Item "C:\hostedtoolcache\windows\PyPy" -Recurse -Force
           Remove-Item "C:\hostedtoolcache\windows\Ruby" -Recurse -Force
           Remove-Item "C:\hostedtoolcache\windows\dotnet" -Recurse -Force
-          $after = [math]::Round((Get-PSDrive C).Free/1GB,1)
-          Write-Host "Free after: $after GB (reclaimed $([math]::Round($after-$before,1)) GB)"
+          $after = [Math]::Round((Get-PSDrive C).Free/1GB,1)
+          Write-Host "Free after: $after GB (reclaimed $([Math]::Round($after-$before,1)) GB)"
 
       # --------------------------------------------------------------------------
       # Step 1: MSVC dev environment (cl.exe, link.exe, dumpbin.exe on PATH).
@@ -497,7 +551,7 @@ jobs:
           # that is what the toolchain file points at.
           Remove-Item -Recurse -Force "C:\vcpkg\buildtrees" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "C:\vcpkg\downloads" -ErrorAction SilentlyContinue
-          $free = [math]::Round((Get-PSDrive C).Free/1GB,1)
+          $free = [Math]::Round((Get-PSDrive C).Free/1GB,1)
           Write-Host "vcpkg install done, free disk: $free GB"
 
       # --------------------------------------------------------------------------
@@ -1065,7 +1119,7 @@ jobs:
             exit 1
           }
           $dllSize = (Get-Item "krita_bridge.dll").Length
-          Write-Host "SUCCESS: krita_bridge.dll compiled, size = $([math]::Round($dllSize/1KB,1)) KB"
+          Write-Host "SUCCESS: krita_bridge.dll compiled, size = $([Math]::Round($dllSize/1KB,1)) KB"
 
       # --------------------------------------------------------------------------
       # Step 5: Verify krita_bridge.dll is the REAL bridge.
@@ -1084,9 +1138,9 @@ jobs:
         run: |
           $dll = "krita_bridge.dll"
           $size = (Get-Item $dll).Length
-          Write-Host "=== krita_bridge.dll size: $([math]::Round($size/1KB,1)) KB ==="
+          Write-Host "=== krita_bridge.dll size: $([Math]::Round($size/1KB,1)) KB ==="
           if ($size -lt 100KB) {
-            Write-Host "FATAL: krita_bridge.dll is only $([math]::Round($size/1KB,1)) KB — looks like a stub, not the real bridge"
+            Write-Host "FATAL: krita_bridge.dll is only $([Math]::Round($size/1KB,1)) KB — looks like a stub, not the real bridge"
             exit 1
           }
 
@@ -1111,7 +1165,7 @@ jobs:
           Write-Host "PASS: krita_bridge.dll imports at least one libkrita*.dll"
 
           # Save the verification report for the worklog.
-          "krita_bridge.dll size: $([math]::Round($size/1KB,1)) KB" | Out-File -FilePath verify_report.txt -Encoding ASCII
+          "krita_bridge.dll size: $([Math]::Round($size/1KB,1)) KB" | Out-File -FilePath verify_report.txt -Encoding ASCII
           "Exports (krita_*):" | Out-File -FilePath verify_report.txt -Append -Encoding ASCII
           ($exports -split "`r?`n" | Where-Object { $_ -match "krita_" }) |
             Out-File -FilePath verify_report.txt -Append -Encoding ASCII
@@ -1194,15 +1248,15 @@ jobs:
           }
           $bridgeSize = (Get-Item "krita_bridge.dll").Length
           if ($bridgeSize -lt 100KB) {
-            throw "krita_bridge.dll is only $([math]::Round($bridgeSize/1KB,1)) KB — refusing to bundle a stub"
+            throw "krita_bridge.dll is only $([Math]::Round($bridgeSize/1KB,1)) KB — refusing to bundle a stub"
           }
-          Write-Host "krita_bridge.dll = $([math]::Round($bridgeSize/1KB,1)) KB (REAL bridge, >100 KB threshold)"
+          Write-Host "krita_bridge.dll = $([Math]::Round($bridgeSize/1KB,1)) KB (REAL bridge, >100 KB threshold)"
 
           # Copy ALL built Krita engine DLLs (libkritaimage.dll, libkritalibbrush.dll,
           # libkritapigment.dll, ...) compiled by Job 1 from krita-source/.
           Write-Host "=== Built Krita engine DLLs being bundled (FROM SOURCE) ==="
           Get-ChildItem "krita-engine-bin\*.dll" | ForEach-Object {
-            Write-Host "  $($_.Name) — $([math]::Round($_.Length/1KB,1)) KB"
+            Write-Host "  $($_.Name) — $([Math]::Round($_.Length/1KB,1)) KB"
             Copy-Item $_.FullName -Destination $buildDir -Force
           }
 
@@ -1218,7 +1272,7 @@ jobs:
 
           # Total size
           $totalSize = (Get-ChildItem $buildDir -Recurse | Measure-Object -Property Length -Sum).Sum
-          Write-Host "=== Total build size: $([math]::Round($totalSize / 1MB, 1)) MB ==="
+          Write-Host "=== Total build size: $([Math]::Round($totalSize / 1MB, 1)) MB ==="
 
       # NOTE (v0.57-fix): upload the Release/ DIRECTORY directly, not a
       # pre-zipped file. `actions/upload-artifact@v4` already wraps the
