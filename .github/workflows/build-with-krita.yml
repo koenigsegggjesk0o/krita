@@ -650,9 +650,22 @@ jobs:
           # supported()==true, xsimd_common_arch.hpp:29-34). AVX/AVX2 TUs
           # already fine: /arch:AVX2 makes MSVC define __AVX2__.
           $env:CL = "/D__SSE4_1__=1"
+          # run 36407014980 step 12 LNK2019: bridge instantiates every
+          # paintop factory, so step 12 links the paintop plugin import
+          # libs -> they (and kritaui/kritaimpex/kritawidgets pulled by
+          # kritalibpaintop) must be built here. kritadefaultpaintops_static
+          # holds KisBrushOp/KisDuplicateOp/KisFilterOp.
           cmake --build krita-build `
             --target kritaimage kritalibbrush kritapigment kritaresources `
                    kritaversion kritaglobal kritaflake kritacommand `
+                   kritawidgetutils kritawidgets kritaimpex kritaui `
+                   kritalibpaintop kritadefaultpaintops_static `
+                   kritahairypaintop kritadeformpaintop kritacurvepaintop `
+                   kritaspraypaintop kritasketchpaintop `
+                   kritaexperimentpaintop kritagridpaintop `
+                   kritaroundmarkerpaintop kritaparticlepaintop `
+                   kritahatchingpaintop kritacolorsmudgepaintop `
+                   kritatangentnormalpaintop `
             -j 2
           if ($LASTEXITCODE -ne 0) {
             Write-Host "FATAL: Krita lib build failed (exit $LASTEXITCODE)"
@@ -673,7 +686,25 @@ jobs:
             "krita-build\lib\kritaversion.lib",
             "krita-build\lib\kritaglobal.lib",
             "krita-build\lib\kritaflake.lib",
-            "krita-build\lib\kritacommand.lib"
+            "krita-build\lib\kritacommand.lib",
+            "krita-build\lib\kritawidgetutils.lib",
+            "krita-build\lib\kritawidgets.lib",
+            "krita-build\lib\kritaimpex.lib",
+            "krita-build\lib\kritaui.lib",
+            "krita-build\lib\kritalibpaintop.lib",
+            "krita-build\lib\kritadefaultpaintops_static.lib",
+            "krita-build\lib\kritahairypaintop.lib",
+            "krita-build\lib\kritadeformpaintop.lib",
+            "krita-build\lib\kritacurvepaintop.lib",
+            "krita-build\lib\kritaspraypaintop.lib",
+            "krita-build\lib\kritasketchpaintop.lib",
+            "krita-build\lib\kritaexperimentpaintop.lib",
+            "krita-build\lib\kritagridpaintop.lib",
+            "krita-build\lib\kritaroundmarkerpaintop.lib",
+            "krita-build\lib\kritaparticlepaintop.lib",
+            "krita-build\lib\kritahatchingpaintop.lib",
+            "krita-build\lib\kritacolorsmudgepaintop.lib",
+            "krita-build\lib\kritatangentnormalpaintop.lib"
           )
           $missing = @()
           foreach ($lib in $expectedLibs) {
@@ -684,7 +715,7 @@ jobs:
             $missing | ForEach-Object { Write-Host "  $_" }
             exit 1
           }
-          Write-Host "SUCCESS: All 8 Krita .lib import libs produced in krita-build\lib\"
+          Write-Host "SUCCESS: All $($expectedLibs.Count) Krita .lib import libs produced in krita-build\lib\"
 
           # List the built .dll files for the worklog (artifact inventory).
           Write-Host "=== Built Krita .dll files (krita-build\bin\): ==="
@@ -903,6 +934,38 @@ jobs:
             "kritaglobal.lib",
             "kritaflake.lib",
             "kritacommand.lib",
+            # run 36407014980 LNK2019 fix: bridge instantiates every paintop
+            # factory -> link the paintop plugin import libs + the UI libs
+            # they come from (KisIconUtils=kritawidgetutils, default ops=
+            # kritadefaultpaintops_static). ki18n.lib: bridge.obj calls ki18n
+            # directly in static initializers; lowercase KF5 names match
+            # vcpkg's KF5 dll/lib naming (kcoreaddons.dll etc.).
+            "kritawidgetutils.lib",
+            "kritawidgets.lib",
+            "kritaimpex.lib",
+            "kritaui.lib",
+            "kritalibpaintop.lib",
+            "kritadefaultpaintops_static.lib",
+            "kritahairypaintop.lib",
+            "kritadeformpaintop.lib",
+            "kritacurvepaintop.lib",
+            "kritaspraypaintop.lib",
+            "kritasketchpaintop.lib",
+            "kritaexperimentpaintop.lib",
+            "kritagridpaintop.lib",
+            "kritaroundmarkerpaintop.lib",
+            "kritaparticlepaintop.lib",
+            "kritahatchingpaintop.lib",
+            "kritacolorsmudgepaintop.lib",
+            "kritatangentnormalpaintop.lib",
+            "ki18n.lib",
+            "kcoreaddons.lib",
+            "kcompletion.lib",
+            "kitemviews.lib",
+            "kconfigcore.lib",
+            "kconfiggui.lib",
+            "kguiaddons.lib",
+            "kwidgetsaddons.lib",
             "Qt5Core.lib",
             "Qt5Gui.lib",
             "Qt5Widgets.lib",
