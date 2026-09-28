@@ -655,6 +655,27 @@ jobs:
           # libs -> they (and kritaui/kritaimpex/kritawidgets pulled by
           # kritalibpaintop) must be built here. kritadefaultpaintops_static
           # holds KisBrushOp/KisDuplicateOp/KisFilterOp.
+          # run 36418339800 step 11 C3200: kritaui TUs (KisFrameRateLimitModel
+          # .cpp, KisProofingConfigModel.cpp) include lager/constant.hpp
+          # DIRECTLY from C:\vcpkg\installed\x64-windows\include via the
+          # lager target's interface include dirs — the Fix 12 bridge-shim
+          # only shadows step 12's cl -I order, which kritaui's CMake build
+          # never sees. Apply the same alias-template workaround (lager PR
+          # #177, proven in run 36380278333) to the 4 vcpkg headers IN PLACE,
+          # guarded for idempotency (step 12's shim generation re-reads
+          # these files and must not double-insert the alias definitions).
+          foreach ($h in @("constant.hpp","store.hpp","sensor.hpp","state.hpp")) {
+            $p = "C:\vcpkg\installed\x64-windows\include\lager\$h"
+            $txt = Get-Content $p -Raw
+            if ($txt -notmatch "msvc_hack_t") {
+              $txt = $txt.Replace("namespace detail {", "namespace detail {`ntemplate <typename T> using reader_node_msvc_hack_t = reader_node<T>;`ntemplate <typename T> using cursor_node_msvc_hack_t = cursor_node<T>;")
+              $txt = $txt.Replace("root_node<T, reader_node>", "root_node<T, reader_node_msvc_hack_t>")
+              $txt = $txt.Replace("root_node<Model, reader_node>", "root_node<Model, reader_node_msvc_hack_t>")
+              $txt = $txt.Replace("root_node<T, cursor_node>", "root_node<T, cursor_node_msvc_hack_t>")
+              Set-Content $p $txt -Encoding utf8
+              Write-Host "lager C3200 in-place patch applied: $h"
+            }
+          }
           cmake --build krita-build `
             --target kritaimage kritalibbrush kritapigment kritaresources `
                    kritaversion kritaglobal kritaflake kritacommand `
@@ -720,7 +741,7 @@ jobs:
           # List the built .dll files for the worklog (artifact inventory).
           Write-Host "=== Built Krita .dll files (krita-build\bin\): ==="
           Get-ChildItem "krita-build\bin\krita*.dll" -ErrorAction SilentlyContinue |
-            Select-Object Name, @{N="SizeKB";E={[math]::Round($_.Length/1KB,1)}} |
+            Select-Object Name, @{N="SizeKB";E={("{0:F1}" -f ($_.Length/1KB))}} |
             Format-Table -AutoSize
 
       # --------------------------------------------------------------------------
@@ -782,10 +803,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path "bridge-shim\lager" | Out-Null
           foreach ($h in @("constant.hpp","store.hpp","sensor.hpp","state.hpp")) {
             $txt = Get-Content "C:\vcpkg\installed\x64-windows\include\lager\$h" -Raw
-            $txt = $txt.Replace("namespace detail {", "namespace detail {`ntemplate <typename T> using reader_node_msvc_hack_t = reader_node<T>;`ntemplate <typename T> using cursor_node_msvc_hack_t = cursor_node<T>;")
-            $txt = $txt.Replace("root_node<T, reader_node>", "root_node<T, reader_node_msvc_hack_t>")
-            $txt = $txt.Replace("root_node<Model, reader_node>", "root_node<Model, reader_node_msvc_hack_t>")
-            $txt = $txt.Replace("root_node<T, cursor_node>", "root_node<T, cursor_node_msvc_hack_t>")
+            if ($txt -notmatch "msvc_hack_t") {
+              # run 36418339800: step 11 now patches these IN PLACE first,
+              # so this branch fires only if the in-place patch was skipped
+              # (e.g. target-list rollback) — guard prevents double-insert
+              # of the alias definitions into bridge-shim copies.
+              $txt = $txt.Replace("namespace detail {", "namespace detail {`ntemplate <typename T> using reader_node_msvc_hack_t = reader_node<T>;`ntemplate <typename T> using cursor_node_msvc_hack_t = cursor_node<T>;")
+              $txt = $txt.Replace("root_node<T, reader_node>", "root_node<T, reader_node_msvc_hack_t>")
+              $txt = $txt.Replace("root_node<Model, reader_node>", "root_node<Model, reader_node_msvc_hack_t>")
+              $txt = $txt.Replace("root_node<T, cursor_node>", "root_node<T, cursor_node_msvc_hack_t>")
+            }
             Set-Content "bridge-shim\lager\$h" $txt -Encoding utf8
             if (([regex]::Matches($txt, "msvc_hack_t")).Count -lt 3) {
               Write-Host "FATAL: lager C3200 shim patch did not apply for $h (upstream content changed?)"
