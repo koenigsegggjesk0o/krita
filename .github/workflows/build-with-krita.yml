@@ -730,12 +730,64 @@ jobs:
             exit 1
           }
 
+          # --- run 36380278333 step 12 fast-fail (0.1 min), 2 error classes ---
+          # (1) C3200 lager/constant.hpp(25) via KisCurveOptionWidget.h(39)
+          #     lager::make_constant(true): MSVC misreads the class template
+          #     reader_node passed as a template-template arg to root_node in
+          #     a dependent base clause (SO 68000265). lager PR #177
+          #     workaround = alias-template form; PR was never merged, so
+          #     v0.1.3 still has the pattern in constant/store/sensor
+          #     (reader_node) and state (cursor_node). Generate patched shim
+          #     copies into bridge-shim\ (first on -I, see $incPaths below).
+          # (2) C1083 kis_particle_paintop_settings_widget.h(12)
+          #     'ui_wdgparticleoptions.h': plugin AUTOUIC outputs are never
+          #     generated (step 11 builds only the 8 lib targets) and no -I
+          #     can fix a file that does not exist. Generate ALL plugin .ui
+          #     with Qt5 uic into the mirrored krita-build\plugins\<relpath>\
+          #     dirs — picked up by the build-dir -I glob below. Duplicate
+          #     basenames (wdgcoloroptions.ui in libpaintop/forms +
+          #     generators/solid) stay in separate dirs; their .cpp users are
+          #     not part of this TU.
+          New-Item -ItemType Directory -Force -Path "bridge-shim\lager" | Out-Null
+          foreach ($h in @("constant.hpp","store.hpp","sensor.hpp","state.hpp")) {
+            $txt = Get-Content "C:\vcpkg\installed\x64-windows\include\lager\$h" -Raw
+            $txt = $txt.Replace("namespace detail {", "namespace detail {`ntemplate <typename T> using reader_node_msvc_hack_t = reader_node<T>;`ntemplate <typename T> using cursor_node_msvc_hack_t = cursor_node<T>;")
+            $txt = $txt.Replace("root_node<T, reader_node>", "root_node<T, reader_node_msvc_hack_t>")
+            $txt = $txt.Replace("root_node<Model, reader_node>", "root_node<Model, reader_node_msvc_hack_t>")
+            $txt = $txt.Replace("root_node<T, cursor_node>", "root_node<T, cursor_node_msvc_hack_t>")
+            Set-Content "bridge-shim\lager\$h" $txt -Encoding utf8
+            if (([regex]::Matches($txt, "msvc_hack_t")).Count -lt 3) {
+              Write-Host "FATAL: lager C3200 shim patch did not apply for $h (upstream content changed?)"
+              exit 1
+            }
+          }
+          Write-Host "lager C3200 shim patched: 4 headers"
+          $uic    = "C:\Qt\5.15.2\msvc2019_64\bin\uic.exe"
+          $plgSrc = (Resolve-Path "krita-source\plugins").Path
+          $uiCount = 0
+          Get-ChildItem $plgSrc -Filter *.ui -Recurse | ForEach-Object {
+            $relDir = Split-Path $_.FullName.Substring($plgSrc.Length + 1) -Parent
+            $outDir = Join-Path "krita-build\plugins" $relDir
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+            & $uic $_.FullName -o (Join-Path $outDir "ui_$($_.BaseName).h")
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "FATAL: uic failed on $($_.FullName) (exit $LASTEXITCODE)"
+              exit 1
+            }
+            $uiCount++
+          }
+          Write-Host "plugin ui_ headers generated: $uiCount"
+
           # Include paths. Each path maps to a real Krita header that
           # krita_bridge_real.cpp #includes (verified at lines 44–95 of
           # that file). The krita-build/ include dir is needed for the
           # generated export headers (kritabrush_export.h, kritaimage_export.h,
           # KoConfig.h, etc.) and kis_brush_interface.moc.
           $incPaths = @(
+            # MUST stay first: shadows C:\vcpkg\...\include\lager\{constant,
+            # store,sensor,state}.hpp with the C3200-patched copies generated
+            # above (run 36380278333). Only lager\*.hpp exist in this dir.
+            "-I`"bridge-shim`"",
             "-I`"native\krita_bridge`"",
             "-I`"krita-source\libs\brush`"",
             "-I`"krita-source\libs\image`"",
