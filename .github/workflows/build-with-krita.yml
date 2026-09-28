@@ -782,6 +782,9 @@ jobs:
             "-I`"krita-build\libs\global`"",
             "-I`"krita-build\libs\flake`"",
             "-I`"krita-build\libs\command`"",
+            # run 36357302114 step 12: psd.h(13) C1083 kritapsdutils_export.h
+            # (generated export header lives in krita-build\libs\psdutils\)
+            "-I`"krita-build\libs\psdutils`"",
             "-I`"krita-build`"",
             "-I`"$qtDir`"",
             "-I`"$qtDir\QtCore`"",
