@@ -218,6 +218,42 @@ jobs:
             Set-Content -Path $cloneSrc -Value $srcNew -NoNewline -Encoding utf8
             Write-Host "PATCHED: $cloneSrc (defined out-of-line dtor after Private)"
           }
+          # Fix 16 (run 36433359111, step 11 kritaui KisScreenColorSampler.cpp):
+          # qscopedpointer.h(57) C2027 use of undefined type
+          # 'KisGrabKeyboardFocusRecoveryWorkaround::Private' + C2118 negative
+          # subscript + C2148/C2070 sizeof cascade. The class is KRITAUI_EXPORT,
+          # holds QScopedPointer<Private> m_d, forward-declares its nested
+          # Private and declares NO destructor -> MSVC must synthesize the
+          # implicit inline dtor in every TU including the header (dllexport
+          # forces member synthesis), and ~QScopedPointer<Private>() requires
+          # sizeof(Private) -> incomplete-type error cascade. Upstream never
+          # sees this: Krita's Windows builds use MinGW GCC (weak symbols, lazy
+          # synthesis). Same recipe as the KisChangeCloneLayersCommand fix:
+          # declare the dtor in the header, define it out-of-line in the .cpp
+          # right after the Private definition (= default is fine there).
+          # Idempotent via dtor-name presence check.
+          $gkHdr = "krita-source\libs\ui\widgets\KisGrabKeyboardFocusRecoveryWorkaround.h"
+          $gkSrc = "krita-source\libs\ui\widgets\KisGrabKeyboardFocusRecoveryWorkaround.cpp"
+          foreach ($f in @($gkHdr, $gkSrc)) {
+            if (-not (Test-Path $f)) { Write-Host "FATAL: file not found: $f"; exit 1 }
+          }
+          $gkH = Get-Content $gkHdr -Raw
+          $gkS = Get-Content $gkSrc -Raw
+          if ($gkH.Contains("~KisGrabKeyboardFocusRecoveryWorkaround") -and $gkS.Contains("~KisGrabKeyboardFocusRecoveryWorkaround::")) {
+            Write-Host "SKIP (already patched): KisGrabKeyboardFocusRecoveryWorkaround dtor"
+          } else {
+            $gkHdrAnchor = "    Q_DISABLE_COPY(KisGrabKeyboardFocusRecoveryWorkaround)"
+            if (-not $gkH.Contains($gkHdrAnchor)) { Write-Host "FATAL: header anchor not found — upstream layout changed?"; exit 1 }
+            $gkHNew = $gkH.Replace($gkHdrAnchor, "    ~KisGrabKeyboardFocusRecoveryWorkaround();`r`n" + $gkHdrAnchor)
+            Set-Content -Path $gkHdr -Value $gkHNew -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $gkHdr (declared ~KisGrabKeyboardFocusRecoveryWorkaround())"
+            $gkSrcAnchor = "KisGrabKeyboardFocusRecoveryWorkaround* KisGrabKeyboardFocusRecoveryWorkaround::instance()"
+            if (-not $gkS.Contains($gkSrcAnchor)) { Write-Host "FATAL: cpp anchor not found — upstream layout changed?"; exit 1 }
+            $gkDtorDef = "KisGrabKeyboardFocusRecoveryWorkaround::~KisGrabKeyboardFocusRecoveryWorkaround() = default;`r`n`r`n"
+            $gkSNew = $gkS.Replace($gkSrcAnchor, $gkDtorDef + $gkSrcAnchor)
+            Set-Content -Path $gkSrc -Value $gkSNew -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $gkSrc (defined out-of-line dtor after Private)"
+          }
           Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
