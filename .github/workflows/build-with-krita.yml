@@ -308,6 +308,41 @@ jobs:
               Write-Host "PATCHED: $f17 (added $incLine17)"
             }
           }
+          # Fix 18 (run 36466473634, first-ever kritaui.dll link): LNK2001
+          # KisRootSurfaceInfoProxy::staticMetaObject reported from
+          # KisMultiSurfaceStateManager.cpp.obj ONLY. Root cause chain:
+          # KRITA_USE_SURFACE_COLOR_MANAGEMENT_API option defaults to
+          # ${HAVE_WAYLAND} = OFF on this Windows/Qt5 configure (feature
+          # summary confirms "disabled"; no -D flag is passed) -> generated
+          # config-use-surface-color-management-api.h has macro = 0 ->
+          # KisRootSurfaceInfoProxy.cpp (+ its moc) is NOT compiled. But
+          # KisMultiSurfaceStateManager.cpp includes <KisRootSurfaceInfoProxy.h>
+          # UNGUARDED (upstream Windows release builds run with the option ON,
+          # so upstream never sees this link error). Including the definition
+          # of a KRITAUI_EXPORT (dllexport) Q_OBJECT class whose moc is not
+          # compiled makes MSVC emit an export directive for the declared-
+          # but-undefined 'static const QMetaObject staticMetaObject' ->
+          # LNK2001 in exactly that one obj (the only unguarded includer in
+          # the whole build). Fix: guard the include with the same macro ->
+          # the OFF build now has ZERO references to the proxy (all its other
+          # includers are already guarded) -> symbol never referenced ->
+          # link resolves. Zero behavior change; if the option is ever ON the
+          # include stays active.
+          $f18 = 'krita-source\libs\ui\KisMultiSurfaceStateManager.cpp'
+          if (-not (Test-Path $f18)) { Write-Host "FATAL: file not found: $f18"; exit 1 }
+          $t18 = Get-Content $f18 -Raw
+          $inc18 = '#include <KisRootSurfaceInfoProxy.h>'
+          $guarded18 = '#if KRITA_USE_SURFACE_COLOR_MANAGEMENT_API' + "`r`n" + $inc18
+          if ($t18.Contains($guarded18)) {
+            Write-Host "SKIP (already guarded): $f18"
+          } else {
+            if (-not $t18.Contains($inc18)) { Write-Host "FATAL: include anchor not found in $f18"; exit 1 }
+            $idx18 = $t18.IndexOf($inc18)
+            $end18 = $idx18 + $inc18.Length
+            $t18 = $t18.Substring(0, $idx18) + '#if KRITA_USE_SURFACE_COLOR_MANAGEMENT_API' + "`r`n" + $inc18 + "`r`n" + '#endif /* KRITA_USE_SURFACE_COLOR_MANAGEMENT_API */' + $t18.Substring($end18)
+            Set-Content -Path $f18 -Value $t18 -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $f18 (guarded KisRootSurfaceInfoProxy.h include)"
+          }
           Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
