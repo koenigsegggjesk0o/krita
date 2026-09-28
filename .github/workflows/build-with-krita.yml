@@ -815,7 +815,14 @@ jobs:
           # 36364865230: widgetutils). Add EVERY generated dir under
           # krita-build\libs and krita-build\plugins in one glob so the
           # C1083 export-header class dies entirely.
+          # -Recurse walks the ENTIRE CMake build tree: CMakeFiles\<t>.dir
+          # object dirs mirror the source tree -> 2385 -I args, 220KB cmd
+          # line > cmd.exe 8191-char limit -> "The system cannot execute
+          # the specified program" (run 36372863055). Exclude CMakeFiles/
+          # _autogen; generated *_export.h / ui_*.h live at krita-build\
+          # libs\<lib>\ and krita-build\plugins\<cat>\<plugin>\ top level.
           $incPaths += Get-ChildItem "krita-build\libs","krita-build\plugins" -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\(CMakeFiles|_autogen)' } |
             ForEach-Object { "-I`"$($_.FullName)`"" }
           $incArgs = $incPaths -join " "
 
