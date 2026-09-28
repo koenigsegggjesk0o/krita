@@ -4758,3 +4758,178 @@ Stage Summary:
 - Fix applied: guarded unguarded proxy include (zero code-path change)
 - New commit: f97290f (+ worklog repair bfbdb3d then merged follow-up)
 - ETA: vcpkg ~74-91 min -> step 11 verdict ~06:40-07:40 local -> step 12 link verdict ~07:00-08:40 local
+---
+Task ID: v58-monitor-20260929-051143
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress, ~2.3 min elapsed; duplicate run 36485112324 (bfbdb3d8, identical YAML) also in flight (worklog commits triggered both; latest wins for future tracking)
+- Step detail: [4] Free disk space in_progress (0.3 min); 3 steps completed
+- CRITICAL: step 3 (Patch krita-source) GREEN -> Fix 18's include-guard patch block applied without FATAL (anchor `#include <KisRootSurfaceInfoProxy.h>` found as validated locally; idempotent guard passed)
+- Fix 18 verdict comes at kritaui.dll link (~end of step 11): LNK2001 staticMetaObject should be gone since the only unguarded includer is neutralized
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [4] Free disk space; vcpkg (step 8) next, ~74-91 min
+- Fix applied: none this cycle (Fix 18 already in flight)
+- New commit: none
+- ETA: vcpkg done ~06:40-06:55 -> step 11 verdict (compile + link) ~07:25-08:40 -> step 12 (bridge link) ~07:45-09:00 local
+---
+Task ID: v58-monitor-20260929-052643
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress, no conclusion
+- Step detail: steps 1-7 completed (step 3 Patch krita-source GREEN re-confirmed), >>[8] vcpkg in_progress at 2.3 min (just started)
+- Note: run sat queued ~50 min after creation (04:18 WIB) before jobs began ~05:09 WIB — consistent with duplicate run 36485112324 (bfbdb3d8) contention; duplicate still in_progress too (identical effective YAML, informational only, latest wins for tracking)
+- Fix 18 early gate (step 3 patch application, no FATAL) PASSED; real verdict = kritaui.dll link at end of step 11 (LNK2001 staticMetaObject should be gone)
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [8] vcpkg 2.3 min, expected 74-91 min cold
+- Fix applied: none this cycle
+- New commit: none
+- ETA: vcpkg done ~06:40-06:58 -> step 11 verdict (compile + kritaui link) ~07:25-08:40 -> step 12 (bridge link) ~07:45-09:00 local
+---
+Task ID: v58-monitor-20260929-054143
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- Step detail: steps 1-7 completed (step 3 patch gate GREEN), >>[8] vcpkg in_progress at 17.2 min — on track vs 74-91 min cold-compile baseline
+- Fix 18 verdict unchanged: kritaui.dll link at end of step 11 (LNK2001 staticMetaObject expected gone)
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [8] vcpkg 17.2 min / 74-91 min expected
+- Fix applied: none this cycle
+- New commit: none
+- ETA: vcpkg done ~06:45-07:00 -> step 11 verdict ~07:30-08:45 -> step 12 (bridge link) ~07:50-09:05 local
+---
+Task ID: v58-monitor-20260929-055643
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- Step detail: steps 1-7 completed (step 3 patch gate GREEN), >>[8] vcpkg in_progress at 32.1 min — on track vs 74-91 min baseline
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [8] vcpkg 32.1 min / 74-91 min expected
+- Fix applied: none this cycle
+- New commit: none
+- ETA: vcpkg done ~06:45-07:00 -> step 11 verdict ~07:30-08:45 -> step 12 (bridge link) ~07:50-09:05 local
+---
+Task ID: v58-monitor-20260929-061143
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- Step detail: steps 1-7 completed (step 3 patch gate GREEN), >>[8] vcpkg in_progress at 47.1 min — on track vs 74-91 min baseline
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [8] vcpkg 47.1 min / 74-91 min expected
+- Fix applied: none this cycle
+- New commit: none
+- ETA: vcpkg done ~06:45-07:00 -> step 11 verdict ~07:30-08:45 -> step 12 (bridge link) ~07:50-09:05 local
+---
+Task ID: v58-monitor-20260929-062644
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- Step detail: steps 1-7 completed (step 3 patch gate GREEN), >>[8] vcpkg in_progress at 62.1 min — approaching end of 74-91 min window
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [8] vcpkg 62.1 min / 74-91 min expected
+- Fix applied: none this cycle
+- New commit: none
+- ETA: vcpkg done ~06:45-07:00 -> step 11 verdict ~07:30-08:45 -> step 12 (bridge link) ~07:50-09:05 local
+---
+Task ID: v58-monitor-20260929-064144
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- Step detail: steps 1-7 completed (step 3 patch gate GREEN), >>[8] vcpkg in_progress at 77.1 min — inside 74-91 min window, previous round measured 88-90 min
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [8] vcpkg 77.1 min (window 74-91, last round 88-90)
+- Fix applied: none this cycle
+- New commit: none
+- ETA: vcpkg done ~07:00-07:15 -> step 9/10 fast-pass -> step 11 verdict ~07:45-09:00 -> step 12 (bridge link) ~08:05-09:20 local
+---
+Task ID: v58-monitor-20260929-065644
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- PROGRESS: [8] vcpkg completed/success (~85 min total), [9] QuaZip completed/success, [10] cmake configure completed/success
+- >>[11] Build Krita lib targets in_progress at 7.7 min (-j2 bounded RAM)
+- Step 11 checkpoints ahead: ~17 min KisScreenColorSampler.cpp TU checkpoint; Fix 17 death point (TU 1541 KisViewManager.cpp) already validated passed in prior run; Fix 18 REAL verdict = kritaui.dll link at END of step 11 (LNK2001 staticMetaObject expected gone)
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [11] build 7.7 min; vcpkg+QuaZip+configure all GREEN
+- Fix applied: none this cycle
+- New commit: none
+- ETA: 17-min checkpoint ~07:12 -> step 11 verdict (incl. kritaui link) ~07:55-08:45 -> step 12 (bridge link) ~08:15-09:20 local
+---
+Task ID: v58-monitor-20260929-071144
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Tracked run 36485211757 (Fix 18, head 8422b1f4): status=in_progress; duplicate run 36485112324 (bfbdb3d8) also still in_progress
+- Step detail: >>[11] Build Krita lib targets in_progress at 22.8 min — 17-min checkpoint (KisScreenColorSampler.cpp TU) PASSED (~07:06)
+- Fix 17 death point (TU 1541 KisViewManager.cpp, ~TU 1500+) upcoming shortly; Fix 18 REAL verdict remains kritaui.dll link at END of step 11
+- No action per decision tree (in_progress -> report and wait)
+
+Stage Summary:
+- CI status: in_progress (run 36485211757, Fix 18)
+- Step in progress: [11] build 22.8 min; 17-min checkpoint GREEN
+- Fix applied: none this cycle
+- New commit: none
+- ETA: step 11 verdict (incl. kritaui link) ~07:55-08:45 -> step 12 (bridge link) ~08:15-09:20 local
+---
+Task ID: v58-monitor-20260929-072644
+Agent: cron monitor
+Task: Monitor v58 CI (Krita compile from source), fix failures, rebuild.
+
+Work Log:
+- Run 36485211757 (Fix 18, head 8422b1f4) completed FAILURE at step 11 (~30 min in); duplicate run 36485112324 (bfbdb3d8) still in_progress
+- MAJOR MILESTONE: kritaui.dll LINKED SUCCESSFULLY ([1586/1918] "Linking CXX shared library bin\kritaui.dll", no LNK2001) — Fix 18 primary verdict PASSED; build advanced to TU 1611/1918 into kritalibpaintop (first-ever attempt)
+- New failure: KisAutoBrushModel.cpp(40) — lager/detail/xform_nodes.hpp(125) error C3200 'cursor_node<T>': template argument for 'Base' must be a class template or an alias template (T=KisWidgetConnectionUtils::SpacingState; via lager::with(...).xform(zug::map To/FromSpacingState))
+- Diagnosis: same MSVC C3200 family as previously fixed root_node<T, reader_node> (SO 68000265, lager PR #177 alias-template workaround). The in-place patch (Fix 12) covers only 4 top-level headers (constant/store/sensor/state.hpp); lager v0.1.3 detail/xform_nodes.hpp lines 123+125 (xform_reader_node<Xform, Parents, cursor_node>) and lens_nodes.hpp line 74 (lens_reader_node<Lens, ParentsPack, cursor_node>) pass cursor_node as template-template arg — never patched
+- Fix 19: extended step-11 in-place patch loop with second foreach over detail\xform_nodes.hpp + detail\lens_nodes.hpp (insert cursor_node_msvc_hack_t alias after "namespace detail {" — both headers include detail/nodes.hpp BEFORE opening namespace, so alias resolves; replace the two template-template arg patterns; msvc_hack_t idempotency guard; step 12 shim re-reads patched files with own guard, no double-insert)
+- Validation: YAML parse OK; simulated PowerShell .Replace against real lager v0.1.3 blob bytes — xform pattern 2 hits, lens pattern 1 hit, namespace detail unique per file, angle brackets balanced on changed lines, guard effective
+- Committed 85223f5 (YAML only, +18 lines), pushed 8422b1f..85223f5; new run triggers automatically (worklog-only commits bfbdb3d/8422b1f pattern: latest-head run wins for tracking)
+- Note: git stash/pop used to clear unstaged worklog.md blocking pull --rebase; remote had no new commits so push went through directly
+
+Stage Summary:
+- CI status: failure (run 36485211757) -> Fix 19 pushed (85223f5); new run in flight
+- Failed step: [11] TU 1611/1918 KisAutoBrushModel.cpp — lager C3200 (xform_cursor_node template-template arg)
+- Fix 18 verdict: PASSED — kritaui.dll linked, LNK2001 staticMetaObject gone (16-fix chain finally cleared)
+- Fix applied: alias-template patch for lager detail/xform_nodes.hpp + lens_nodes.hpp (in-place, idempotent)
+- New commit: 85223f5
+- Remaining risk: kritaimpex/paintop plugin TUs not yet compiled; merge_nodes.hpp/with.hpp similar patterns (lower risk); step 12 LNK1104 chain after step 11
+- ETA: vcpkg ~74-91 min -> step 11 verdict ~09:40-10:50 -> step 12 (bridge link) ~10:00-11:30 local
