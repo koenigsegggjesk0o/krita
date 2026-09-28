@@ -810,6 +810,13 @@ jobs:
             "-I`"$qtDir\QtPrintSupport`"",
             "-I`"$vcpkgInc`""
           )
+          # One-shot vs whack-a-mole: generated *_export.h headers live in
+          # krita-build\libs\<lib>\ (run 36357302114: psdutils, run
+          # 36364865230: widgetutils). Add EVERY generated dir under
+          # krita-build\libs and krita-build\plugins in one glob so the
+          # C1083 export-header class dies entirely.
+          $incPaths += Get-ChildItem "krita-build\libs","krita-build\plugins" -Directory -Recurse -ErrorAction SilentlyContinue |
+            ForEach-Object { "-I`"$($_.FullName)`"" }
           $incArgs = $incPaths -join " "
 
           # Link the 8 Krita libs we built in Step 3 (verified .lib paths
