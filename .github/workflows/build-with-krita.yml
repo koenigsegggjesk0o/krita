@@ -826,6 +826,12 @@ jobs:
             # settings headers: kis_paintop_option.h, KisPopupButton.h)
             "-I`"krita-source\libs\ui`"",
             "-I`"krita-source\libs\widgetutils`"",
+            # run 36392775247 step 12: ui_wdghatchingoptions.h(12) C1083
+            # KisAngleSelector.h — paintop ui_ customwidget headers
+            # (KisAngleSelector/KisLevelsSlider/KoAspectButton/
+            # kis_spacing_selection_widget) live in libs/widgets, the one
+            # lib dir missing from this list.
+            "-I`"krita-source\libs\widgets`"",
             "-I`"krita-build\libs\brush`"",
             "-I`"krita-build\libs\image`"",
             "-I`"krita-build\libs\pigment`"",
