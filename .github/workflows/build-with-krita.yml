@@ -829,7 +829,7 @@ jobs:
                    kritaexperimentpaintop kritagridpaintop `
                    kritaroundmarkerpaintop kritaparticlepaintop `
                    kritahatchingpaintop kritacolorsmudgepaintop `
-                   kritatangentnormalpaintop `
+                   kritatangentnormalpaintop kritafilterop `
             -j 2
           if ($LASTEXITCODE -ne 0) {
             Write-Host "FATAL: Krita lib build failed (exit $LASTEXITCODE)"
@@ -868,7 +868,8 @@ jobs:
             "krita-build\lib\kritaparticlepaintop.lib",
             "krita-build\lib\kritahatchingpaintop.lib",
             "krita-build\lib\kritacolorsmudgepaintop.lib",
-            "krita-build\lib\kritatangentnormalpaintop.lib"
+            "krita-build\lib\kritatangentnormalpaintop.lib",
+            "krita-build\lib\kritafilterop.lib"
           )
           $missing = @()
           foreach ($lib in $expectedLibs) {
@@ -1129,6 +1130,13 @@ jobs:
             "kritahatchingpaintop.lib",
             "kritacolorsmudgepaintop.lib",
             "kritatangentnormalpaintop.lib",
+            # Fix 21 insurance: paintop widget/settings objs reference these
+            "kritaresourcewidgets.lib",
+            "kritametadata.lib",
+            "kritastore.lib",
+            "kritapsdutils.lib",
+            "kritaplugin.lib",
+            "kritamultiarch.lib",
             "KF5I18n.lib",
             "KF5CoreAddons.lib",
             "KF5Completion.lib",
@@ -1156,7 +1164,23 @@ jobs:
           # 236/240/244 declare functions NAMED xor/and/or) hits C3193 '^'
           # requires /clr + C2059 <parameter-list>. Step 11 compiles the same
           # header under MSVC default permissive mode — match it.
-          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+          # Fix 21 (run 36512152094): the paintop plugin DLLs export only
+          # their C plugin entry, NOT the paintop classes -> bridge.obj's
+          # direct class references (KisHairyPaintOp etc.) cannot resolve
+          # from import libs (47 LNK2001). Inject each plugin target's own
+          # .obj files (incl. AUTOMOC mocs_compilation) via a response file
+          # (line-length safe: the cl line is already ~29K chars). Factory
+          # TUs (*_plugin.cpp, filterop.cpp) excluded: the bridge registers
+          # its own KisSimplePaintOpFactory wrappers and the plugin factories'
+          # static registrars would double-register the paintop ids.
+          $re = 'CMakeFiles\\(kritahairypaintop|kritadeformpaintop|kritacurvepaintop|kritaspraypaintop|kritasketchpaintop|kritaexperimentpaintop|kritagridpaintop|kritaroundmarkerpaintop|kritaparticlepaintop|kritahatchingpaintop|kritacolorsmudgepaintop|kritatangentnormalpaintop|kritafilterop)\.dir\\'
+          $objRsp = (Get-ChildItem "krita-build\plugins\paintops" -Recurse -Filter *.obj -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match $re -and $_.Name -notmatch 'plugin\.cpp\.obj$' -and $_.Name -ne 'filterop.cpp.obj' } |
+            ForEach-Object { '"' + $_.FullName + '"' }) -join "`r`n"
+          if (-not $objRsp) { Write-Host "FATAL: no paintop objs found for bridge link (step 11 target list change?)"; exit 1 }
+          [IO.File]::WriteAllText("$PWD\bridge_objs.rsp", $objRsp)
+          Write-Host "bridge_objs.rsp entries: $((($objRsp -split "`r`n") | Measure-Object).Count)"
+          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp @bridge_objs.rsp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
 
           Write-Host "=== cl command ==="
           Write-Host $cmd
