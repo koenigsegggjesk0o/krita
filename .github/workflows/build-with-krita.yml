@@ -343,6 +343,40 @@ jobs:
             Set-Content -Path $f18 -Value $t18 -NoNewline -Encoding utf8
             Write-Host "PATCHED: $f18 (guarded KisRootSurfaceInfoProxy.h include)"
           }
+          # Fix 24 (run 36554684060, step 12 LNK1179, 0.9 min): bridge link
+          # reached 'Creating library krita_bridge.lib' (Fix 23 z.lib OK —
+          # __imp_inflate LNK2001 x3 gone) and /FORCE:MULTIPLE worked
+          # (12x LNK2005 downgraded to LNK4006 warnings, second definition
+          # ignored), but died AFTER 'Finished generating code' with
+          #   fatal error LNK1179: invalid or corrupt file: duplicate COMDAT
+          #   '?effectiveTiming@KisPaintOpPluginUtils@@...' (kis_deform_paintop.cpp.obj)
+          # LNK1179 is NOT a multiple-definition error: link.exe cannot merge
+          # two same-name COMDATs whose CONTENT differs (COMDAT selection runs
+          # before /FORCE handling; /FORCE does not cover it). Root cause:
+          # plugins/paintops/libpaintop/kis_paintop_plugin_utils.h defines
+          # namespace KisPaintOpPluginUtils { effectiveSpacing (line 41),
+          # effectiveTiming (line 82) } as full header definitions WITHOUT the
+          # inline keyword. Every paintop TU that includes it (colorsmudge,
+          # deform, particle, brushop via defaultpaintops_static, ...) emits
+          # its own strong COMDAT; bodies embed TU-dependent references, so
+          # same-name COMDATs mismatch -> LNK1179. Upstream links each plugin
+          # DLL separately (single TU per link) so GCC never sees the clash.
+          # Fix: add 'inline' to both header definitions -> MSVC gives them
+          # selectany COMDATs merged silently by name. Safe: both bodies are
+          # identical translations of the same source (the LNK4006 round kept
+          # the first copy and Fix 21-22 rounds resolved all references).
+          $pfu = 'krita-source\plugins\paintops\libpaintop\kis_paintop_plugin_utils.h'
+          if (-not (Test-Path $pfu)) { Write-Host "FATAL: file not found: $pfu"; exit 1 }
+          $pfuT = Get-Content $pfu -Raw
+          if ($pfuT.Contains('inline KisSpacingInformation effectiveSpacing')) {
+            Write-Host "SKIP (already patched): $pfu"
+          } else {
+            $pfuNew = $pfuT.Replace('KisSpacingInformation effectiveSpacing(', 'inline KisSpacingInformation effectiveSpacing(')
+            $pfuNew = $pfuNew.Replace('KisTimingInformation effectiveTiming(', 'inline KisTimingInformation effectiveTiming(')
+            if (-not $pfuNew.Contains('inline KisTimingInformation effectiveTiming')) { Write-Host "FATAL: inline anchors not found in $pfu — upstream layout changed?"; exit 1 }
+            Set-Content -Path $pfu -Value $pfuNew -NoNewline -Encoding utf8
+            Write-Host "PATCHED: $pfu (effectiveSpacing/effectiveTiming -> inline, LNK1179 fix)"
+          }
           Write-Host "MSVC krita-source patches complete"
 
       # --------------------------------------------------------------------------
