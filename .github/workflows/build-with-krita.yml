@@ -1137,6 +1137,7 @@ jobs:
             "kritapsdutils.lib",
             "kritaplugin.lib",
             "kritamultiarch.lib",
+            "zlib.lib",
             "KF5I18n.lib",
             "KF5CoreAddons.lib",
             "KF5Completion.lib",
@@ -1173,6 +1174,15 @@ jobs:
           # TUs (*_plugin.cpp, filterop.cpp) excluded: the bridge registers
           # its own KisSimplePaintOpFactory wrappers and the plugin factories'
           # static registrars would double-register the paintop ids.
+          # Fix 22 (run 36524740331): two residual step-12 classes.
+          # (a) 12x LNK2005: KisPaintOpPluginUtils::effectiveSpacing/
+          #     effectiveTiming are defined non-inline in many paintop TUs;
+          #     once objs are injected into one image they collide.
+          #     /FORCE:MULTIPLE keeps the first copy (all copies are
+          #     identical code compiled from the same header) - safe.
+          # (b) 3x LNK2001 __imp_inflate/inflateEnd/inflateInit2_ ->
+          #     link vcpkg zlib.lib (import lib in the same installed
+          #     x64-windows\lib dir the KF5 libs resolved from).
           $re = 'CMakeFiles\\(kritahairypaintop|kritadeformpaintop|kritacurvepaintop|kritaspraypaintop|kritasketchpaintop|kritaexperimentpaintop|kritagridpaintop|kritaroundmarkerpaintop|kritaparticlepaintop|kritahatchingpaintop|kritacolorsmudgepaintop|kritatangentnormalpaintop|kritafilterop)\.dir\\'
           $objRsp = (Get-ChildItem "krita-build\plugins\paintops" -Recurse -Filter *.obj -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match $re -and $_.Name -notmatch 'plugin\.cpp\.obj$' -and $_.Name -ne 'filterop.cpp.obj' } |
@@ -1180,7 +1190,7 @@ jobs:
           if (-not $objRsp) { Write-Host "FATAL: no paintop objs found for bridge link (step 11 target list change?)"; exit 1 }
           [IO.File]::WriteAllText("$PWD\bridge_objs.rsp", $objRsp)
           Write-Host "bridge_objs.rsp entries: $((($objRsp -split "`r`n") | Measure-Object).Count)"
-          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp @bridge_objs.rsp /Fe:krita_bridge.dll /link $libArgs /SUBSYSTEM:CONSOLE /MACHINE:X64"
+          $cmd = "cl /nologo /std:c++17 /Zc:__cplusplus /Zc:preprocessor /EHsc /MD /O2 /LD $incArgs $defines native\krita_bridge\krita_bridge_real.cpp @bridge_objs.rsp /Fe:krita_bridge.dll /link $libArgs /FORCE:MULTIPLE /SUBSYSTEM:CONSOLE /MACHINE:X64"
 
           Write-Host "=== cl command ==="
           Write-Host $cmd
