@@ -1254,8 +1254,10 @@ jobs:
       #     native/krita_bridge/krita_bridge.h:203, defined at
       #     native/krita_bridge/krita_bridge_real.cpp:1782, exported via
       #     KRITA_BRIDGE_API = __declspec(dllexport) at krita_bridge.h:32).
-      # (c) Import table contains `libkritaimage.dll` (proves the DLL was
-      #     linked against the Krita engine built in Step 3, not a stub).
+      # (c) Import table contains `kritaimage.dll` etc. (MSVC naming: no `lib`
+      #     prefix; run 36572749586 proved the engine DLLs are kritaimage.dll,
+      #     kritaui.dll, ... — regex therefore matches (lib)?krita to prove the
+      #     DLL was linked against the Krita engine built in Step 3, not a stub).
       # --------------------------------------------------------------------------
       - name: Verify krita_bridge.dll (size + exports + imports)
         shell: pwsh
@@ -1278,15 +1280,16 @@ jobs:
           }
           Write-Host "PASS: krita_brush_generate_dab present in export table"
 
-          Write-Host "=== dumpbin /imports krita_bridge.dll (libkrita* section) ==="
+          Write-Host "=== dumpbin /imports krita_bridge.dll (krita* / libkrita* section) ==="
           $imports = & dumpbin /imports $dll 2>&1 | Out-String
-          $kritaImports = ($imports -split "`r?`n" | Where-Object { $_ -match "libkrita" })
+          ($imports -split "`r?`n" | Where-Object { $_ -match "\.dll" }) | ForEach-Object { Write-Host $_ }
+          $kritaImports = ($imports -split "`r?`n" | Where-Object { $_ -match "(lib)?krita" })
           $kritaImports | ForEach-Object { Write-Host $_ }
           if ($kritaImports.Count -eq 0) {
-            Write-Host "FATAL: import table has no libkrita*.dll entry — krita_bridge.dll was NOT linked against the Krita engine"
+            Write-Host "FATAL: import table has no krita*.dll (or libkrita*.dll) entry — krita_bridge.dll was NOT linked against the Krita engine"
             exit 1
           }
-          Write-Host "PASS: krita_bridge.dll imports at least one libkrita*.dll"
+          Write-Host "PASS: krita_bridge.dll imports at least one krita*.dll (MSVC engine DLLs, e.g. kritaimage.dll)"
 
           # Save the verification report for the worklog.
           "krita_bridge.dll size: $([Math]::Round($size/1KB,1)) KB" | Out-File -FilePath verify_report.txt -Encoding ASCII
