@@ -1137,7 +1137,7 @@ jobs:
             "kritapsdutils.lib",
             "kritaplugin.lib",
             "kritamultiarch.lib",
-            "zlib.lib",
+            "z.lib",
             "KF5I18n.lib",
             "KF5CoreAddons.lib",
             "KF5Completion.lib",
@@ -1181,8 +1181,10 @@ jobs:
           #     /FORCE:MULTIPLE keeps the first copy (all copies are
           #     identical code compiled from the same header) - safe.
           # (b) 3x LNK2001 __imp_inflate/inflateEnd/inflateInit2_ ->
-          #     link vcpkg zlib.lib (import lib in the same installed
-          #     x64-windows\lib dir the KF5 libs resolved from).
+          #     link vcpkg zlib import lib. Run 36538541359 LNK1181 proved
+          #     'zlib.lib' does not exist: zlib v1.3.1 CMakeLists:172 sets
+          #     OUTPUT_NAME z -> import lib is z.lib (DLL z.dll), and the
+          #     vcpkg wrapper find_library NAMES list puts z first.
           $re = 'CMakeFiles\\(kritahairypaintop|kritadeformpaintop|kritacurvepaintop|kritaspraypaintop|kritasketchpaintop|kritaexperimentpaintop|kritagridpaintop|kritaroundmarkerpaintop|kritaparticlepaintop|kritahatchingpaintop|kritacolorsmudgepaintop|kritatangentnormalpaintop|kritafilterop)\.dir\\'
           $objRsp = (Get-ChildItem "krita-build\plugins\paintops" -Recurse -Filter *.obj -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match $re -and $_.Name -notmatch 'plugin\.cpp\.obj$' -and $_.Name -ne 'filterop.cpp.obj' } |
