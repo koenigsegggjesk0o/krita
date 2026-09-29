@@ -1107,9 +1107,10 @@ jobs:
             # run 36407014980 LNK2019 fix: bridge instantiates every paintop
             # factory -> link the paintop plugin import libs + the UI libs
             # they come from (KisIconUtils=kritawidgetutils, default ops=
-            # kritadefaultpaintops_static). ki18n.lib: bridge.obj calls ki18n
-            # directly in static initializers; lowercase KF5 names match
-            # vcpkg's KF5 dll/lib naming (kcoreaddons.dll etc.).
+            # kritadefaultpaintops_static). KF5 libs: bridge calls i18n() via
+            # klocalizedstring.h; run 36498927351 LNK1181 proved vcpkg MSVC
+            # names are KF5<PascalCase>.lib (cmake copied KF5I18n.dll, not
+            # ki18n.dll - lowercase names never existed on disk).
             "kritawidgetutils.lib",
             "kritawidgets.lib",
             "kritaimpex.lib",
@@ -1128,14 +1129,14 @@ jobs:
             "kritahatchingpaintop.lib",
             "kritacolorsmudgepaintop.lib",
             "kritatangentnormalpaintop.lib",
-            "ki18n.lib",
-            "kcoreaddons.lib",
-            "kcompletion.lib",
-            "kitemviews.lib",
-            "kconfigcore.lib",
-            "kconfiggui.lib",
-            "kguiaddons.lib",
-            "kwidgetsaddons.lib",
+            "KF5I18n.lib",
+            "KF5CoreAddons.lib",
+            "KF5Completion.lib",
+            "KF5ItemViews.lib",
+            "KF5ConfigCore.lib",
+            "KF5ConfigGui.lib",
+            "KF5GuiAddons.lib",
+            "KF5WidgetsAddons.lib",
             "Qt5Core.lib",
             "Qt5Gui.lib",
             "Qt5Widgets.lib",
